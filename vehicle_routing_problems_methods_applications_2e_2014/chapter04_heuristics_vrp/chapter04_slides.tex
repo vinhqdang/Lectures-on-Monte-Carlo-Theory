@@ -115,6 +115,78 @@
 
 \end{frame}
 
+% ─── CVRP Formal Formulation ──────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{The Capacitated VRP: Formal Problem Statement}
+
+  Before introducing any algorithm, we need a precise statement of the
+  problem.  The \textbf{Capacitated Vehicle Routing Problem (CVRP)} is
+  defined on a complete graph $G = (V, A)$, where $V$ is the set of nodes
+  and $A$ is the set of arcs (directed edges) connecting them.
+
+  \begin{block}{Problem Data (all given as input)}
+    \begin{itemize}
+      \item $V = \{0, 1, 2, \ldots, n\}$: the set of nodes.  Node~0 is the
+            \textbf{depot} (the starting/ending point for all vehicles);
+            nodes $1$ through $n$ are the \textbf{customers} to be visited.
+      \item $d_{ij}$ (d sub i-j): the travel cost (distance or time) from
+            node~$i$ to node~$j$, for every pair $(i,j) \in A$.  We assume
+            the triangle inequality holds: $d_{ik} \le d_{ij} + d_{jk}$.
+      \item $q_i$ (q sub i): the demand (quantity to be delivered) of
+            customer~$i$, for $i = 1, \ldots, n$.  The depot has $q_0 = 0$.
+      \item $Q$: the capacity of each vehicle.  Every vehicle can carry at
+            most $Q$ units of goods on any single route.
+      \item $m$: the number of identical vehicles available at the depot.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Decision Variables and Objective}
+    The CVRP seeks to determine a set of at most $m$ routes, each
+    starting and ending at the depot, such that:
+    \begin{enumerate}
+      \item Every customer $i \in \{1, \ldots, n\}$ is visited by exactly
+            one route.
+      \item The total demand of customers on each route does not exceed
+            the vehicle capacity $Q$.
+      \item The total travel cost (sum of $d_{ij}$ over all arcs used)
+            is \textbf{minimised}.
+    \end{enumerate}
+    In integer-programming notation, let the binary variable
+    $x_{ij} \in \{0,1\}$ (x sub i-j) equal 1 if some vehicle travels
+    directly from node~$i$ to node~$j$, and 0 otherwise.  The objective
+    function is then:
+    \[
+      \text{Minimise} \quad Z = \sum_{i \in V} \sum_{j \in V,\, j \ne i} d_{ij}\, x_{ij}
+    \]
+    where the double $\sum$ (Sigma, meaning ``sum'') runs over all
+    \emph{ordered} pairs $(i,j)$ of distinct nodes.  This computes the
+    total distance driven by all vehicles across all routes.
+  \end{block}
+
+  \begin{alertblock}{How to Read the Objective Function}
+    $Z$ is the total travel distance (or cost) of the entire delivery
+    plan.  For each arc $(i \to j)$ that a vehicle travels, $x_{ij} = 1$
+    and we add $d_{ij}$ to the sum; for arcs not used, $x_{ij} = 0$ and
+    they contribute nothing.  Minimising $Z$ means finding routes that
+    collectively use the shortest possible total path.  Adding more
+    vehicles generally reduces each vehicle's individual route length but
+    may be prohibited by the constraint $m$; serving more customers per
+    route risks violating capacity $Q$.  The algorithm balances these
+    competing pressures.
+  \end{alertblock}
+
+  \begin{exampleblock}{Size and Complexity}
+    Even for just $n = 20$ customers and $m = 4$ vehicles, the number of
+    possible route assignments is astronomically large.  The CVRP is
+    \textbf{NP-hard}: no known algorithm solves all instances in polynomial
+    time.  Exact algorithms based on branch-and-bound can handle instances
+    up to roughly $n \approx 200$ in practice; for larger instances,
+    heuristics and metaheuristics are essential.
+  \end{exampleblock}
+
+\end{frame}
+
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Constructive Heuristics}
 % ══════════════════════════════════════════════════════════════════════════════
@@ -157,12 +229,25 @@
     \[
       s(i,j) = d_{0i} + d_{0j} - d_{ij}
     \]
-    where $d_{0i}$ is the distance from the depot to customer $i$,
-    $d_{0j}$ is the distance from the depot to customer $j$, and
-    $d_{ij}$ is the direct distance between customers $i$ and $j$.
-    A positive saving $s(i,j) > 0$ means that linking $i$ and $j$ reduces
-    total travel distance.
+    Here, $d_{0i}$ (d sub ``zero-i'') is the distance from the depot
+    (node~0) to customer~$i$; $d_{0j}$ is the distance from the depot to
+    customer~$j$; and $d_{ij}$ (d sub ``i-j'') is the direct travel
+    distance between customer~$i$ and customer~$j$.  The notation $s(i,j)$
+    stands for the \emph{saving} achieved by serving $i$ and $j$ on the
+    same route.  A positive saving $s(i,j) > 0$ means that linking $i$
+    and $j$ reduces total travel distance.
   \end{block}
+
+  \begin{alertblock}{How to Read This Formula}
+    Think of $d_{0i} + d_{0j}$ as the cost of two separate out-and-back
+    trips from the depot.  Subtracting $d_{ij}$ gives the \emph{reduction}
+    in distance when we instead make a single trip depot$\to i\to j\to$depot
+    (or depot$\to j\to i\to$depot).  The larger the saving, the more we
+    gain by linking these two customers together.  If the two customers
+    are far from each other but both far from the depot (large $d_{0i}$
+    and $d_{0j}$), the saving is large.  If they are close to each other
+    (small $d_{ij}$), the saving is also large.
+  \end{alertblock}
 
   The algorithm greedily merges routes in order of decreasing savings,
   subject to two feasibility conditions: (1)~the merge must not violate
@@ -391,14 +476,30 @@
     $(v_{i-1}, v_j)$ and $(v_i, v_{j+1})$, which is equivalent to
     \textbf{reversing} the segment $v_i, v_{i+1}, \ldots, v_j$.
 
-    The \textbf{improvement} from this move is:
+    The \textbf{improvement} from this move is defined as:
     \[
-      \Delta = d(v_{i-1}, v_i) + d(v_j, v_{j+1})
+      \Delta \text{ (delta, meaning ``change'')} =
+        d(v_{i-1}, v_i) + d(v_j, v_{j+1})
              - d(v_{i-1}, v_j) - d(v_i, v_{j+1})
     \]
-    The move is applied whenever $\Delta > 0$ (i.e., the new edges are
-    shorter than the old ones).
+    Here $\Delta$ (the Greek letter \emph{Delta}) represents the net
+    reduction in travel distance from making this swap.  The terms
+    $d(v_{i-1}, v_i)$ and $d(v_j, v_{j+1})$ are the lengths of the two
+    edges being \emph{removed}; the terms $d(v_{i-1}, v_j)$ and
+    $d(v_i, v_{j+1})$ are the lengths of the two edges being \emph{added}.
+    The move is applied whenever $\Delta > 0$, meaning the new edges are
+    collectively shorter than the ones they replace.
   \end{block}
+
+  \begin{alertblock}{How to Read This Formula}
+    $\Delta$ is the \emph{distance saved} by removing the two old edges and
+    adding the two new ones.  If the two edges being removed ``cross'' in
+    the plane, then the triangle inequality guarantees $\Delta > 0$:
+    uncrossing two crossing edges always shortens the tour.  When $\Delta$
+    is large, the improvement is dramatic; when it is near zero, the move
+    is marginal.  The algorithm keeps applying 2-opt moves as long as any
+    $\Delta > 0$ can be found.
+  \end{alertblock}
 
   \begin{center}
     \includegraphics[width=0.7\textwidth]{two_opt.pdf}
@@ -481,17 +582,23 @@
     \begin{itemize}
       \item \textbf{Or-opt-1} (single relocation): Remove one customer $v$
             from its current position and insert it elsewhere.
-            The improvement is
-            $\Delta = [d(u, v) + d(v, w) - d(u, w)]
-                    - [d(a, b) + d(b, v) + d(v, c) - d(a, v) - d(v, c)]$
-            where $u, w$ are the predecessor and successor of $v$, and
-            $(a,b)$ is the insertion arc.
+            Let $u$ and $w$ denote the \emph{predecessor} (node just
+            before $v$ in the route) and \emph{successor} (node just
+            after $v$) respectively.  Removing $v$ saves the two edges
+            $d(u,v)$ and $d(v,w)$ but adds the shortcut edge $d(u,w)$,
+            giving a \textbf{removal gain} of $\delta_{\text{rem}} =
+            d(u,v) + d(v,w) - d(u,w)$.  Inserting $v$ between nodes
+            $a$ and $b$ at a new position costs $\delta_{\text{ins}} =
+            d(a,v) + d(v,b) - d(a,b)$.  The net gain of the entire
+            Or-opt-1 move is $\Delta = \delta_{\text{rem}} -
+            \delta_{\text{ins}}$.  The move is applied when $\Delta > 0$.
       \item \textbf{Or-opt-2}: Relocate a sequence of two consecutive
-            customers as a unit.
+            customers $(v_1, v_2)$ as a unit, keeping their internal
+            order.
       \item \textbf{Or-opt-3}: Relocate a sequence of three consecutive
-            customers.
+            customers as a unit.
     \end{itemize}
-    In all cases, the new position must respect the vehicle capacity.
+    In all cases, the new position must respect the vehicle capacity $Q$.
   \end{block}
 
   \begin{center}
@@ -563,22 +670,25 @@
   the search into unexplored parts of the solution space.
 
   \begin{block}{Tabu Search Framework}
-    \textbf{Given:} initial solution $s$, tabu list $\mathcal{T} = \emptyset$,
-    best known solution $s^* = s$, tabu tenure $\tau$.
+    \textbf{Given:} initial solution $s$; tabu list $\mathcal{T}$ (calligraphic~T)
+    $= \emptyset$ (empty set); best known solution $s^* = s$; tabu tenure
+    $\tau$ (tau, pronounced ``taw'', a positive integer giving the number
+    of iterations a move remains forbidden).
     \begin{enumerate}
-      \item Generate all neighbours $\mathcal{N}(s)$.
+      \item Generate all neighbours $\mathcal{N}(s)$ (the neighbourhood of $s$).
       \item Select the best $s' \in \mathcal{N}(s)$ such that the move
             $m(s \to s')$ is \emph{not} in $\mathcal{T}$ \textbf{or}
             $s'$ satisfies the \textbf{aspiration criterion}
             (i.e., $c(s') < c(s^*)$, meaning it is better than the
             best known solution regardless of tabu status).
-      \item Set $s \leftarrow s'$; add $m$ to $\mathcal{T}$; if
-            $|\mathcal{T}| > \tau$, remove the oldest entry.
+      \item Set $s \leftarrow s'$; add move $m$ to $\mathcal{T}$; if
+            $|\mathcal{T}| > \tau$ (the list exceeds the tenure), remove
+            the oldest entry.
       \item If $c(s) < c(s^*)$, update $s^* \leftarrow s$.
       \item Repeat until stopping criterion (time limit or iteration
             limit) is reached.
     \end{enumerate}
-    \textbf{Return} $s^*$.
+    \textbf{Return} $s^*$ (the best solution found throughout the entire run).
   \end{block}
 
   \begin{center}
@@ -660,14 +770,32 @@
   \framebreak
 
   \begin{block}{Interpreting the Acceptance Probability}
-    The acceptance probability $p = \exp(-\Delta C / T)$ has two important
-    properties.  First, it is always between 0 and 1, so the algorithm
-    may accept worsening moves but never with certainty.  Second, as the
-    temperature $T$ decreases toward zero, $p \to 0$ for any $\Delta C > 0$,
-    meaning the algorithm becomes increasingly deterministic and converges
-    toward a pure local search.  The geometric cooling schedule
-    $T_k = \alpha^k T_0$ is the most common in practice.
+    The acceptance probability formula is $p = \exp(-\Delta C / T)$, where
+    $\exp$ denotes the mathematical constant $e \approx 2.718$ raised to
+    the power $(-\Delta C / T)$.  Here, $\Delta C$ (delta~C) is the cost
+    \emph{increase} of the worsening move (a positive number), and $T$
+    (the temperature) is a positive control parameter that decreases over
+    time.  This probability has two important properties.  First, it is
+    always between 0 and 1, so the algorithm may accept worsening moves
+    but never with certainty.  Second, as $T$ decreases toward zero,
+    $p \to 0$ for any $\Delta C > 0$, meaning the algorithm becomes
+    increasingly deterministic and converges toward a pure local search.
+    The geometric cooling schedule $T_k = \alpha^k T_0$ (where $\alpha$
+    (alpha) $\in (0,1)$ is the cooling rate, typically 0.95--0.99) is
+    the most common in practice.
   \end{block}
+
+  \begin{alertblock}{How to Read the Acceptance Formula}
+    The fraction $\Delta C / T$ is the ratio of ``how bad the move is''
+    to ``how hot the system currently is.''  When $T$ is large (hot
+    phase, early in the run), this ratio is small, so $\exp(-\text{small})
+    \approx 1$ and almost any move is accepted --- the algorithm explores
+    broadly.  When $T$ is small (cold phase, late in the run), this ratio
+    is large, so $\exp(-\text{large}) \approx 0$ and only improving moves
+    are accepted --- the algorithm converges.  This mirrors the physical
+    process of annealing: a hot metal can be reshaped easily, but once
+    cooled it holds its structure rigidly.
+  \end{alertblock}
 
   \begin{exampleblock}{Numerical Example of Acceptance}
     Suppose the current solution has cost $c(s) = 1000$ and a randomly
@@ -782,23 +910,44 @@
                 routes probabilistically: at position $i$, ant $k$
                 chooses the next customer $j$ with probability
                 \[
-                  p_{ij}^k = \frac{[\tau(i,j)]^\alpha \cdot [\eta(i,j)]^\beta}
-                    {\sum_{\ell \in \mathcal{F}} [\tau(i,\ell)]^\alpha
-                    \cdot [\eta(i,\ell)]^\beta}
+                  p_{ij}^k = \frac{[\tau(i,j)]^{\alpha} \cdot [\eta(i,j)]^{\beta}}
+                    {\displaystyle\sum_{\ell \in \mathcal{F}}
+                     [\tau(i,\ell)]^{\alpha} \cdot [\eta(i,\ell)]^{\beta}}
                 \]
-                where $\mathcal{F}$ is the set of feasible next customers,
-                $\alpha$ controls pheromone influence, and $\beta$ controls
-                distance influence.
+                In this formula: $\tau(i,j)$ (tau, pronounced ``taw'') is
+                the pheromone level on the edge from customer $i$ to
+                customer $j$ --- a number that increases when ants use that
+                edge in good solutions; $\eta(i,j)$ (eta, pronounced
+                ``ay-ta'') is the heuristic desirability, usually set to
+                $1/d_{ij}$ (the reciprocal of the distance, so nearer
+                customers are more desirable); $\alpha$ (alpha) is a
+                positive parameter controlling how strongly pheromone
+                influences the choice; $\beta$ (beta) is a positive
+                parameter controlling how strongly distance influences the
+                choice; $\mathcal{F}$ is the set of feasible next customers
+                (those whose demand fits within the remaining vehicle
+                capacity); and $\ell$ (ell) is a dummy index summing over
+                all feasible candidates.  The denominator normalises the
+                result so that $p_{ij}^k$ is a true probability summing
+                to 1 over all $j \in \mathcal{F}$.
           \item[(b)] Optionally improve each ant's solution with local
                 search.
         \end{enumerate}
       \item \textbf{Pheromone update:}
         \begin{itemize}
           \item Evaporate: $\tau(i,j) \leftarrow (1-\rho)\,\tau(i,j)$
-                for all $(i,j)$.
+                for all $(i,j)$, where $\rho$ (rho, pronounced ``roe'')
+                is the evaporation rate in $(0,1)$.  This models the
+                natural fading of pheromone trails over time, preventing
+                indefinite accumulation and forcing the colony to keep
+                exploring.
           \item Deposit: for each ant $k$ that used edge $(i,j)$,
                 $\tau(i,j) \leftarrow \tau(i,j) + \Delta\tau^k(i,j)$
-                where $\Delta\tau^k = Q_{\text{ACO}} / c(s^k)$.
+                where $\Delta\tau^k = Q_{\text{ACO}} / c(s^k)$.  Here
+                $Q_{\text{ACO}}$ is a positive scaling constant and
+                $c(s^k)$ is the total cost of ant $k$'s solution.  Ants
+                that found shorter tours deposit more pheromone,
+                reinforcing the good edges they used.
         \end{itemize}
       \item Repeat for $T_{\max}$ iterations.  \textbf{Return} best solution.
     \end{enumerate}
@@ -887,10 +1036,31 @@
                        + \chi \cdot |T_u - T_v|
                        + \psi \cdot (1 - \mathbf{1}[\text{same route}])
     \]
-    where $\phi, \chi, \psi$ are weighting parameters.  Removing related
-    customers creates a ``hole'' in the solution that can be repaired in
-    multiple ways, enabling large improvements.
+    In this formula, $\phi$ (phi, pronounced ``fye'') weights geographical
+    proximity; $d_{uv}$ (d sub u-v) is the distance between customers $u$
+    and $v$; $\chi$ (chi, pronounced ``kye'') weights time-window
+    similarity; $|T_u - T_v|$ is the absolute difference between the
+    earliest service times of $u$ and $v$; $\psi$ (psi, pronounced
+    ``sigh'') weights route co-membership; and $\mathbf{1}[\text{same
+    route}]$ equals 1 if $u$ and $v$ are on the same route, 0 otherwise.
+    A \emph{small} value of $\text{rel}(u,v)$ means the customers are
+    highly related.  Removing related customers creates a ``hole'' in the
+    solution that can be repaired in multiple ways, enabling large
+    improvements.
   \end{block}
+
+  \begin{alertblock}{How to Read the Relatedness Formula}
+    Think of $\text{rel}(u,v)$ as a ``dissimilarity score.''  Customers
+    that are close together geographically ($d_{uv}$ small), have similar
+    delivery time requirements ($|T_u - T_v|$ small), and are currently
+    on the same route all score low --- meaning they are highly related.
+    Removing a cluster of highly related customers leaves a coherent
+    geographical region unserved, and the repair operator can fill that
+    region in a completely different way, potentially discovering a much
+    better solution.  By contrast, removing random unrelated customers
+    creates scattered gaps that are easier for a greedy repair to fill
+    but harder to restructure into something significantly better.
+  \end{alertblock}
 
   \begin{block}{Adaptive LNS (ALNS) — Pisinger and Ropke (2007)}
     The Adaptive LNS extends LNS by maintaining a \emph{bank} of destroy

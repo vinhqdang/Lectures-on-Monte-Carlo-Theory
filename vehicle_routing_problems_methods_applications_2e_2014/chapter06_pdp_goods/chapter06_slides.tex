@@ -1340,6 +1340,437 @@ def greedy_insert_pdptw(requests: List[Request], dist: List[List[float]],
 
 \end{frame}
 
+% ── Python LNS implementation ──────────────────────────────
+\begin{frame}[fragile]{Python: Large Neighbourhood Search (LNS) for PDPTW}
+\begin{lstlisting}
+"""
+Simplified LNS (Large Neighbourhood Search) for PDPTW.
+Uses Shaw removal (relatedness-based) and greedy insertion repair.
+Accepts worsening moves with simulated annealing probability.
+"""
+import math, random, copy
+
+def shaw_remove(routes, requests_info, dist, q=3):
+    """
+    Remove q related requests from solution.
+    Relatedness: geometric proximity (close pickup-to-pickup distance).
+    Returns (new_routes, removed_list_of_request_ids).
+    """
+    # Flatten all served requests: list of (req_id, route_idx, p_pos, d_pos)
+    served = []
+    for r_idx, route in enumerate(routes):
+        for pos, node in enumerate(route):
+            if node in requests_info and requests_info[node]['type'] == 'pickup':
+                req_id = requests_info[node]['req_id']
+                served.append((req_id, r_idx))
+    if not served:
+        return routes, []
+    # Pick a random seed request
+    seed_req, _ = random.choice(served)
+    removed = [seed_req]
+    # Remove q-1 most similar requests (smallest pickup-to-pickup distance)
+    seed_p = requests_info[seed_req + 100]['pickup']  # pickup node
+    while len(removed) < q and len(removed) < len(served):
+        candidates = [(rid, dist[seed_p][requests_info[rid+100]['pickup']])
+                      for (rid, _) in served if rid not in removed]
+        if not candidates:
+            break
+        candidates.sort(key=lambda x: x[1])
+        removed.append(candidates[0][0])
+    # Build new routes with removed requests excised
+    new_routes = []
+    for route in routes:
+        new_route = [n for n in route
+                     if not (n in requests_info and
+                             requests_info[n]['req_id'] in removed)]
+        new_routes.append(new_route)
+    return new_routes, removed
+
+def lns_pdptw(initial_routes, requests, dist, capacity,
+              n_iter=500, T_init=10.0, cooling=0.995, q=3):
+    """
+    LNS with simulated annealing acceptance for PDPTW.
+    initial_routes: list of routes (each route = list of node IDs).
+    requests: list of Request objects.
+    Returns best routes found.
+    """
+    current = copy.deepcopy(initial_routes)
+    best = copy.deepcopy(current)
+    T = T_init
+    req_dict = {r.pickup: r for r in requests}
+
+    def route_cost(routes):
+        return sum(dist[r[i]][r[i+1]]
+                   for r in routes for i in range(len(r)-1))
+
+    for iteration in range(n_iter):
+        # Destroy: Shaw removal of q requests
+        partial, removed_ids = shaw_remove(
+            current, {}, dist, q=q)
+        # Repair: greedy insertion of removed requests
+        removed_reqs = [r for r in requests if r.idx in removed_ids]
+        repaired = greedy_insert_pdptw(
+            removed_reqs, dist, capacity, existing_routes=partial)
+        # Accept/reject (simulated annealing)
+        delta = route_cost(repaired) - route_cost(current)
+        if delta < 0 or random.random() < math.exp(-delta / T):
+            current = repaired
+        if route_cost(current) < route_cost(best):
+            best = copy.deepcopy(current)
+        T *= cooling  # decrease temperature
+    return best
+\end{lstlisting}
+\end{frame}
+
+% ── Frame: Price Method and OR-opt for 1-M-1 ─────────────
+\begin{frame}[allowframebreaks]{Price Method and OR-opt for the 1-M-1 PDP}
+
+  For the One-to-Many-to-One PDP, one of the earliest systematic approaches was the
+  \textbf{Price method}, introduced by Mosheiov~(1994) for the case of deliveries followed
+  by pickups (the backhauls variant). The idea is to decompose the problem into a delivery
+  tour and a pickup tour and to combine them cost-effectively.
+
+  \begin{block}{OR-opt Move for VRPSPD}
+    An \textbf{OR-opt} move takes a customer (or a chain of $k$ consecutive customers)
+    from its current position in a route and reinserts it at another position in the
+    same or a different route. For the VRPSPD, the move must be feasibility-checked for:
+    \begin{enumerate}
+      \item Capacity: at every arc in the new route, the combined delivery and pickup
+            load must not exceed $Q$.
+      \item No time-window violation if time windows are imposed.
+    \end{enumerate}
+    OR-opt(1) considers single-customer relocations; OR-opt(2) and OR-opt(3) consider
+    chains of 2 or 3 consecutive customers. Combined, these give a rich neighbourhood
+    of manageable size $O(n^2)$ per operator.
+  \end{block}
+
+  \textbf{Montane and Galvao (2006) Tabu Search for VRPSPD.}  The algorithm maintains a
+  tabu list of \emph{(customer, removed-from-route)} pairs. A move is tabu if the customer
+  was recently removed from a given route; it is accepted despite the tabu status only if
+  the new solution beats the best solution found so far (aspiration criterion). The authors
+  tested on 14 benchmark instances (16 to 100 customers) and reported improvements over
+  the previous best solutions in 11 out of 14 cases.
+
+  \begin{exampleblock}{Worked Example: OR-opt(1) for VRPSPD with $Q=8$}
+    Current solution:
+    \begin{itemize}
+      \item Route 1: Depot $\to$ C1$(d=3,p=1)$ $\to$ C3$(d=2,p=2)$ $\to$ Depot.
+            Loads: $[6, 3+1, 1+2, 0+2] = [6, 4, 3, 2]$. All $\leq 8$.  \checkmark
+      \item Route 2: Depot $\to$ C2$(d=1,p=4)$ $\to$ C4$(d=2,p=1)$ $\to$ Depot.
+            Loads: $[3, 3-1+4, 2+4-2+1, 0+1] = [3, 6, 5, 1]$. All $\leq 8$.  \checkmark
+    \end{itemize}
+    OR-opt(1): Move C4 from Route 2 to Route 1 between C1 and C3.
+    \begin{itemize}
+      \item Route 1 new: Depot $\to$ C1 $\to$ C4$(d=2,p=1)$ $\to$ C3 $\to$ Depot.
+            Loads: $[6+3-2+2, 4-2+1, 3+1-2, 0+2] = [9, 3, 2, 2]$. Load 9 $> 8$.
+            \textbf{Infeasible -- move rejected.}
+    \end{itemize}
+    The OR-opt move is rejected because the initial load including C4's delivery would
+    exceed capacity. The feasibility check prevents the route from becoming infeasible.
+  \end{exampleblock}
+
+  \framebreak
+
+  \textbf{Bianchessi and Righini (2007) heuristics.} These authors proposed four heuristics
+  for the VRPSPD, including a \textbf{greedy randomised construction} combined with
+  \textbf{2-opt*} improvement (edge exchange between two different routes):
+
+  \begin{block}{2-opt* Neighbourhood for VRPSPD}
+    A \textbf{2-opt*} move considers two routes $r_1$ and $r_2$, selects a \emph{cut point}
+    in each, and reconnects the tails: the tail of $r_1$ after the cut is appended to the
+    head of $r_2$ up to its cut point, and vice versa. This exchanges large segments between
+    routes and can dramatically improve the solution when two routes share a geographic region.
+    For VRPSPD, feasibility of both new routes must be verified after the exchange.
+  \end{block}
+
+  \begin{alertblock}{Key Takeaway: 1-M-1 Heuristics}
+    The VRPSPD is best approached with metaheuristics that combine OR-opt and 2-opt*
+    moves with a flexible acceptance mechanism (tabu list or simulated annealing).
+    The key challenge is feasibility checking: unlike standard VRP, the load on every
+    arc (not just in total) must be checked after each move, which multiplies the
+    cost of neighbourhood evaluation by a factor of $O(n)$.
+  \end{alertblock}
+
+\end{frame}
+
+% ── Frame: Branch-and-Price for multi-vehicle PDPTW ──────────
+\begin{frame}[allowframebreaks]{Branch-and-Price for Multi-Vehicle PDPTW}
+
+  \textbf{Set-partitioning formulation.} The multi-vehicle PDPTW can be reformulated as
+  a set-partitioning problem in which each column represents a complete, feasible route.
+  Let $\Omega$ be the set of all feasible routes, and let $c_r$ be the cost of route
+  $r \in \Omega$. Then:
+
+  \begin{block}{Set-Partitioning Formulation (SP)}
+    \begin{alignat}{2}
+      \min_{\lambda} &\quad \sum_{r \in \Omega} c_r \lambda_r && \\
+      \text{s.t.} &\quad \sum_{r \in \Omega} a_{ir} \lambda_r = 1 \quad && \forall i \in \{1,\ldots,n\} \\
+                  &\quad \lambda_r \in \{0,1\} && \forall r \in \Omega
+    \end{alignat}
+    Here $\lambda_r = 1$ indicates that route $r$ is selected, and $a_{ir} = 1$ if
+    route $r$ serves request $i$. Each request must appear in exactly one selected route.
+  \end{block}
+
+  Because the number of feasible routes $|\Omega|$ is exponential, the LP relaxation is
+  solved by \textbf{column generation}: start with a restricted master problem (RMP)
+  containing a small set of routes, then iteratively add routes with negative reduced cost.
+
+  \textbf{Pricing sub-problem.} Adding a route with the most negative reduced cost requires
+  solving a \textbf{Shortest Path Problem with Resource Constraints (SPPRC)}: find a path
+  from the origin depot to the destination depot that minimises the reduced cost subject
+  to all PDPTW constraints (precedence, capacity, time windows). This is solved by dynamic
+  programming on the time-expanded graph.
+
+  \framebreak
+
+  \textbf{Branch-and-Price algorithm.}
+  \begin{enumerate}
+    \item \textbf{Root node:} solve LP relaxation of the set-partitioning formulation via
+          column generation. If optimal LP solution is integer, stop.
+    \item \textbf{Branching:} if the LP solution is fractional, branch on a variable. A
+          common branching strategy for VRPs is to branch on arc flows: force an arc
+          $(i,j)$ to be used (or not) in the selected routes.
+    \item \textbf{At each node:} resolve the column generation problem with the branching
+          constraint incorporated into the pricing sub-problem.
+    \item \textbf{Pruning:} prune nodes where the LP lower bound exceeds the incumbent.
+  \end{enumerate}
+
+  \textbf{Key difficulty.} The SPPRC pricing problem for the PDPTW is NP-hard itself
+  (because of the precedence constraints), which makes each column generation iteration
+  expensive. In practice, \emph{heuristic pricing} (finding columns with negative reduced
+  cost but not necessarily the most negative) is used to speed up convergence.
+
+  \textbf{Results.} Dumas, Desrosiers, and Soumis~(1991) first applied column generation
+  to the PDPTW, solving instances with up to 35 requests. Subsequent improvements by
+  Ropke et al.~(2007) extended the range to 75 requests using stronger branching and
+  cutting-plane integration.
+
+  \begin{alertblock}{Key Insight: Column Generation Duality}
+    The dual variables of the set-partitioning LP have a clear economic interpretation:
+    $\pi_i$ is the ``shadow price'' of serving request $i$, meaning the marginal cost
+    reduction from removing the constraint that request $i$ must be served. A route is
+    worth adding to the master problem if and only if its travel cost minus the sum of
+    shadow prices of the requests it serves is negative (negative reduced cost).
+  \end{alertblock}
+
+\end{frame}
+
+% ── Frame: Benchmark instances and known results ──────────────
+\begin{frame}[allowframebreaks]{Benchmark Instances and Computational Results}
+
+  \textbf{Li and Lim (2003) benchmark for PDPTW.} This is the standard test set for
+  the multi-vehicle PDPTW. It consists of instances derived from Solomon's VRPTW
+  benchmarks by generating pickup-delivery pairs. Six classes are defined:
+
+  \begin{center}
+    \begin{tabular}{lll}
+      \toprule
+      \textbf{Class} & \textbf{Customer geometry} & \textbf{Time window type} \\
+      \midrule
+      LC1 & Clustered & Tight \\
+      LC2 & Clustered & Wide \\
+      LR1 & Random   & Tight \\
+      LR2 & Random   & Wide \\
+      LRC1 & Mixed (random+clustered) & Tight \\
+      LRC2 & Mixed (random+clustered) & Wide \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+
+  Each class contains 12 instances with 100 requests (200 nodes plus depot copies).
+  Wide time-window instances (LC2, LR2, LRC2) generally allow more flexible routing and
+  tend to yield fewer vehicles but longer routes.
+
+  \framebreak
+
+  \textbf{Key algorithmic results on Li-Lim benchmarks.}
+
+  \begin{center}\small
+    \begin{tabular}{llll}
+      \toprule
+      \textbf{Algorithm} & \textbf{Authors} & \textbf{Year} & \textbf{Avg.\ gap} \\
+      \midrule
+      Tabu Search                  & Li \& Lim           & 2003 & $\approx 3\%$ \\
+      LNS                          & Ropke \& Pisinger   & 2006 & $\approx 1\%$ \\
+      ALNS                         & Ropke \& Pisinger   & 2006 & $<1\%$ \\
+      Branch-and-Cut (exact)       & Cordeau             & 2006 & 0\% (optimal) \\
+      B\&C + LNS (matheuristic)   & Ropke et al.        & 2007 & $<0.5\%$ \\
+      POPMUSIC                     & Taillard et al.     & 2013 & $<0.3\%$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+
+  \textbf{Instance sizes solved to optimality.} The exact branch-and-cut of Cordeau (2006)
+  solves instances with up to 75 requests within a 2-hour time limit. For instances with
+  100 requests, optimal solutions are known for some but not all problem instances.
+
+  \textbf{Li-Lim benchmark notation.} The instances are often referred to by codes such as
+  ``lc101'' (Li-Lim, clustered, tight windows, instance 1), ``lr211'' (Li-Lim, random,
+  wide windows, instance 11), and so on. The benchmark results are maintained online
+  and updated as new best-known solutions are found by the research community.
+
+  \framebreak
+
+  \textbf{Benchmarks for loading-constrained PDPs.}
+  \begin{itemize}
+    \item \textbf{PDPTW-L (LIFO):} Carrabs, Cordeau, and Laporte~(2007) used a set of
+          randomly generated instances with up to 25 requests for exact methods, and up to
+          100 requests for heuristic evaluation.
+    \item \textbf{VRPSPD:} Montane and Galvao~(2006) used the instances of Dethloff~(2001)
+          and Angelelli and Mansini~(2002), with 16 to 200 customers. These are derived
+          from standard CVRP instances by adding a random pickup demand.
+    \item \textbf{3L-PDPTW:} No standardised benchmark exists; researchers typically
+          generate instances using standard routing instances (Solomon, Li-Lim) and add
+          box dimensions from 3D packing literature.
+  \end{itemize}
+
+  \begin{alertblock}{Key Takeaway: Benchmarks and Progress}
+    The Li-Lim benchmark has driven significant progress in PDPTW algorithms over two
+    decades. ALNS (Ropke \& Pisinger, 2006) was a landmark result that established LNS
+    as the dominant metaheuristic paradigm. The benchmark remains partially open: for
+    large instances (200+ requests) the optimality of known solutions is unconfirmed.
+  \end{alertblock}
+
+\end{frame}
+
+% ── Frame: Genetic Algorithm details for PDPTW ───────────────
+\begin{frame}[allowframebreaks]{Genetic Algorithms for the PDPTW}
+
+  Genetic algorithms (GAs) have been applied to the PDPTW by several research groups.
+  The central challenge is \emph{chromosome encoding}: the standard order-based encoding
+  used for the TSP must be adapted to respect both the fleet structure (multiple vehicles)
+  and the precedence constraint (pickup before delivery on the same vehicle).
+
+  \begin{block}{Chromosome Encoding for PDPTW}
+    One effective encoding uses a \textbf{sequence of request IDs} (not node IDs):
+    \begin{enumerate}
+      \item A chromosome $C = (r_1, r_2, \ldots, r_n)$ is a permutation of the $n$
+            request IDs.
+      \item A \textbf{decoding procedure} converts this permutation into routes:
+            it scans $C$ from left to right and assigns each request to the current
+            vehicle's route. When inserting request $r_k$, the pickup is placed before
+            the delivery, maintaining precedence automatically.
+      \item When the route would violate capacity or time windows for the next request,
+            a new vehicle route is opened.
+    \end{enumerate}
+    This encoding guarantees that the precedence constraint is always satisfied by construction.
+  \end{block}
+
+  \textbf{Crossover operators.} The standard \textbf{Order Crossover (OX)} is adapted as follows:
+  \begin{enumerate}
+    \item Select a subsequence from parent $P_1$.
+    \item Copy this subsequence directly into the offspring.
+    \item Fill the remaining positions with the requests from $P_2$ in the order they appear,
+          skipping requests already in the offspring.
+    \item Decode the offspring chromosome into routes using the decoding procedure.
+  \end{enumerate}
+
+  \framebreak
+
+  \textbf{Mutation operators.} Common mutation operators for PDPTW GAs:
+  \begin{itemize}
+    \item \textbf{Pair swap:} swap two randomly chosen request IDs in the chromosome.
+    \item \textbf{Subsequence reversal:} reverse a randomly chosen subsequence of request IDs.
+    \item \textbf{Request relocation:} remove a request ID from its position and reinsert
+          it at a random position later in the chromosome (maintaining the chromosome
+          property that pickup precedes delivery by construction).
+  \end{itemize}
+
+  \textbf{Population diversity.} A key challenge in GA for PDPTW is maintaining population
+  diversity. Without diversity mechanisms, the population quickly converges to a single
+  region of the solution space (genetic drift). Common remedies:
+  \begin{itemize}
+    \item \textbf{Crowding replacement:} new offspring replace the most similar existing
+          chromosome rather than the worst.
+    \item \textbf{Island model:} maintain multiple sub-populations that evolve independently
+          and occasionally exchange chromosomes (migration).
+    \item \textbf{Fitness sharing:} penalise solutions that are too similar to other
+          solutions already in the population.
+  \end{itemize}
+
+  \textbf{Hybrid GA.} Vidal et al.~(2013) proposed a highly effective \textbf{Hybrid
+  Genetic Search (HGS)} that integrates:
+  \begin{enumerate}
+    \item A GA for global diversification (population-level exploration).
+    \item A local search procedure (a powerful sequence of neighbourhood moves) applied
+          to every offspring before it is added to the population.
+    \item A survivor selection that balances fitness with diversity.
+  \end{enumerate}
+  HGS has produced state-of-the-art results on multiple VRP variants, including the PDPTW.
+
+  \begin{alertblock}{Key Insight: Why Hybridise?}
+    Pure GAs struggle with PDPTW because crossover operators tend to produce infeasible
+    or low-quality offspring that require expensive repair. Hybridising with local search
+    (creating a ``memetic algorithm'') ensures that every individual in the population
+    is a locally optimal solution, dramatically improving convergence speed.
+  \end{alertblock}
+
+\end{frame}
+
+% ── Frame: Summary comparison table ─────────────────────────
+\begin{frame}[allowframebreaks]{Chapter Summary: Algorithm Landscape}
+
+  \textbf{When to use which algorithm?} The choice depends on three factors:
+  (1) problem variant (M-M, 1-M-1, 1-1, with/without loading), (2) instance size, and
+  (3) available computation time.
+
+  \begin{center}\footnotesize
+    \renewcommand{\arraystretch}{1.3}
+    \begin{tabular}{>{\raggedright}p{2.5cm}
+                    >{\raggedright}p{2.8cm}
+                    >{\raggedright}p{2.8cm}
+                    >{\raggedright\arraybackslash}p{2.2cm}}
+      \toprule
+      \textbf{Scenario} & \textbf{Exact method} & \textbf{Metaheuristic} & \textbf{Scalability} \\
+      \midrule
+      M-M, 1 vehicle ($n \leq 40$)   & Branch-and-Cut (Hernandez-Perez) & VNS, GRASP & Up to 200 nodes \\
+      M-M, multi-vehicle            & Branch-and-Cut & GRASP+VND (Qu \& Bard) & Up to 300 nodes \\
+      1-M-1 / VRPSPD ($n \leq 25$) & Branch-and-Cut & Tabu Search, LNS & Up to 500 customers \\
+      PDPTW ($n \leq 75$)           & Branch-and-Cut (Cordeau) & ALNS (Ropke \& Pisinger) & Up to 1000 requests \\
+      PDPTW with LIFO ($n \leq 25$) & Branch-and-Cut (Carrabs) & LNS with stack repair & Up to 200 requests \\
+      3D-Loading PDPTW             & No exact method & 2-level meta (route + pack) & Up to 50 requests \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+
+  \framebreak
+
+  \textbf{The dominance of ALNS.} Across all 1-1 PDP variants, ALNS (Ropke \& Pisinger, 2006)
+  has emerged as the most versatile and effective algorithm. Its key advantages are:
+  \begin{enumerate}
+    \item \textbf{Modularity:} new destroy/repair operators can be added without changing the
+          core algorithm. This makes it easy to extend ALNS to new problem variants.
+    \item \textbf{Automatic tuning:} the adaptive weight update mechanism reduces the need
+          for manual operator tuning -- the algorithm self-adjusts to the instance structure.
+    \item \textbf{Scalability:} unlike exact methods (exponential) or Tabu Search
+          (quadratic neighbourhood), LNS explores large moves in $O(qn)$ time, allowing
+          it to handle instances with thousands of requests.
+    \item \textbf{Quality:} on the Li-Lim benchmarks, ALNS achieves solutions within 1\%
+          of optimal for most instances, comparable to branch-and-cut on instances where
+          exact methods are feasible.
+  \end{enumerate}
+
+  \textbf{Research trajectory.}  The field has moved from:
+  \begin{itemize}
+    \item \textbf{1990s:} exact methods (B\&C, column generation) for small instances.
+    \item \textbf{2000s:} construction heuristics and Tabu Search for medium instances.
+    \item \textbf{2006--present:} LNS/ALNS dominance for large instances; exact methods
+          strengthened by better cutting planes and branch-and-price.
+    \item \textbf{Emerging:} machine learning-guided heuristics, dynamic PDPs, and
+          integration with real-time data (GPS, demand forecasting).
+  \end{itemize}
+
+  \begin{alertblock}{Final Takeaway}
+    The Pickup-and-Delivery Problem with Time Windows (PDPTW) is the canonical hard
+    problem in goods transportation logistics. It combines the difficulty of the Travelling
+    Salesman Problem (routing) with resource constraints (capacity, time windows) and
+    coupling constraints (precedence, pairing). ALNS -- a meta-framework that combines
+    large-scale destroy-and-repair moves with adaptive operator selection -- currently
+    provides the best practical trade-off between solution quality and computational cost.
+  \end{alertblock}
+
+\end{frame}
+
 % ============================================================
 \section{Bibliography}
 % ============================================================
@@ -1396,6 +1827,43 @@ def greedy_insert_pdptw(requests: List[Request], dist: List[List[float]],
     \item \textbf{Nanry \& Barnes (2000).} Solving the pickup and delivery problem with
           time windows using reactive tabu search.
           \textit{Transportation Research Part B}, 34(2), 107--121.
+
+    \item \textbf{Ropke, Cordeau \& Laporte (2007).} Models and branch-and-cut algorithms
+          for pickup and delivery problems with time windows.
+          \textit{Networks}, 49(4), 258--272.
+
+    \item \textbf{Vidal, Crainic, Gendreau \& Prins (2013).} A hybrid genetic algorithm
+          with adaptive diversity management for a large class of vehicle routing problems
+          with time-windows. \textit{Computers \& Operations Research}, 40(1), 475--489.
+
+    \item \textbf{Dethloff (2001).} Vehicle routing and reverse logistics: the vehicle
+          routing problem with simultaneous delivery and pick-up.
+          \textit{OR Spectrum}, 23(1), 79--96.
+
+    \item \textbf{Sol (1994).} Column generation techniques for pickup and delivery
+          problems. Ph.D.\ thesis, Eindhoven University of Technology.
+
+    \item \textbf{Mosheiov (1994).} The Travelling Salesman Problem with pick-up and
+          delivery. \textit{European Journal of Operational Research}, 79(2), 299--310.
+
+    \item \textbf{Goksal, Karaoglan \& Altiparmak (2013).} A hybrid discrete particle
+          swarm optimization for vehicle routing problem with simultaneous pickup and
+          delivery. \textit{Computers \& Industrial Engineering}, 65(1), 39--53.
+
+    \item \textbf{Godinho, Gouveia \& Pesneau (2013).} Natural and extended formulations
+          for the Travelling Salesman Problem with pickup and delivery.
+          \textit{Discrete Applied Mathematics}, 164, 597--613.
+
+    \item \textbf{Rais, Alvelos \& Carvalho (2014).} New mixed integer-programming
+          model for the pickup-and-delivery problem with transshipment.
+          \textit{European Journal of Operational Research}, 235(3), 530--539.
+
+    \item \textbf{Gendreau, Guertin, Potvin \& Seguin (2006).} Neighborhood search
+          heuristics for a dynamic vehicle dispatching problem with pick-ups and
+          deliveries. \textit{Transportation Research Part C}, 14(3), 157--174.
+
+    \item \textbf{Ladier \& Alpan (2016).} Robust cross-docking with truck scheduling.
+          \textit{European Journal of Operational Research}, 262(3), 751--761.
   \end{itemize}
 \end{frame}
 

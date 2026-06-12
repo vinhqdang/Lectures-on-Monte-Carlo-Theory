@@ -8,8 +8,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
-import matplotlib.patheffects as pe
+from matplotlib.patches import FancyBboxPatch
 import numpy as np
 import os
 
@@ -40,7 +39,7 @@ def fig_vrpb_routes():
     lh_names = ['L1', 'L2', 'L3', 'L4']
     bh_names = ['B1', 'B2', 'B3']
 
-    for ax_idx, ax in enumerate(axes):
+    for ax in axes:
         ax.scatter(*depot, s=220, marker='s', color='black', zorder=5)
         ax.text(0.1, 0.1, 'Depot', fontsize=9, fontweight='bold')
         ax.scatter(linehauls[:, 0], linehauls[:, 1], s=120, color='steelblue',
@@ -57,7 +56,7 @@ def fig_vrpb_routes():
         ax.legend(fontsize=8, loc='lower right')
         ax.grid(True, alpha=0.3)
 
-    # Left: infeasible — backhaul before linehaul
+    # Left: infeasible
     ax = axes[0]
     ax.set_title("Infeasible: Backhaul served before Linehaul", fontsize=10, color='red')
     route_bad = [depot, backhauls[0], linehauls[0], linehauls[1], depot]
@@ -70,7 +69,7 @@ def fig_vrpb_routes():
             fontsize=8, color='red',
             bbox=dict(boxstyle='round', facecolor='mistyrose', alpha=0.8))
 
-    # Right: feasible — all linehauls first
+    # Right: feasible
     ax = axes[1]
     ax.set_title("Feasible: All Linehauls First, then Backhauls", fontsize=10, color='green')
     lh_order = [depot, linehauls[0], linehauls[1], linehauls[3], backhauls[0], backhauls[2], depot]
@@ -82,7 +81,7 @@ def fig_vrpb_routes():
         for i in range(len(route) - 1):
             ax.annotate('', xy=route[i+1], xytext=route[i],
                         arrowprops=dict(arrowstyle='->', color=col, lw=1.5))
-    ax.text(-3.5, -2.5, 'Route 1 (blue): L1→L2→L4→B1→B3\nRoute 2 (orange): L3→B2',
+    ax.text(-3.5, -2.5, 'Route 1 (blue): L1->L2->L4->B1->B3\nRoute 2 (orange): L3->B2',
             fontsize=8, color='darkblue',
             bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.8))
 
@@ -100,10 +99,7 @@ def fig_vrpb_variants():
         'L and B can be\ninterleaved freely',
         'Groups of L or B\nserved together'
     ]
-    colors_routes = ['steelblue', 'darkorange']
     depot = np.array([0, 0])
-
-    # Positions for small example
     L = np.array([[1.5, 1.5], [2.5, 0.5], [0.5, 2.5]])
     B = np.array([[-1.5, 1], [-0.5, -1.5]])
 
@@ -125,17 +121,14 @@ def fig_vrpb_variants():
         ax.grid(True, alpha=0.3)
 
         if ax_idx == 0:
-            # VRPB: L1->L2->L3->B1->B2->D
             route = [depot, L[0], L[1], L[2], B[0], B[1], depot]
             xs, ys = zip(*route)
             ax.plot(xs, ys, color='steelblue', linewidth=2, alpha=0.8)
         elif ax_idx == 1:
-            # VRPMB: interleaved
             route = [depot, L[0], B[0], L[1], B[1], L[2], depot]
             xs, ys = zip(*route)
             ax.plot(xs, ys, color='darkorange', linewidth=2, alpha=0.8)
         else:
-            # VRPCB: clusters
             route1 = [depot, L[0], L[1], depot]
             route2 = [depot, B[0], B[1], depot]
             route3 = [depot, L[2], depot]
@@ -170,7 +163,6 @@ def fig_hfvrp():
     }
     demands = {'C1': 4, 'C2': 3, 'C3': 5, 'C4': 2, 'C5': 6, 'C6': 4, 'C7': 3, 'C8': 5}
 
-    # Vehicle types
     vehicle_types = [
         ('Type A (Q=10, small)', [depot, customers['C1'], customers['C2'], customers['C8'], depot], 'steelblue', '--'),
         ('Type B (Q=15, medium)', [depot, customers['C3'], customers['C4'], customers['C7'], depot], 'darkorange', '-'),
@@ -243,17 +235,14 @@ def fig_pvrp_calendar():
 
     customers = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6']
     days = [f'Day {i+1}' for i in range(5)]
-    freqs = [3, 2, 1, 2, 3, 1]  # visits per period
-    # Possible visit patterns for freq
+    freqs = [3, 2, 1, 2, 3, 1]
     patterns = {
         1: [[1, 0, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 0, 1]],
         2: [[1, 0, 0, 1, 0], [0, 1, 0, 0, 1], [1, 0, 1, 0, 0]],
         3: [[1, 0, 1, 0, 1], [1, 1, 0, 1, 0], [0, 1, 0, 1, 1]],
     }
-    # Assign one pattern per customer
     chosen_patterns = [patterns[f][0] for f in freqs]
 
-    cmap = plt.cm.Blues
     for ci, (cname, pattern) in enumerate(zip(customers, chosen_patterns)):
         for di, visit in enumerate(pattern):
             color = '#2980b9' if visit else '#ecf0f1'
@@ -263,7 +252,7 @@ def fig_pvrp_calendar():
                 ax.text(di + 0.5, ci + 0.5, 'Visit', ha='center', va='center',
                         fontsize=8.5, color='white', fontweight='bold')
             else:
-                ax.text(di + 0.5, ci + 0.5, '—', ha='center', va='center',
+                ax.text(di + 0.5, ci + 0.5, '-', ha='center', va='center',
                         fontsize=8.5, color='gray')
 
     ax.set_xlim(0, 5)
@@ -275,7 +264,6 @@ def fig_pvrp_calendar():
     ax.set_xlabel('Planning Period (T=5 days)', fontsize=10)
     ax.set_ylabel('Customer', fontsize=10)
 
-    # Legend
     visit_patch = mpatches.Patch(color='#2980b9', label='Service visit')
     no_visit_patch = mpatches.Patch(color='#ecf0f1', label='No visit', ec='gray')
     ax.legend(handles=[visit_patch, no_visit_patch], loc='upper right', fontsize=9)
@@ -289,7 +277,6 @@ def fig_pvrp_routes():
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
     depot = np.array([0, 0])
 
-    # 6 customers with 2D positions
     all_customers = {
         'C1': (np.array([1.5, 2]), 'steelblue'),
         'C2': (np.array([3, 1]), 'steelblue'),
@@ -299,7 +286,6 @@ def fig_pvrp_routes():
         'C6': (np.array([-2.5, -1]), 'tomato'),
     }
 
-    # Which customers are visited each day
     day_routes = [
         {'Day 1': [['C1', 'C2', 'C5'], ['C3', 'C6']]},
         {'Day 2': [['C1', 'C3'], ['C4', 'C5']]},
@@ -343,17 +329,17 @@ def fig_sdvrp():
                  fontsize=12, fontweight='bold')
 
     depot = np.array([0, 0])
-    C1 = np.array([2, 2])   # demand = 8, vehicle cap = 5
+    C1 = np.array([2, 2])
     C2 = np.array([3, -1])
     C3 = np.array([-2, 1])
-    Q = 5  # vehicle capacity
+    Q = 5
 
-    for ax_idx, ax in enumerate(axes):
+    for ax in axes:
         ax.scatter(*depot, s=220, marker='s', color='black', zorder=5)
         ax.text(0.1, 0.15, 'Depot', fontsize=9, fontweight='bold')
-        for cname, cpos, dem in [('C1\n(d=8)', C1, 8), ('C2\n(d=3)', C2, 3), ('C3\n(d=4)', C3, 4)]:
+        for cname, cpos in [('C1\n(d=8)', C1), ('C2\n(d=3)', C2), ('C3\n(d=4)', C3)]:
             ax.scatter(*cpos, s=130, color='steelblue', zorder=5)
-            ax.text(cpos[0]+0.1, cpos[1]+0.1, f'{cname}', fontsize=8)
+            ax.text(cpos[0]+0.1, cpos[1]+0.1, cname, fontsize=8)
         ax.set_xlim(-3.5, 4.5)
         ax.set_ylim(-2.5, 3.5)
         ax.set_aspect('equal')
@@ -361,24 +347,20 @@ def fig_sdvrp():
         ax.text(3.5, -2.2, f'Q={Q} per vehicle', fontsize=9,
                 bbox=dict(boxstyle='round', facecolor='lightyellow'))
 
-    # Left: VRP without splits — C1's demand exceeds capacity, needs own route
     ax = axes[0]
     ax.set_title("Standard VRP: C1 must have\ndedicated route (d=8 > Q=5)", fontsize=10)
-    route1 = [depot, C1, depot]  # dedicated for C1
+    route1 = [depot, C1, depot]
     route2 = [depot, C2, C3, depot]
     for route, col, ls, lbl in [(route1, 'red', '--', 'Route 1 (only C1)'),
                                  (route2, 'steelblue', '-', 'Route 2 (C2+C3)')]:
         xs, ys = zip(*route)
         ax.plot(xs, ys, color=col, linestyle=ls, linewidth=2, alpha=0.8, label=lbl)
     ax.legend(fontsize=8, loc='lower right')
-    ax.text(-3, -2, 'C1 requires two full\nvehicles anyway', fontsize=8,
+    ax.text(-3, -2, 'C1 requires its own\nroute since d=8 > Q=5', fontsize=8,
             bbox=dict(boxstyle='round', facecolor='mistyrose', alpha=0.8))
 
-    # Right: SDVRP — C1 split across two vehicles
     ax = axes[1]
-    ax.set_title("SDVRP: C1 split — Vehicle A\ndelivers 5, Vehicle B delivers 3", fontsize=10)
-    # Vehicle A: D -> C1 (5 units) -> C3 (cap=5, used 4+1=wait, just C1 partial)
-    # Vehicle B: D -> C2 (3) -> C1 (remaining 3)
+    ax.set_title("SDVRP: C1 split -- Vehicle A\ndelivers 5, Vehicle B delivers 3", fontsize=10)
     route_A = [depot, C1, C3, depot]
     route_B = [depot, C2, C1, depot]
     for route, col, lbl in [(route_A, 'steelblue', 'Vehicle A: C1(5u)+C3'),
@@ -391,15 +373,14 @@ def fig_sdvrp():
     ax.legend(fontsize=8, loc='lower right')
     ax.text(-3, -2, 'Cost saving: fewer\nvehicle-trips to depot', fontsize=8,
             bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.8))
-    # Mark C1 as split
     ax.scatter(*C1, s=200, marker='*', color='gold', zorder=7, edgecolors='black')
-    ax.text(C1[0]+0.2, C1[1]+0.25, '← split!', fontsize=8, color='darkred', fontweight='bold')
+    ax.text(C1[0]+0.2, C1[1]+0.25, '<- split!', fontsize=8, color='darkred', fontweight='bold')
 
     plt.tight_layout()
     savefig("sdvrp_split.pdf", fig)
 
 # ─────────────────────────────────────────────────────────────────
-# Figure 8: SDVRP — maximum savings from split delivery (Table 9.2)
+# Figure 8: SDVRP savings table
 # ─────────────────────────────────────────────────────────────────
 def fig_sdvrp_savings_table():
     fig, ax = plt.subplots(figsize=(9, 3.5))
@@ -432,19 +413,17 @@ def fig_sdvrp_savings_table():
 def fig_sdvrp_savings():
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.set_title("SDVRP: Maximum Savings from Splitting vs. VRP Optimal\n"
-                 "Savings bound: SDVRP* ≤ VRP* ≤ (1 + 1/(2⌈Q/d_min⌉-1)) × SDVRP*",
+                 "Savings bound: SDVRP* <= VRP* <= (1 + 1/(2*ceil(Q/d_min)-1)) * SDVRP*",
                  fontsize=10, fontweight='bold')
 
-    # Illustrative: show that as demand fraction increases, VRP cost approaches SDVRP
     fracs = np.linspace(0.1, 1.0, 50)
-    # Bound: ratio VRP/SDVRP <= 1 + 1/(2*ceil(1/frac)-1)
     bounds = [1 + 1 / (2 * max(1, np.ceil(1/f)) - 1) for f in fracs]
     ax.plot(fracs, bounds, 'tomato', linewidth=2.5, label='Worst-case ratio VRP*/SDVRP*')
     ax.axhline(y=1.0, color='steelblue', linestyle='--', linewidth=1.5, label='SDVRP* (baseline)')
     ax.fill_between(fracs, 1, bounds, alpha=0.15, color='tomato',
                     label='Potential cost reduction from splitting')
 
-    ax.set_xlabel(r'Demand fraction $d_i / Q$', fontsize=11)
+    ax.set_xlabel('Demand fraction d_i / Q', fontsize=11)
     ax.set_ylabel('Relative cost ratio', fontsize=11)
     ax.set_ylim(0.9, 2.2)
     ax.legend(fontsize=9)
@@ -453,13 +432,12 @@ def fig_sdvrp_savings():
     savefig("sdvrp_savings_bound.pdf", fig)
 
 # ─────────────────────────────────────────────────────────────────
-# Figure 10: VRPB ILP formulation constraints summary
+# Figure 10: VRPB ILP formulation summary
 # ─────────────────────────────────────────────────────────────────
 def fig_vrpb_formulation():
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.axis('off')
-    title = "VRPB: Key Sets, Variables, and Constraints"
-    ax.set_title(title, fontsize=13, fontweight='bold', pad=10)
+    ax.set_title("VRPB: Key Sets, Variables, and Constraints", fontsize=13, fontweight='bold', pad=10)
 
     content = [
         ("Sets", [
@@ -514,23 +492,22 @@ def fig_chapter_overview():
     var_box = dict(boxstyle='round,pad=0.4', facecolor='#2980b9', edgecolor='#1a5276', alpha=0.9)
     sub_box = dict(boxstyle='round,pad=0.3', facecolor='#d6eaf8', edgecolor='#2980b9', alpha=0.9)
 
-    # Central VRP node
     ax.text(0.5, 0.88, 'Vehicle Routing Problem (VRP)',
             ha='center', va='center', fontsize=12, fontweight='bold',
             color='white', bbox=vrp_box, transform=ax.transAxes)
 
     variants = [
-        (0.12, 0.58, 'VRPB\n(§9.2)', 'VRP with\nBackhauls'),
-        (0.37, 0.58, 'HFVRP\n(§9.3)', 'Heterogeneous\nFleet VRP'),
-        (0.63, 0.58, 'PVRP\n(§9.4)', 'Periodic\nVRP'),
-        (0.88, 0.58, 'SDVRP\n(§9.5)', 'Split Delivery\nVRP'),
+        (0.12, 0.58, 'VRPB\n(Sec.9.2)', 'VRP with\nBackhauls'),
+        (0.37, 0.58, 'HFVRP\n(Sec.9.3)', 'Heterogeneous\nFleet VRP'),
+        (0.63, 0.58, 'PVRP\n(Sec.9.4)', 'Periodic\nVRP'),
+        (0.88, 0.58, 'SDVRP\n(Sec.9.5)', 'Split Delivery\nVRP'),
     ]
 
     sub_variants = [
-        (0.12, ['• VRPMB (mixed)', '• VRPCB (clustered)', '• VRPBTW (time win.)']),
-        (0.37, ['• FSMVRP (free fleet)', '• Mixed fleet cost', '• Benchmark: Golden']),
-        (0.63, ['• Time-dep. patterns', '• Multi-depot PVRP', '• PVRPTW']),
-        (0.88, ['• No split: VRP', '• Split savings', '• SDVRPTW']),
+        (0.12, ['- VRPMB (mixed)', '- VRPCB (clustered)', '- VRPBTW (time win.)']),
+        (0.37, ['- FSMVRP (free fleet)', '- Mixed fleet cost', '- Benchmark: Golden']),
+        (0.63, ['- Time-dep. patterns', '- Multi-depot PVRP', '- PVRPTW']),
+        (0.88, ['- No split: VRP', '- Split savings', '- SDVRPTW']),
     ]
 
     for x, y, short, long_name in variants:
@@ -562,7 +539,6 @@ def fig_pvrp_patterns():
     ax.set_title("PVRP: Allowable Visit Patterns for T=5 Day Planning Horizon",
                  fontsize=12, fontweight='bold', pad=10)
 
-    # Standard patterns used in benchmark literature
     patterns_data = {
         'f=1 (once/period)': ['(1,0,0,0,0)', '(0,1,0,0,0)', '(0,0,1,0,0)', '(0,0,0,1,0)', '(0,0,0,0,1)'],
         'f=2 (twice/period)': ['(1,0,1,0,0)', '(1,0,0,1,0)', '(1,0,0,0,1)',
@@ -595,7 +571,6 @@ def fig_pvrp_patterns():
 def fig_algorithm_comparison():
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-    # Left: HFVRP — benchmark performance on Golden instances
     methods_hfvrp = ['ILP\n(exact)', 'Clarke-Wright\n(adapt.)', 'Tabu Search\n(Gendreau)', 'GA\n(Prins)', 'SA\n(Imran)']
     gap_hfvrp = [0.0, 8.5, 2.1, 1.8, 1.5]
     colors_h = ['steelblue', 'orange', 'green', 'tomato', 'purple']
@@ -609,7 +584,6 @@ def fig_algorithm_comparison():
                      f'{gap}%', ha='center', fontsize=9, fontweight='bold')
     axes[0].grid(True, alpha=0.3, axis='y')
 
-    # Right: SDVRP — savings from split delivery
     n_customers = [10, 20, 50, 100, 200]
     savings_pct = [3.2, 6.1, 10.4, 14.2, 18.7]
     axes[1].plot(n_customers, savings_pct, 'o-', color='steelblue', linewidth=2.5,

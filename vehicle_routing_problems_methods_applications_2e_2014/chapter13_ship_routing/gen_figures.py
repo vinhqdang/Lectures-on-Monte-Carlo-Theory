@@ -16,7 +16,9 @@ OUTDIR = os.path.join(os.path.dirname(__file__), "figures")
 os.makedirs(OUTDIR, exist_ok=True)
 
 def savefig(name, dpi=150):
-    path = os.path.join(OUTDIR, name)
+    # Always save as PNG regardless of extension passed
+    name_png = os.path.splitext(name)[0] + '.png'
+    path = os.path.join(OUTDIR, name_png)
     plt.savefig(path, dpi=dpi, bbox_inches='tight', facecolor='white')
     plt.close()
     print(f"  saved {path}")
@@ -449,7 +451,7 @@ def fig_crop_from_pdf():
                 )
                 mat = fitz.Matrix(2.5, 2.5)
                 pix = page.get_pixmap(matrix=mat, clip=clip)
-                out_path = os.path.join(OUTDIR, out_name.replace('.pdf', '.png'))
+                out_path = os.path.join(OUTDIR, os.path.splitext(out_name)[0] + '.png')
                 pix.save(out_path)
                 print(f"  saved crop: {out_path}")
             except Exception as e:

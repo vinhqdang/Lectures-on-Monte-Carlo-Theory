@@ -2,644 +2,893 @@
 gen_figures.py  --  Generate all figures for Chapter 3 slides
 "New Exact Algorithms for the Capacitated Vehicle Routing Problem"
 Vehicle Routing: Problems, Methods, and Applications, 2nd ed., 2014
+Authors: Marcus Poggi & Eduardo Uchoa
+
+Produces all PDFs required by chapter03_slides.tex:
+  fig_bpc_flowchart.pdf
+  fig_bb_tree.pdf
+  fig_cvrp_instance.pdf   (also fig_set_partitioning.pdf -- reuse)
+  fig_set_partitioning.pdf
+  fig_capacity_cut.pdf
+  fig_kpath_cut.pdf
+  fig_strong_degree_cuts.pdf
+  fig_src.pdf
+  fig_column_generation.pdf
+  fig_spprc.pdf
+  fig_route_enumeration.pdf
+  fig_benchmark_results.pdf
+  fig_node_comparison.pdf
 """
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import matplotlib.patches as patches
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
-from matplotlib.lines import Line2D
+import matplotlib.patheffects as pe
 import numpy as np
 import os
-import sys
 
-try:
-    import fitz  # pymupdf
-    HAVE_FITZ = True
-except ImportError:
-    HAVE_FITZ = False
-
-OUTDIR = os.path.join(os.path.dirname(__file__), "figures")
+OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "figures")
 os.makedirs(OUTDIR, exist_ok=True)
-PDF_PATH = os.path.join(
-    os.path.dirname(__file__), "..",
-    "Vehicle Routing_ Problems, Methods, and Applications, Second Edition 2014.pdf"
-)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper
-# ─────────────────────────────────────────────────────────────────────────────
-def save(fig, name):
+def savefig(name, dpi=150):
     path = os.path.join(OUTDIR, name)
-    fig.savefig(path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  saved: {path}")
+    plt.savefig(path, dpi=dpi, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"  Saved: {path}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 1 — CVRP instance: depot + customers with demands
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_cvrp_instance():
-    fig, ax = plt.subplots(figsize=(7, 5.5))
-    ax.set_aspect('equal')
-
-    depot = np.array([0, 0])
-    customers = {
-        1: (2, 3, 3),   # (x, y, demand)
-        2: (4, 1, 2),
-        3: (5, 4, 4),
-        4: (1, -2, 3),
-        5: (3, -3, 2),
-        6: (-2, 2, 1),
-        7: (-3, -1, 3),
-    }
-
-    routes = [
-        ([1, 3, 6], 'tab:blue'),
-        ([2, 5], 'tab:orange'),
-        ([4, 7], 'tab:green'),
-    ]
-
-    for route_nodes, color in routes:
-        path = [depot] + [customers[n][:2] for n in route_nodes] + [depot]
-        xs = [p[0] for p in path]
-        ys = [p[1] for p in path]
-        ax.plot(xs, ys, '-o', color=color, linewidth=1.8, markersize=5,
-                alpha=0.7, zorder=2)
-
-    # Draw depot
-    ax.plot(*depot, 's', color='black', markersize=14, zorder=5)
-    ax.text(depot[0], depot[1] + 0.35, 'Depot', ha='center', fontsize=9,
-            fontweight='bold', color='black')
-
-    # Draw customers
-    for idx, (x, y, d) in customers.items():
-        ax.plot(x, y, 'o', color='steelblue', markersize=10, zorder=4)
-        ax.text(x + 0.18, y + 0.28, f'$c_{idx}$\n(q={d})', fontsize=8,
-                color='darkblue', ha='left')
-
-    ax.set_xlim(-4.5, 7)
-    ax.set_ylim(-4.5, 5.5)
-    ax.set_title('CVRP Instance: Depot, Customers, and Three Routes (Q = 8)',
-                 fontsize=11)
-    ax.grid(True, linestyle='--', alpha=0.4)
-    ax.axhline(0, color='gray', linewidth=0.5)
-    ax.axvline(0, color='gray', linewidth=0.5)
-
-    handles = [
-        Line2D([0], [0], color='tab:blue',   lw=2, label='Route 1: 0→1→3→6→0 (load=8)'),
-        Line2D([0], [0], color='tab:orange', lw=2, label='Route 2: 0→2→5→0  (load=4)'),
-        Line2D([0], [0], color='tab:green',  lw=2, label='Route 3: 0→4→7→0  (load=6)'),
-    ]
-    ax.legend(handles=handles, fontsize=8, loc='lower right')
-    save(fig, "fig_cvrp_instance.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 2 — Branch-and-Bound tree schematic
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_bb_tree():
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 6)
-    ax.axis('off')
-    ax.set_title('Branch-and-Bound / Branch-Price-Cut Tree (schematic)', fontsize=11)
-
-    # Nodes: (x, y, label, color)
-    nodes = [
-        (5.0, 5.2, 'Root\nLB=840', 'gold'),
-        (2.5, 3.8, 'Node 1\nLB=862', 'lightblue'),
-        (7.5, 3.8, 'Node 2\nLB=851', 'lightblue'),
-        (1.0, 2.2, 'Node 3\nLB=875', 'lightgreen'),
-        (3.8, 2.2, 'Node 4\nLB=868', 'lightgreen'),
-        (6.2, 2.2, 'Node 5\nLB=855', 'lightgreen'),
-        (9.0, 2.2, 'Node 6\nLB=890\nPruned', 'salmon'),
-        (2.8, 0.6, 'Node 7\nFeasible\nUB=868', 'limegreen'),
-        (5.2, 0.6, 'Node 8\nInfeas.', 'lightcoral'),
-    ]
-
-    edges = [(0,1),(0,2),(1,3),(1,4),(2,5),(2,6),(4,7),(4,8)]
-
-    for (u, v) in edges:
-        x1,y1 = nodes[u][:2]
-        x2,y2 = nodes[v][:2]
-        ax.annotate('', xy=(x2,y2+0.38), xytext=(x1,y1-0.38),
-                    arrowprops=dict(arrowstyle='->', color='gray', lw=1.2))
-
-    for (x, y, label, color) in nodes:
-        ax.add_patch(FancyBboxPatch((x-0.85, y-0.42), 1.7, 0.84,
-                                    boxstyle="round,pad=0.05",
-                                    facecolor=color, edgecolor='gray', lw=1))
-        ax.text(x, y, label, ha='center', va='center', fontsize=7)
-
-    # Branch label
-    ax.text(3.55, 4.6, '$x_{ij}=0$', fontsize=8, color='navy')
-    ax.text(6.3,  4.6, '$x_{ij}=1$', fontsize=8, color='navy')
-    save(fig, "fig_bb_tree.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 3 — Set Partitioning formulation overview
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_set_partitioning():
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.axis('off')
-
-    title = "Set Partitioning Formulation — Concept"
-    ax.text(0.5, 0.95, title, transform=ax.transAxes, fontsize=12,
-            fontweight='bold', ha='center', va='top')
-
-    col_labels = ['Route', 'Customers', 'Cost', 'a1r', 'a2r', 'a3r', 'a4r', 'a5r']
-    rows = [
-        ['r1', '1,3,6', '120', '1', '0', '1', '0', '0'],
-        ['r2', '2,5',   '85',  '0', '1', '0', '0', '1'],
-        ['r3', '4,7',   '95',  '0', '0', '0', '1', '0'],
-        ['r4', '1,2',   '100', '1', '1', '0', '0', '0'],
-        ['r5', '3,4,5', '140', '0', '0', '1', '1', '1'],
-    ]
-
-    table = ax.table(
-        cellText=rows,
-        colLabels=col_labels,
-        cellLoc='center',
-        loc='center',
-        bbox=[0.02, 0.05, 0.96, 0.80]
-    )
-    table.auto_set_font_size(False)
-    table.set_fontsize(9)
-    for (row, col), cell in table.get_celld().items():
-        if row == 0:
-            cell.set_facecolor('#4472C4')
-            cell.set_text_props(color='white', fontweight='bold')
-        elif row % 2 == 0:
-            cell.set_facecolor('#D9E1F2')
-        else:
-            cell.set_facecolor('#FFFFFF')
-
-    ax.text(0.5, 0.02,
-            r'SP: $\min \sum_r c_r \lambda_r$ s.t. $\sum_r a_{ir}\lambda_r = 1\;\forall i$, $\lambda_r \in \{0,1\}$',
-            transform=ax.transAxes, fontsize=10, ha='center')
-    save(fig, "fig_set_partitioning.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 4 — Capacity cut illustration
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_capacity_cut():
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.set_aspect('equal')
-
-    depot = np.array([0, 0])
-    S_customers = {1: (2, 2), 2: (3, 1), 3: (2.5, 3), 4: (1.5, 0.5)}
-    other = {5: (-2, 2), 6: (-1, -2), 7: (3, -2)}
-
-    # Draw S boundary
-    circle = plt.Circle((2.2, 1.8), 1.9, fill=False, edgecolor='red',
-                         linewidth=2.5, linestyle='--', zorder=3)
-    ax.add_patch(circle)
-    ax.text(4.3, 3.6, r'$S$ (customer set)', color='red', fontsize=10)
-
-    # Edges inside S
-    for (a, b) in [(1,2),(2,3),(3,4)]:
-        x1,y1 = S_customers[a]; x2,y2 = S_customers[b]
-        ax.annotate('', xy=(x2,y2), xytext=(x1,y1),
-                    arrowprops=dict(arrowstyle='->', color='blue', lw=1.5))
-
-    # Edges from depot into S
-    for cid, (x, y) in S_customers.items():
-        ax.annotate('', xy=(x*0.25, y*0.25), xytext=(depot[0], depot[1]),
-                    arrowprops=dict(arrowstyle='->', color='darkgreen',
-                                   lw=1.2, linestyle='dashed'))
-
-    # Draw depot and customers
-    ax.plot(*depot, 's', color='black', markersize=14, zorder=5)
-    ax.text(0.1, -0.35, 'Depot (0)', fontsize=9, ha='center')
-
-    for idx, (x, y) in S_customers.items():
-        ax.plot(x, y, 'o', color='blue', markersize=11, zorder=4)
-        ax.text(x+0.15, y+0.2, f'$c_{idx}$', fontsize=9)
-
-    for idx, (x, y) in other.items():
-        ax.plot(x, y, 'o', color='gray', markersize=9, zorder=4)
-        ax.text(x+0.15, y+0.2, f'$c_{idx}$', fontsize=9, color='gray')
-
-    ax.set_xlim(-3.5, 5.5)
-    ax.set_ylim(-3.5, 5.0)
-    ax.set_title(r'Capacity Cut: $x(\delta(S)) \geq 2\lceil d(S)/Q \rceil$', fontsize=11)
-    ax.grid(True, alpha=0.3, linestyle='--')
-
-    ax.text(0.02, 0.04,
-            r'$d(S)=q_1+q_2+q_3+q_4$,  $Q$=vehicle capacity,  $\delta(S)$=edges crossing $S$',
-            transform=ax.transAxes, fontsize=9, color='darkred')
-    save(fig, "fig_capacity_cut.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 5 — SPPRC label propagation (small DAG)
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_spprc():
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.axis('off')
-    ax.set_title('SPPRC Label Propagation along a Partial Route', fontsize=11)
-
-    # Nodes: name, x, y
-    nodes = [
-        ('Depot\n(0)', 0.5, 2.5),
-        ('$c_1$\nd=3',  2.5, 3.8),
-        ('$c_2$\nd=2',  2.5, 1.2),
-        ('$c_3$\nd=4',  4.5, 3.8),
-        ('$c_4$\nd=2',  4.5, 1.2),
-        ('Depot\n(0)',  6.5, 2.5),
-    ]
-
-    # Draw nodes
-    for (name, x, y) in nodes:
-        ax.add_patch(plt.Circle((x, y), 0.38, facecolor='lightsteelblue',
-                                 edgecolor='navy', lw=1.5, zorder=3))
-        ax.text(x, y, name, ha='center', va='center', fontsize=8, zorder=4)
-
-    # Arcs with cost labels
-    arcs = [
-        (0, 1, '10'), (0, 2, '8'),
-        (1, 3, '7'),  (1, 4, '12'),
-        (2, 3, '11'), (2, 4, '6'),
-        (3, 5, '9'),  (4, 5, '10'),
-    ]
-    for (u, v, cost) in arcs:
-        x1,y1 = nodes[u][1], nodes[u][2]
-        x2,y2 = nodes[v][1], nodes[v][2]
-        ax.annotate('', xy=(x2,y2), xytext=(x1,y1),
-                    arrowprops=dict(arrowstyle='->', color='darkblue',
-                                   lw=1.3, connectionstyle='arc3,rad=0.1'))
-        mx, my = (x1+x2)/2, (y1+y2)/2
-        ax.text(mx+0.05, my+0.15, cost, fontsize=8, color='firebrick')
-
-    # Label boxes
-    labels_info = [
-        (0.5, 2.0,  'Label@Depot:\ncost=0, load=0'),
-        (2.5, 4.55, 'Label@$c_1$:\ncost=10, load=3'),
-        (4.5, 4.55, 'Label@$c_3$:\ncost=17, load=7'),
-    ]
-    for (x, y, txt) in labels_info:
-        ax.add_patch(FancyBboxPatch((x-0.82, y-0.28), 1.64, 0.56,
-                                    boxstyle="round,pad=0.05",
-                                    facecolor='lightyellow', edgecolor='orange', lw=1))
-        ax.text(x, y, txt, ha='center', va='center', fontsize=7.5)
-
-    ax.set_xlim(-0.2, 7.2)
-    ax.set_ylim(0.3, 5.4)
-    save(fig, "fig_spprc.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 6 — BPC algorithm flowchart
+# fig_bpc_flowchart.pdf — Branch-Price-Cut framework flowchart
 # ─────────────────────────────────────────────────────────────────────────────
 def fig_bpc_flowchart():
-    fig, ax = plt.subplots(figsize=(5.5, 8))
-    ax.set_xlim(0, 6)
-    ax.set_ylim(0, 10)
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.set_facecolor('white')
     ax.axis('off')
-    ax.set_title('Branch-Price-Cut (BPC) Algorithm Flowchart', fontsize=11)
 
     boxes = [
-        (3.0, 9.3, 'Start: Root node\n(LP relaxation)', 'gold'),
-        (3.0, 7.8, 'Column generation:\nSolve pricing sub-problem\n(SPPRC)', 'lightblue'),
-        (3.0, 6.3, 'LP bound improved?', 'lightyellow'),
-        (3.0, 4.9, 'Separate valid cuts\n(Cap. cuts, k-path, SRC)', 'lightcyan'),
-        (3.0, 3.5, 'LP solution\ninteger?', 'lightyellow'),
-        (3.0, 2.1, 'Branch on fractional\nvariable / edge', 'lightgreen'),
-        (3.0, 0.7, 'Update best UB;\nPrune dominated nodes', 'salmon'),
+        # (x, y, text, facecolor, textcolor, fontsize)
+        (0.50, 0.93, 'START: Root LP Node', '#1565C0', 'white', 12),
+        (0.50, 0.78, 'Solve LP relaxation via\nColumn Generation (SPPRC)', '#1976D2', 'white', 11),
+        (0.50, 0.62, 'Add violated\nCutting Planes?\n(RCI, k-path, SRC)', '#00838F', 'white', 10),
+        (0.18, 0.42, 'YES: Add cuts,\nre-solve LP', '#00838F', 'white', 10),
+        (0.82, 0.42, 'NO: LP optimal\nIs solution integer?', '#F57F17', 'black', 10),
+        (0.50, 0.22, 'YES: Integer solution\nUpdate Upper Bound\nPrune dominated nodes', '#2E7D32', 'white', 10),
+        (0.82, 0.22, 'NO: Branch on\nfractional arc x_ij\n(create 2 child nodes)', '#C62828', 'white', 10),
+        (0.50, 0.05, 'All nodes fathomed?\n→ OPTIMUM PROVED', '#4A148C', 'white', 12),
     ]
 
-    for (x, y, text, color) in boxes:
-        if '?' in text:
-            diamond = plt.Polygon(
-                [[x, y+0.42], [x+1.2, y], [x, y-0.42], [x-1.2, y]],
-                closed=True, facecolor=color, edgecolor='gray', lw=1.2, zorder=3)
-            ax.add_patch(diamond)
-        else:
-            ax.add_patch(FancyBboxPatch((x-1.5, y-0.38), 3.0, 0.76,
-                                        boxstyle="round,pad=0.06",
-                                        facecolor=color, edgecolor='gray', lw=1.2, zorder=3))
-        ax.text(x, y, text, ha='center', va='center', fontsize=8.5, zorder=4)
-
-    # Arrows between boxes
-    for i in range(len(boxes)-1):
-        x1, y1 = boxes[i][:2]
-        x2, y2 = boxes[i+1][:2]
-        ax.annotate('', xy=(x2, y2+0.42), xytext=(x1, y1-0.42),
-                    arrowprops=dict(arrowstyle='->', color='black', lw=1.3))
-
-    # Yes/No labels
-    ax.text(3.25, 7.05, 'Yes', fontsize=8, color='green')
-    ax.text(4.4,  6.3,  'No→ stop branch', fontsize=7.5, color='red')
-    ax.text(3.25, 5.55, 'Yes → add cuts', fontsize=8, color='green')
-    ax.text(3.25, 4.15, 'Yes → feasible sol', fontsize=8, color='green')
-    save(fig, "fig_bpc_flowchart.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 7 — Benchmark results bar chart (Table 3.3 data approximation)
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_benchmark_results():
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
-
-    # --- Left: Solved instances by algorithm ---
-    algorithms = ['Fukasawa\net al.[19]', 'Baldacci\net al.[7]', 'Contardo\n&Martinelli[14]',
-                  'Poggi &\nUchoa[33]', 'Ropke[39]']
-    solved_100 = [20, 22, 24, 24, 26]  # out of 27 instances n<=100
-    solved_200 = [8,  12, 15, 16, 18]  # out of ~20 larger instances
-
-    x = np.arange(len(algorithms))
-    w = 0.35
-    ax = axes[0]
-    b1 = ax.bar(x - w/2, solved_100, w, label=r'$n \leq 100$', color='steelblue', alpha=0.85)
-    b2 = ax.bar(x + w/2, solved_200, w, label=r'$100 < n \leq 200$', color='tomato', alpha=0.85)
-    ax.set_xticks(x)
-    ax.set_xticklabels(algorithms, fontsize=8)
-    ax.set_ylabel('Instances solved to optimality')
-    ax.set_title('Instances Solved by BPC Algorithm', fontsize=10)
-    ax.legend(fontsize=9)
-    ax.grid(axis='y', alpha=0.4, linestyle='--')
-    ax.bar_label(b1, padding=2, fontsize=8)
-    ax.bar_label(b2, padding=2, fontsize=8)
-
-    # --- Right: Average CPU time (log scale) ---
-    ax2 = axes[1]
-    cpu_times = [3200, 2100, 1450, 1320, 980]  # seconds approx
-    colors_bar = plt.cm.viridis(np.linspace(0.2, 0.8, len(algorithms)))
-    bars = ax2.bar(algorithms, cpu_times, color=colors_bar, alpha=0.85)
-    ax2.set_ylabel('Avg. CPU time (seconds)')
-    ax2.set_title('Average Solving Time (Approximate)', fontsize=10)
-    ax2.set_yscale('log')
-    ax2.grid(axis='y', alpha=0.4, linestyle='--')
-    for bar, val in zip(bars, cpu_times):
-        ax2.text(bar.get_x() + bar.get_width()/2, val*1.05, str(val),
-                 ha='center', va='bottom', fontsize=8)
-    ax2.tick_params(axis='x', labelsize=8)
-
-    fig.suptitle('Computational Results on Standard CVRP Benchmarks\n'
-                 '(Augerat A, B, P sets and Golden instances)', fontsize=11)
-    fig.tight_layout()
-    save(fig, "fig_benchmark_results.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 8 — Strong Degree Cuts illustration
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_strong_degree_cuts():
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-
-    for ax, title, show_cut in zip(axes,
-                                   ['Before cut (fractional solution)',
-                                    'After adding Degree Cut'],
-                                   [False, True]):
-        ax.set_xlim(-1, 6)
-        ax.set_ylim(-1, 5)
-        ax.set_aspect('equal')
-        ax.axis('off')
-        ax.set_title(title, fontsize=10)
-
-        depot = (0, 2)
-        customers = [(2, 4), (4, 4), (2, 1), (4, 1), (3, 2.5)]
-
-        ax.plot(*depot, 's', color='black', ms=12, zorder=5)
-        ax.text(depot[0]-0.05, depot[1]-0.4, '0', ha='center', fontsize=9)
-
-        for idx, (x, y) in enumerate(customers, 1):
-            ax.plot(x, y, 'o', color='steelblue', ms=10, zorder=4)
-            ax.text(x+0.1, y+0.2, str(idx), fontsize=9)
-
-        # Edges with fractional values
-        edges = [
-            (depot, customers[0], 0.5),
-            (depot, customers[2], 0.5),
-            (customers[0], customers[1], 1.0),
-            (customers[1], customers[4], 0.5),
-            (customers[2], customers[3], 1.0),
-            (customers[3], customers[4], 0.5),
-            (customers[4], depot, 1.0),
-        ]
-
-        for (p1, p2, val) in edges:
-            lw = 1 + 2 * val
-            color = 'blue' if val == 1.0 else 'orange'
-            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], '-', color=color,
-                    lw=lw, alpha=0.7, zorder=2)
-            mx = (p1[0]+p2[0])/2
-            my = (p1[1]+p2[1])/2
-            ax.text(mx, my, f'{val:.1f}', fontsize=7.5, color='darkred')
-
-        if show_cut:
-            ax.add_patch(plt.Circle((3, 2.5), 0.6, fill=False,
-                                     edgecolor='red', lw=2.5, linestyle='--', zorder=6))
-            ax.text(3, 3.25, 'degree\ncut here', ha='center', fontsize=8.5, color='red')
-
-    fig.suptitle('Effect of Degree Cuts on Fractional LP Solution', fontsize=11)
-    fig.tight_layout()
-    save(fig, "fig_strong_degree_cuts.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 9 — Route enumeration vs branching decision
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_route_enumeration():
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.axis('off')
-    ax.set_title('Route Enumeration vs. Branching: Trade-off', fontsize=11)
-
-    # Two-column comparison table
-    rows = [
-        ['Aspect', 'Route Enumeration', 'Traditional Branching'],
-        ['Column pool', 'Enumerate all routes\n(exponential, but bounded)', 'Generate on-the-fly\n(column generation)'],
-        ['Pricing sub-problem', 'Not needed after enum.', 'SPPRC at every node'],
-        ['Node work', 'Solve LP / IP directly', 'LP + pricing loop'],
-        ['Suitable for', 'Small/medium n\n(exact routes known)', 'Large n\n(column gen. scales)'],
-        ['Memory', 'High (store all routes)', 'Low (generate as needed)'],
-        ['Key algorithm', 'Baldacci, Mingozzi,\nMartello (2008)', 'Fukasawa, Poggi,\nUchoa (2006)'],
-    ]
-
-    col_widths = [0.2, 0.38, 0.38]
-    x_starts = [0.01, 0.22, 0.61]
-
-    for row_i, row in enumerate(rows):
-        for col_i, (cell, xw, xs) in enumerate(zip(row, col_widths, x_starts)):
-            bg = '#4472C4' if row_i == 0 else ('#EEF2FF' if row_i % 2 == 0 else 'white')
-            fc = 'white' if row_i == 0 else 'black'
-            fw = 'bold' if row_i == 0 else 'normal'
-            rect = patches.FancyBboxPatch((xs, 0.88 - row_i*0.14), xw - 0.01, 0.13,
-                                          boxstyle="round,pad=0.005",
-                                          facecolor=bg, edgecolor='gray', lw=0.5,
-                                          transform=ax.transAxes, clip_on=False)
-            ax.add_patch(rect)
-            ax.text(xs + xw/2, 0.88 - row_i*0.14 + 0.065, cell,
-                    transform=ax.transAxes, ha='center', va='center',
-                    fontsize=8, color=fc, fontweight=fw, multialignment='center')
-
-    save(fig, "fig_route_enumeration.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 10 — k-path cut illustration
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_kpath_cut():
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    ax.set_aspect('equal')
-    ax.set_xlim(-1.5, 7.5)
-    ax.set_ylim(-1, 5)
-    ax.axis('off')
-    ax.set_title(r'$k$-Path Cut: Framing subset $S$ with $k$ required vehicle entries', fontsize=10)
-
-    depot = (0, 2)
-    S = [(2, 4), (3.5, 4.5), (5, 4), (4, 2.5), (2.5, 1.5)]
-    out = [(0.5, 0), (6, 1.5), (6.5, 3.5)]
-
-    # S boundary
-    ellipse = patches.Ellipse((3.5, 3), 4.2, 3.5, fill=False,
-                               edgecolor='purple', lw=2, linestyle='--', zorder=3)
-    ax.add_patch(ellipse)
-    ax.text(5.8, 4.5, r'$S$', color='purple', fontsize=12, fontweight='bold')
-
-    ax.plot(*depot, 's', color='black', ms=14, zorder=5)
-    ax.text(depot[0]-0.05, depot[1]-0.5, 'Depot', ha='center', fontsize=9)
-
-    for idx, (x, y) in enumerate(S, 1):
-        ax.plot(x, y, 'o', color='royalblue', ms=11, zorder=4)
-        ax.text(x+0.1, y+0.25, f'$v_{idx}$', fontsize=9)
-
-    for (x, y) in out:
-        ax.plot(x, y, 'D', color='gray', ms=8, zorder=4)
-
-    # k crossing edges
-    crossings = [
-        (depot, S[0]),
-        (depot, S[4]),
-        (out[0], S[4]),
-    ]
-    for (p1, p2) in crossings:
-        ax.annotate('', xy=p2, xytext=p1,
-                    arrowprops=dict(arrowstyle='->', color='firebrick', lw=2.2))
-
-    ax.text(0.03, 0.06,
-            r'$k$-path cut: $x(\delta(S)) \geq 2\lceil k_S \rceil$ where $k_S$ depends on demands and capacity',
-            transform=ax.transAxes, fontsize=9.5, color='purple')
-    save(fig, "fig_kpath_cut.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 11 — Subset Row Cut (SRC) concept
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_src():
-    fig, ax = plt.subplots(figsize=(7.5, 4))
-    ax.axis('off')
-    ax.set_title('Subset Row Cut (SRC) — Strengthening the LP Relaxation', fontsize=11)
-
-    text = (
-        r"An SRC is associated with a subset $C \subseteq V$ of customers." "\n\n"
-        r"For a set $C$ with $|C| \geq 3$ customers, the SRC reads:" "\n\n"
-        r"$\sum_{r \in \Omega} \lfloor \frac{1}{2} \sum_{i \in C} a_{ir} \rfloor \lambda_r \leq \lfloor \frac{|C|}{2} \rfloor$" "\n\n"
-        r"where $a_{ir}=1$ if route $r$ serves customer $i$, and $\lambda_r$ is the route variable." "\n\n"
-        r"The cut exploits the fact that a vehicle visiting an odd subset $C$ more times" "\n"
-        r"than $\lfloor|C|/2\rfloor$ would need to re-enter $C$, which is suboptimal for the LP."
-    )
-    ax.text(0.05, 0.95, text, transform=ax.transAxes,
-            fontsize=10.5, va='top', ha='left',
-            linespacing=1.6,
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='#FFF8E7', edgecolor='orange', lw=1.5))
-    save(fig, "fig_src.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Figure 12 — Column generation: reduced cost illustration
-# ─────────────────────────────────────────────────────────────────────────────
-def fig_column_generation():
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.axis('off')
-    ax.set_title('Column Generation in the Set Partitioning LP', fontsize=11)
-
-    # Three boxes: RMP → Pricing → New column → RMP
-    boxes = [
-        (1.5, 2.5, 'Restricted\nMaster Problem\n(RMP)\nSolve LP relaxation'),
-        (4.5, 2.5, 'Pricing\nSub-problem\n(SPPRC)\nFind min reduced-cost route'),
-        (7.5, 2.5, 'New column\n$r^*$ with\n$\\bar{c}_{r^*} < 0$?\nAdd to RMP'),
-    ]
-
-    for (x, y, text) in boxes:
-        ax.add_patch(FancyBboxPatch((x-1.25, y-0.9), 2.5, 1.8,
-                                    boxstyle="round,pad=0.1",
-                                    facecolor='lightsteelblue', edgecolor='navy', lw=1.5))
-        ax.text(x, y, text, ha='center', va='center', fontsize=9)
+    for (x, y, txt, fc, tc, fs) in boxes:
+        ax.text(x, y, txt, ha='center', va='center', fontsize=fs,
+                color=tc, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.45', facecolor=fc,
+                          edgecolor='#333', linewidth=1.5),
+                transform=ax.transAxes, zorder=3)
 
     # Arrows
-    ax.annotate('', xy=(3.22, 2.5), xytext=(2.75, 2.5),
-                arrowprops=dict(arrowstyle='->', color='darkblue', lw=2))
-    ax.text(3.0, 2.75, r'dual $\pi^*$', fontsize=9, ha='center', color='darkblue')
+    arrows = [
+        (0.50, 0.88, 0.50, 0.84),   # start -> solve LP
+        (0.50, 0.72, 0.50, 0.68),   # solve -> cuts?
+        (0.50, 0.56, 0.18, 0.49),   # cuts? -> YES
+        (0.50, 0.56, 0.82, 0.49),   # cuts? -> NO
+        (0.18, 0.35, 0.18, 0.84),   # YES -> back to solve (loop)
+        (0.82, 0.35, 0.50, 0.28),   # NO int? -> yes
+        (0.82, 0.35, 0.82, 0.29),   # NO int? -> branch
+        (0.50, 0.16, 0.50, 0.11),   # int -> all fathomed?
+    ]
+    for (x1, y1, x2, y2) in arrows:
+        ax.annotate('', xy=(x2, y2), xytext=(x1, y1),
+                    xycoords='axes fraction', textcoords='axes fraction',
+                    arrowprops=dict(arrowstyle='->', color='#555', lw=2))
 
-    ax.annotate('', xy=(6.22, 2.5), xytext=(5.75, 2.5),
-                arrowprops=dict(arrowstyle='->', color='darkblue', lw=2))
+    # Loop label
+    ax.text(0.06, 0.65, 'Re-solve\n(loop)', ha='center', fontsize=8,
+            color='#00838F', transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.2', facecolor='#E0F7FA', edgecolor='#00838F', lw=0.8))
 
-    ax.annotate('', xy=(1.5, 1.4), xytext=(7.5, 1.4),
-                arrowprops=dict(arrowstyle='->', color='green', lw=2,
-                                connectionstyle='arc3,rad=-0.25'))
-    ax.text(4.5, 0.7, 'Loop until no improving column\n'
-            r'($\bar{c}_r = c_r - \sum_i a_{ir}\pi_i \geq 0$ for all routes $r$)',
-            ha='center', fontsize=9.5, color='darkgreen')
-
-    ax.annotate('', xy=(7.5, 3.6), xytext=(4.5, 3.6),
-                arrowprops=dict(arrowstyle='<-', color='gray', lw=1.5))
-    ax.text(6.0, 3.75, 'Add route if $\\bar{c} < 0$', fontsize=9, ha='center', color='gray')
-
-    ax.set_xlim(0, 9)
-    ax.set_ylim(0.2, 4.3)
-    save(fig, "fig_column_generation.pdf")
+    ax.set_title('Branch-Price-Cut (BPC) Algorithm for the CVRP\n'
+                 'The three components: Column Generation, Cutting Planes, Branching',
+                 fontsize=12, fontweight='bold', y=0.99)
+    savefig('fig_bpc_flowchart.pdf')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 13 — Comparison chart: number of nodes in BPC tree
+# fig_bb_tree.pdf — Branch-and-bound tree
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_bb_tree():
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.set_facecolor('white')
+    ax.axis('off')
+
+    root    = (0.50, 0.90)
+    child1  = (0.25, 0.65)
+    child2  = (0.75, 0.65)
+    gc11    = (0.12, 0.35)
+    gc12    = (0.38, 0.35)
+    gc21    = (0.62, 0.35)
+    gc22    = (0.88, 0.35)
+    ggc111  = (0.06, 0.10)
+    ggc112  = (0.18, 0.10)
+
+    nodes_info = [
+        (root,   'Root Node\nLP=115.4\n(fractional)',            '#1565C0', 'white', 10),
+        (child1, 'x₁₂ = 0\n(forbid arc 1→2)\nLP=117.2',         '#0288D1', 'white', 9),
+        (child2, 'x₁₂ = 1\n(require arc 1→2)\nLP=116.0',        '#0288D1', 'white', 9),
+        (gc11,   'x₂₃ = 0\nLP=120.5\n(frac.)',                   '#0277BD', 'white', 8),
+        (gc12,   'x₂₃ = 1\nInteger!\nUB=119.3',                  '#2E7D32', 'white', 8),
+        (gc21,   'x₃₄ = 0\nPruned\n(LP>119.3)',                  '#B71C1C', 'white', 8),
+        (gc22,   'x₃₄ = 1\nInteger!\nUB=116.0',                  '#2E7D32', 'white', 8),
+        (ggc111, 'Pruned\n(LP>116.0)',                            '#B71C1C', 'white', 7),
+        (ggc112, 'Integer!\nUB=117.8\n(> 116.0)',                 '#F57F17', 'black', 7),
+    ]
+
+    for (pos, txt, fc, tc, fs) in nodes_info:
+        ax.text(pos[0], pos[1], txt, ha='center', va='center', fontsize=fs,
+                color=tc, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.35', facecolor=fc,
+                          edgecolor='#333', linewidth=1.2),
+                transform=ax.transAxes, zorder=3)
+
+    edges = [
+        (root, child1, 'x₁₂=0'),
+        (root, child2, 'x₁₂=1'),
+        (child1, gc11, 'x₂₃=0'),
+        (child1, gc12, 'x₂₃=1'),
+        (child2, gc21, 'x₃₄=0'),
+        (child2, gc22, 'x₃₄=1'),
+        (gc11, ggc111, 'x₄₅=0'),
+        (gc11, ggc112, 'x₄₅=1'),
+    ]
+    for (p1, p2, lbl) in edges:
+        ax.annotate('', xy=p2, xytext=p1,
+                    xycoords='axes fraction', textcoords='axes fraction',
+                    arrowprops=dict(arrowstyle='->', color='#555', lw=1.8))
+        mid = (0.5*(p1[0]+p2[0]), 0.5*(p1[1]+p2[1]))
+        ax.text(mid[0]+0.015, mid[1], lbl, fontsize=7.5, color='#333',
+                ha='center', transform=ax.transAxes, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.1', facecolor='#FFFDE7',
+                          edgecolor='#aaa', lw=0.5))
+
+    # Legend
+    legend_handles = [
+        mpatches.Patch(color='#1565C0', label='Fractional LP node'),
+        mpatches.Patch(color='#2E7D32', label='Integer solution (feasible)'),
+        mpatches.Patch(color='#B71C1C', label='Pruned node (LB > best UB)'),
+        mpatches.Patch(color='#F57F17', label='Suboptimal integer solution'),
+    ]
+    ax.legend(handles=legend_handles, loc='lower center', fontsize=9,
+              ncol=2, framealpha=0.9, bbox_to_anchor=(0.5, -0.03))
+
+    ax.set_title('Branch-and-Bound Tree: Branching on Arc Variables\n'
+                 'Optimal solution found: UB = 116.0 at node (x₁₂=1, x₃₄=1)',
+                 fontsize=11, fontweight='bold')
+    savefig('fig_bb_tree.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_cvrp_instance.pdf — example CVRP instance
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_cvrp_instance():
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.set_facecolor('#f8f8ff')
+
+    depot = np.array([0.5, 0.5])
+    customers = {
+        1: np.array([0.15, 0.75]),
+        2: np.array([0.28, 0.90]),
+        3: np.array([0.45, 0.82]),
+        4: np.array([0.68, 0.80]),
+        5: np.array([0.83, 0.62]),
+        6: np.array([0.78, 0.30]),
+        7: np.array([0.55, 0.20]),
+        8: np.array([0.30, 0.22]),
+    }
+    demands = {1:3, 2:4, 3:2, 4:3, 5:3, 6:4, 7:2, 8:3}
+    Q = 10
+
+    route1 = [0, 1, 2, 3, 0]
+    route2 = [0, 4, 5, 6, 0]
+    route3 = [0, 7, 8, 0]
+
+    coords = {0: depot}
+    coords.update(customers)
+
+    route_styles = [
+        (route1, '#2196F3', 'Route 1 (load=9): 0→1→2→3→0'),
+        (route2, '#E91E63', 'Route 2 (load=10): 0→4→5→6→0'),
+        (route3, '#4CAF50', 'Route 3 (load=5): 0→7→8→0'),
+    ]
+
+    for route, color, label in route_styles:
+        xs = [coords[n][0] for n in route]
+        ys = [coords[n][1] for n in route]
+        ax.plot(xs, ys, '-', color=color, linewidth=2.5, label=label, zorder=2, alpha=0.8)
+        for i in range(len(route)-1):
+            p1 = coords[route[i]]
+            p2 = coords[route[i+1]]
+            d = p2 - p1
+            nd = np.linalg.norm(d)
+            ax.annotate('', xy=p2 - 0.04*d/max(nd,1e-6),
+                        xytext=p1 + 0.04*d/max(nd,1e-6),
+                        arrowprops=dict(arrowstyle='->', color=color, lw=2))
+
+    # Draw depot
+    ax.plot(*depot, 's', color='black', markersize=16, zorder=5,
+            markeredgecolor='#333', markeredgewidth=1.5)
+    ax.text(depot[0], depot[1]-0.07, 'Depot (0)', ha='center', fontsize=11, fontweight='bold')
+
+    # Draw customers
+    for cid, pos in customers.items():
+        ax.plot(*pos, 'o', color='white', markersize=22, zorder=4,
+                markeredgecolor='#333', markeredgewidth=1.5)
+        ax.text(pos[0], pos[1], str(cid), ha='center', va='center',
+                fontsize=10, fontweight='bold', zorder=5)
+        ax.text(pos[0]+0.04, pos[1]+0.06, f'q={demands[cid]}',
+                fontsize=8.5, color='#444', ha='center')
+
+    ax.set_xlim(0.02, 0.98)
+    ax.set_ylim(0.05, 1.0)
+    ax.axis('off')
+    ax.set_title(f'CVRP Example: 8 Customers, Vehicle Capacity Q = {Q}\n'
+                 f'Three routes; each route starts and ends at depot',
+                 fontsize=12, fontweight='bold')
+    ax.legend(loc='lower right', fontsize=9, framealpha=0.9)
+    savefig('fig_cvrp_instance.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_set_partitioning.pdf — route pool table
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_set_partitioning():
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    ax.set_facecolor('white')
+    ax.axis('off')
+
+    routes = [
+        ('0→1→2→3→0', [1,2,3], 18.5, 1),
+        ('0→1→3→0',   [1,3],   14.2, 0),
+        ('0→2→3→4→0', [2,3,4], 21.0, 1),
+        ('0→4→5→0',   [4,5],   12.8, 0),
+        ('0→1→5→0',   [1,5],   15.1, 0),
+        ('0→2→5→0',   [2,5],   16.3, 1),
+    ]
+    customers = [1, 2, 3, 4, 5]
+    n_routes = len(routes)
+    col_w = 1.1
+    row_h = 0.55
+
+    # Column headers
+    headers = ['Route path', 'λ', 'Cost'] + [f'Cust {c}' for c in customers]
+    x_positions = [-0.3, 0.55, 1.25] + [2.2 + j*col_w for j in range(len(customers))]
+    for hdr, xp in zip(headers, x_positions):
+        ax.text(xp, n_routes*row_h + 0.5, hdr, ha='center', va='center',
+                fontsize=10, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.2', facecolor='#E3F2FD', edgecolor='#1565C0', lw=1))
+
+    for i, (name, cust_list, cost, selected) in enumerate(routes):
+        y = (n_routes - 1 - i) * row_h
+        fc = '#E8F5E9' if selected else 'white'
+        ec = '#2E7D32' if selected else '#ccc'
+        lw = 2 if selected else 1
+        rect = mpatches.FancyBboxPatch((-0.85, y-0.22), 8.2, row_h-0.06,
+                                        boxstyle='round,pad=0.05',
+                                        facecolor=fc, edgecolor=ec, linewidth=lw)
+        ax.add_patch(rect)
+        ax.text(-0.3, y+0.06, name, ha='center', va='center', fontsize=9,
+                fontweight='bold' if selected else 'normal', color='#333')
+        lv = '1' if selected else '0'
+        ax.text(0.55, y+0.06, lv, ha='center', va='center', fontsize=11,
+                color='#2E7D32' if selected else '#aaa', fontweight='bold')
+        ax.text(1.25, y+0.06, f'{cost:.1f}', ha='center', va='center', fontsize=9)
+        for j, c in enumerate(customers):
+            val = '1' if c in cust_list else '·'
+            color = '#1E88E5' if c in cust_list else '#bbb'
+            ax.text(2.2 + j*col_w, y+0.06, val, ha='center', va='center',
+                    fontsize=11, color=color, fontweight='bold')
+
+    ax.set_xlim(-1.0, 8.0)
+    ax.set_ylim(-0.4, n_routes*row_h + 1.0)
+    ax.set_title('Set-Partitioning Formulation: Route Pool (6 candidate routes, 5 customers)\n'
+                 'Green rows: λ=1 (selected in optimal solution).  Objective = 18.5 + 21.0 + 16.3 = 55.8',
+                 fontsize=11, fontweight='bold')
+    savefig('fig_set_partitioning.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_capacity_cut.pdf — capacity cut illustration
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_capacity_cut():
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+    ax.set_facecolor('#f9f9f9')
+    ax.axis('off')
+
+    depot = np.array([0.5, 0.5])
+    customers = {
+        1: np.array([0.20, 0.80]),
+        2: np.array([0.38, 0.88]),
+        3: np.array([0.55, 0.82]),
+        4: np.array([0.72, 0.65]),
+        5: np.array([0.25, 0.30]),
+        6: np.array([0.75, 0.25]),
+    }
+    demands = {1:4, 2:3, 3:5, 4:2, 5:4, 6:3}
+    Q = 10
+    S = {1, 2, 3, 4}
+
+    # Draw depot
+    ax.plot(*depot, 's', color='#E53935', markersize=16, zorder=5,
+            markeredgecolor='#333', markeredgewidth=1.5)
+    ax.text(depot[0], depot[1]-0.08, 'Depot', ha='center', fontsize=11, fontweight='bold')
+
+    # Draw customers
+    for cid, pos in customers.items():
+        in_S = cid in S
+        fc = '#FFCC80' if in_S else '#BBDEFB'
+        ec = '#E65100' if in_S else '#1565C0'
+        lw = 2.5 if in_S else 1.2
+        ax.plot(*pos, 'o', color=fc, markersize=22, zorder=4,
+                markeredgecolor=ec, markeredgewidth=lw)
+        ax.text(pos[0], pos[1], str(cid), ha='center', va='center',
+                fontsize=10, fontweight='bold', zorder=5)
+        ax.text(pos[0]+0.04, pos[1]+0.07, f'q={demands[cid]}',
+                fontsize=8.5, color='#555', ha='center')
+
+    # Draw ellipse around S
+    cx = np.mean([customers[i][0] for i in S])
+    cy = np.mean([customers[i][1] for i in S])
+    ell = mpatches.Ellipse((cx, cy), 0.62, 0.52, angle=15,
+                            facecolor='none', edgecolor='#E65100',
+                            linewidth=2.5, linestyle='--', zorder=2)
+    ax.add_patch(ell)
+
+    # Draw boundary arcs (depot <-> S)
+    for cid in S:
+        pos = customers[cid]
+        d = pos - depot
+        nd = np.linalg.norm(d)
+        ax.annotate('', xy=depot + 0.08*d/nd,
+                    xytext=pos - 0.06*d/nd,
+                    arrowprops=dict(arrowstyle='<->', color='#C62828', lw=2.5))
+
+    # Annotation
+    d_S = sum(demands[i] for i in S)
+    rS = int(np.ceil(d_S / Q))
+    ax.text(0.5, 0.04,
+            fr'$S = \{{1,2,3,4\}}$,  $d(S) = {d_S}$,  $\lceil d(S)/Q \rceil = \lceil {d_S}/{Q} \rceil = {rS}$'
+            f'\nCapacity Cut (RCI):  $x(\delta(S)) \geq 2 \times {rS} = {2*rS}$  '
+            f'(at least {2*rS} arcs cross the dashed boundary)',
+            ha='center', fontsize=10.5, color='#BF360C', fontweight='bold',
+            transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.35', facecolor='#FFF3E0',
+                      edgecolor='#FF6F00', linewidth=1.5))
+
+    ax.set_xlim(0.02, 0.98)
+    ax.set_ylim(0.01, 1.0)
+    ax.set_title('Rounded Capacity Inequality (RCI): Capacity Cut for Subset S\n'
+                 'Orange nodes = subset S; double-headed arrows = boundary arcs δ(S)',
+                 fontsize=11, fontweight='bold')
+    legend_handles = [
+        mpatches.Patch(color='#FFCC80', label='Customers in S', ec='#E65100', lw=2),
+        mpatches.Patch(color='#BBDEFB', label='Customers outside S', ec='#1565C0', lw=1.2),
+    ]
+    ax.legend(handles=legend_handles, loc='upper right', fontsize=9)
+    savefig('fig_capacity_cut.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_kpath_cut.pdf — k-path cut illustration
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_kpath_cut():
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+    ax.set_facecolor('#f9f9f9')
+    ax.axis('off')
+
+    depot = np.array([0.50, 0.50])
+    customers = {
+        1: np.array([0.20, 0.78]),
+        2: np.array([0.42, 0.88]),
+        3: np.array([0.68, 0.78]),
+        4: np.array([0.80, 0.35]),
+        5: np.array([0.22, 0.28]),
+    }
+    demands = {1:5, 2:4, 3:5, 4:3, 5:4}
+    Q = 10
+    P = [1, 2, 3]  # path customers
+
+    # Draw depot
+    ax.plot(*depot, 's', color='#E53935', markersize=16, zorder=5,
+            markeredgecolor='#333', markeredgewidth=1.5)
+    ax.text(depot[0], depot[1]-0.08, 'Depot', ha='center', fontsize=11, fontweight='bold')
+
+    # Draw customers
+    for cid, pos in customers.items():
+        in_P = cid in P
+        fc = '#FFF59D' if in_P else '#C8E6C9'
+        ec = '#F57F17' if in_P else '#388E3C'
+        lw = 2.5 if in_P else 1.2
+        ax.plot(*pos, 'o', color=fc, markersize=22, zorder=4,
+                markeredgecolor=ec, markeredgewidth=lw)
+        ax.text(pos[0], pos[1], str(cid), ha='center', va='center',
+                fontsize=10, fontweight='bold', zorder=5)
+        ax.text(pos[0]+0.04, pos[1]+0.07, f'q={demands[cid]}',
+                fontsize=8.5, color='#555', ha='center')
+
+    # Draw the path P: 1→2→3
+    for i in range(len(P)-1):
+        p1 = customers[P[i]]
+        p2 = customers[P[i+1]]
+        d = p2 - p1
+        nd = np.linalg.norm(d)
+        ax.annotate('', xy=p2 - 0.06*d/nd, xytext=p1 + 0.06*d/nd,
+                    arrowprops=dict(arrowstyle='->', color='#F57F17', lw=3))
+
+    # Draw arcs from depot to endpoints of P (the k-path arcs)
+    for endpt_id, lbl in [(1, 'enter P'), (3, 'leave P')]:
+        pos = customers[endpt_id]
+        d = pos - depot
+        nd = np.linalg.norm(d)
+        ax.annotate('', xy=pos - 0.07*d/nd, xytext=depot + 0.07*d/nd,
+                    arrowprops=dict(arrowstyle='->', color='#C62828', lw=2.5, linestyle='dashed'))
+
+    # Draw ellipse around path
+    cx = np.mean([customers[i][0] for i in P])
+    cy = np.mean([customers[i][1] for i in P]) + 0.02
+    ell = mpatches.Ellipse((cx, cy), 0.70, 0.32, angle=5,
+                            facecolor='none', edgecolor='#F57F17',
+                            linewidth=2, linestyle='--', zorder=2)
+    ax.add_patch(ell)
+
+    d_P = sum(demands[i] for i in P)
+    k = int(np.ceil(d_P / Q))
+    ax.text(0.50, 0.04,
+            fr'Path $P = \{{1,2,3\}}$,  $d(P) = {d_P}$,  $k = \lceil {d_P}/{Q} \rceil = {k}$'
+            f'\nk-Path Cut: at least {2*k} arcs cross δ(P) — one "enter" and one "leave" per vehicle trip',
+            ha='center', fontsize=10.5, color='#BF360C', fontweight='bold',
+            transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.35', facecolor='#FFFDE7',
+                      edgecolor='#F57F17', linewidth=1.5))
+
+    ax.set_xlim(0.02, 0.98)
+    ax.set_ylim(0.01, 1.0)
+    ax.set_title('k-Path Cut: Path Through Customers Forcing Multiple Vehicle Trips\n'
+                 'Yellow path nodes P={1,2,3}; red dashed = required boundary arcs',
+                 fontsize=11, fontweight='bold')
+    savefig('fig_kpath_cut.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_strong_degree_cuts.pdf — before/after strong degree cut
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_strong_degree_cuts():
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+
+    for ax_idx, ax in enumerate(axes):
+        ax.set_facecolor('#f8f8f8')
+        ax.axis('off')
+
+        depot = np.array([0.5, 0.5])
+        customers = {
+            1: np.array([0.20, 0.80]),
+            2: np.array([0.50, 0.90]),
+            3: np.array([0.80, 0.75]),
+            4: np.array([0.80, 0.30]),
+            5: np.array([0.20, 0.30]),
+        }
+
+        ax.plot(*depot, 's', color='#E53935', markersize=14, zorder=5,
+                markeredgecolor='#333', markeredgewidth=1.5)
+        ax.text(depot[0], depot[1]-0.09, 'Depot', ha='center', fontsize=10, fontweight='bold')
+
+        for cid, pos in customers.items():
+            ax.plot(*pos, 'o', color='white', markersize=20, zorder=4,
+                    markeredgecolor='#333', markeredgewidth=1.3)
+            ax.text(pos[0], pos[1], str(cid), ha='center', va='center',
+                    fontsize=10, fontweight='bold', zorder=5)
+
+        if ax_idx == 0:
+            # Fractional LP solution: fractional arcs to customer 5
+            arcs = [(depot, customers[1], '#2196F3', 2, 'solid', 'x₀₁=1'),
+                    (depot, customers[2], '#2196F3', 2, 'solid', 'x₀₂=1'),
+                    (depot, customers[5], '#FF9800', 2, 'dashed', 'x₀₅=0.6'),
+                    (customers[3], depot, '#2196F3', 2, 'solid', 'x₃₀=1'),
+                    (customers[4], depot, '#2196F3', 2, 'solid', 'x₄₀=1'),
+                    (customers[1], customers[2], '#2196F3', 1.5, 'solid', ''),
+                    (customers[2], customers[3], '#2196F3', 1.5, 'solid', ''),
+                    (customers[4], customers[5], '#FF9800', 1.5, 'dashed', ''),
+                    ]
+            ax.set_title('Before Strong Degree Cut\n'
+                         'x₀₅ = 0.6 (fractional — not integer)',
+                         fontsize=10, fontweight='bold')
+        else:
+            # After cut: x₀₅ forced to integer
+            arcs = [(depot, customers[1], '#2196F3', 2, 'solid', 'x₀₁=1'),
+                    (depot, customers[2], '#2196F3', 2, 'solid', 'x₀₂=1'),
+                    (depot, customers[5], '#4CAF50', 2.5, 'solid', 'x₀₅=1'),
+                    (customers[3], depot, '#2196F3', 2, 'solid', 'x₃₀=1'),
+                    (customers[4], depot, '#2196F3', 2, 'solid', 'x₄₀=1'),
+                    (customers[1], customers[2], '#2196F3', 1.5, 'solid', ''),
+                    (customers[2], customers[3], '#2196F3', 1.5, 'solid', ''),
+                    (customers[4], customers[5], '#4CAF50', 1.5, 'solid', ''),
+                    ]
+            ax.set_title('After Strong Degree Cut\n'
+                         'x₀₅ = 1 (forced to integer by the cut)',
+                         fontsize=10, fontweight='bold')
+
+        for (p1, p2, color, lw, ls, lbl) in arcs:
+            d = p2 - p1
+            nd = np.linalg.norm(d)
+            ax.annotate('', xy=p2 - 0.06*d/max(nd,1e-6),
+                        xytext=p1 + 0.06*d/max(nd,1e-6),
+                        arrowprops=dict(arrowstyle='->', color=color,
+                                        lw=lw, linestyle=ls))
+            if lbl:
+                mid = 0.5*(p1+p2)
+                ax.text(mid[0]+0.04, mid[1]+0.03, lbl,
+                        fontsize=8, color=color, fontweight='bold', ha='center')
+
+        ax.set_xlim(0.05, 0.95)
+        ax.set_ylim(0.05, 1.0)
+
+    fig.suptitle('Strong Degree Cuts: Forcing Fractional Depot-Adjacent Arcs to Integer Values',
+                 fontsize=12, fontweight='bold', y=1.01)
+    plt.tight_layout()
+    savefig('fig_strong_degree_cuts.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_src.pdf — Subset Row Cut illustration
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_src():
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    ax.set_facecolor('white')
+    ax.axis('off')
+
+    # Show 4 routes and subset C = {1, 2, 3}
+    routes_data = [
+        ('Route A: 0→1→2→3→0', [1,2,3], 0.3, '#2196F3'),
+        ('Route B: 0→1→3→4→0', [1,3],   0.4, '#E91E63'),
+        ('Route C: 0→2→4→0',   [2],     0.2, '#4CAF50'),
+        ('Route D: 0→3→5→0',   [3],     0.1, '#FF9800'),
+    ]
+    C = {1, 2, 3}
+
+    col_headers = ['Route', 'λ', 'C={1,2,3}\nvisits', '⌊visits/2⌋', 'contribution']
+    col_x = [0.5, 2.8, 4.5, 6.2, 7.8]
+    for hdr, xp in zip(col_headers, col_x):
+        ax.text(xp, 4.3, hdr, ha='center', va='center', fontsize=10, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='#E3F2FD',
+                          edgecolor='#1565C0', lw=1.2))
+
+    total_contrib = 0.0
+    for i, (name, cust_list, lam, color) in enumerate(routes_data):
+        y = 3.3 - i * 0.85
+        visits_in_C = sum(1 for c in cust_list if c in C)
+        floor_half = visits_in_C // 2
+        contrib = floor_half * lam
+        total_contrib += contrib
+
+        fc = '#F3F4F6'
+        ax.text(col_x[0], y, name, ha='center', va='center', fontsize=9,
+                color=color, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.25', facecolor=fc,
+                          edgecolor=color, lw=1.5))
+        for xp, val in zip(col_x[1:], [f'{lam}', str(visits_in_C),
+                                         str(floor_half), f'{contrib:.2f}']):
+            ax.text(xp, y, val, ha='center', va='center', fontsize=10,
+                    color='#333',
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white',
+                              edgecolor='#ccc', lw=0.8))
+
+    # Total and bound
+    rhs = len(C) // 2
+    violated = total_contrib > rhs
+    summary_color = '#B71C1C' if violated else '#2E7D32'
+    ax.text(0.5, -0.1,
+            fr'Sum of contributions = {total_contrib:.2f}   |   RHS = ⌊|C|/2⌋ = ⌊3/2⌋ = {rhs}'
+            f'\nSRC: Σ ⌊visits_r/2⌋ · λ_r ≤ {rhs}'
+            + (' ← VIOLATED! (cut should be added)' if violated else ' ← SATISFIED'),
+            ha='center', fontsize=11, color=summary_color, fontweight='bold',
+            transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.4', facecolor='#FFEBEE' if violated else '#E8F5E9',
+                      edgecolor=summary_color, lw=1.8))
+
+    ax.set_xlim(-0.5, 9.5)
+    ax.set_ylim(-0.6, 5.0)
+    ax.set_title(r'Subset Row Cut (SRC) for $\mathcal{C} = \{1, 2, 3\}$:' + '\n'
+                 r'Bound on total "half-coverage" of $\mathcal{C}$ by all routes',
+                 fontsize=11, fontweight='bold')
+    savefig('fig_src.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_column_generation.pdf — column generation loop diagram
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_column_generation():
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Left: schematic of the column generation loop
+    ax = axes[0]
+    ax.set_facecolor('white')
+    ax.axis('off')
+
+    boxes_cg = [
+        (0.5, 0.88, 'Restricted Master Problem (RMP)\nSolve LP: min Σ c_r λ_r\ns.t. Σ a_ir λ_r ≥ 1  ∀i', '#1565C0', 'white', 9),
+        (0.5, 0.55, 'Pricing Sub-Problem\n(SPPRC): find route r*\nwith min reduced cost\n'
+                    'c̄_r* = c_r* − Σ a_{ir*} π_i', '#00838F', 'white', 9),
+        (0.15, 0.22, 'c̄_r* < 0:\nAdd r* to RMP\nRe-solve', '#E65100', 'white', 9),
+        (0.85, 0.22, 'c̄_r* ≥ 0:\nLP optimal!\nNo improving\nroute exists', '#2E7D32', 'white', 9),
+    ]
+    for (x, y, txt, fc, tc, fs) in boxes_cg:
+        ax.text(x, y, txt, ha='center', va='center', fontsize=fs,
+                color=tc, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.4', facecolor=fc,
+                          edgecolor='#333', lw=1.5),
+                transform=ax.transAxes, zorder=3)
+
+    arrows_cg = [
+        (0.5, 0.78, 0.5, 0.68, 'π* (dual vars)'),
+        (0.5, 0.42, 0.15, 0.33, 'neg. r.c.'),
+        (0.5, 0.42, 0.85, 0.33, 'non-neg. r.c.'),
+        (0.15, 0.11, 0.15, 0.88, 'loop'),
+    ]
+    for (x1, y1, x2, y2, lbl) in arrows_cg:
+        ax.annotate('', xy=(x2, y2), xytext=(x1, y1),
+                    xycoords='axes fraction', textcoords='axes fraction',
+                    arrowprops=dict(arrowstyle='->', color='#555', lw=2))
+        mid = (0.5*(x1+x2)+0.03, 0.5*(y1+y2)+0.02)
+        ax.text(mid[0], mid[1], lbl, fontsize=8, color='#444',
+                ha='center', transform=ax.transAxes)
+
+    ax.set_title('Column Generation Loop\n(SPPRC Pricing + RMP)', fontsize=11, fontweight='bold')
+
+    # Right: convergence plot
+    ax2 = axes[1]
+    iters = np.arange(1, 26)
+    lb = 98 + 22 * (1 - np.exp(-0.3 * iters))
+    rng = np.random.RandomState(7)
+    ub = 130 - 13 * (1 - np.exp(-0.45 * iters)) + rng.normal(0, 0.8, 25)
+    ub = np.maximum(ub, lb + 0.1)
+
+    ax2.plot(iters, lb, 'b-o', markersize=4, label='LP Lower Bound (column gen.)', lw=2)
+    ax2.plot(iters, ub, 'r--s', markersize=4, label='Upper Bound (best integer)', lw=2)
+    ax2.fill_between(iters, lb, ub, alpha=0.15, color='orange', label='Optimality gap')
+    ax2.set_xlabel('Column Generation Iteration', fontsize=11)
+    ax2.set_ylabel('Objective Value', fontsize=11)
+    ax2.set_title('Convergence of Column Generation\n(lower bound grows, gap shrinks)', fontsize=11, fontweight='bold')
+    ax2.legend(fontsize=9)
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    savefig('fig_column_generation.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_spprc.pdf — SPPRC labelling
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_spprc():
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+    ax.set_facecolor('white')
+    ax.axis('off')
+
+    nodes_pos = {
+        'Depot\n(0)': np.array([0.06, 0.50]),
+        'C1\n(q=3)':  np.array([0.28, 0.78]),
+        'C2\n(q=4)':  np.array([0.28, 0.25]),
+        'C3\n(q=5)':  np.array([0.55, 0.82]),
+        'C4\n(q=2)':  np.array([0.55, 0.20]),
+        'C5\n(q=3)':  np.array([0.78, 0.55]),
+        'Depot\n(sink)': np.array([0.95, 0.50]),
+    }
+    node_colors = ['#E53935', '#1E88E5', '#1E88E5',
+                   '#1E88E5', '#1E88E5', '#1E88E5', '#E53935']
+
+    for (nid, pos), col in zip(nodes_pos.items(), node_colors):
+        ax.plot(*pos, 'o', color=col, markersize=28, zorder=4,
+                markeredgecolor='#333', markeredgewidth=1.5)
+        ax.text(pos[0], pos[1], nid, ha='center', va='center',
+                fontsize=7.5, fontweight='bold', color='white', zorder=5)
+
+    # Edges: (src_key, dst_key, arc_cost, demand_j)
+    edges = [
+        ('Depot\n(0)',  'C1\n(q=3)',      10, 3),
+        ('Depot\n(0)',  'C2\n(q=4)',       8, 4),
+        ('C1\n(q=3)',   'C3\n(q=5)',       7, 5),
+        ('C1\n(q=3)',   'C5\n(q=3)',      12, 3),
+        ('C2\n(q=4)',   'C4\n(q=2)',       6, 2),
+        ('C3\n(q=5)',   'C5\n(q=3)',       5, 3),
+        ('C4\n(q=2)',   'C5\n(q=3)',       9, 3),
+        ('C5\n(q=3)',   'Depot\n(sink)',   8, 0),
+        ('C3\n(q=5)',   'Depot\n(sink)',  11, 0),
+        ('C4\n(q=2)',   'Depot\n(sink)',  13, 0),
+    ]
+
+    for (src, dst, arc_c, dem) in edges:
+        p1 = nodes_pos[src]
+        p2 = nodes_pos[dst]
+        d = p2 - p1
+        nd = np.linalg.norm(d)
+        ax.annotate('', xy=p2 - 0.04*d/max(nd,1e-6),
+                    xytext=p1 + 0.04*d/max(nd,1e-6),
+                    arrowprops=dict(arrowstyle='->', color='#555', lw=1.6))
+        mid = 0.5*(p1+p2)
+        perp = np.array([-(p2-p1)[1], (p2-p1)[0]])
+        if np.linalg.norm(perp) > 0:
+            perp = perp / np.linalg.norm(perp) * 0.04
+        lbl = f'c={arc_c}' + (f', q={dem}' if dem > 0 else '')
+        ax.text(mid[0]+perp[0], mid[1]+perp[1], lbl,
+                fontsize=7.5, ha='center',
+                bbox=dict(boxstyle='round,pad=0.12', facecolor='#FFF9C4',
+                          edgecolor='#aaa', lw=0.7))
+
+    # Best label annotations at selected nodes
+    best_labels = [
+        ('C1\n(q=3)',  'L=(10, 3)', '#1565C0'),
+        ('C3\n(q=5)',  'L=(17, 8)', '#1565C0'),
+        ('C5\n(q=3)',  'L=(22, 6)', '#2E7D32'),
+        ('Depot\n(sink)', 'Best: L=(30,6)\n→ route: 0→1→3→5→0', '#2E7D32'),
+    ]
+    for (nid, lbl, color) in best_labels:
+        pos = nodes_pos[nid]
+        offset = np.array([0.0, -0.14]) if 'sink' in nid else np.array([0.0, 0.14])
+        ax.text(pos[0]+offset[0], pos[1]+offset[1], lbl,
+                ha='center', fontsize=8, color=color, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.25', facecolor='#E8F5E9',
+                          edgecolor=color, lw=1.2))
+
+    ax.set_title('SPPRC Labelling Algorithm: Finding the Minimum Reduced-Cost Route\n'
+                 'Each label L=(cost, cumulative load). Extend only if load + q_j ≤ Q = 10.',
+                 fontsize=11, fontweight='bold')
+    ax.text(0.5, 0.01,
+            'Arc labels: c = arc cost, q = customer demand. '
+            'Q = 10.  Route 0→1→3→5→0: load=3+5+3=11 > 10 — infeasible!  '
+            'Route 0→1→5→0: load=3+3=6 ≤ 10 — feasible.',
+            ha='center', fontsize=8.5, color='#555', transform=ax.transAxes)
+    savefig('fig_spprc.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_route_enumeration.pdf — route enumeration vs branching
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_route_enumeration():
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.set_facecolor('white')
+    ax.axis('off')
+
+    boxes = [
+        (0.50, 0.90, 'Set-Partitioning MIP\n(exponentially many route variables)', '#1565C0', 'white', 12),
+        (0.24, 0.65, 'Route Enumeration\n(Baldacci et al. 2008)\nEnumerate ALL improving\nroutes offline\n→ Feed to MIP solver', '#0288D1', 'white', 10),
+        (0.76, 0.65, 'Column-Generation BPC\n(Contardo & Martinelli 2014)\nGenerate routes on-the-fly\nvia SPPRC pricing\nat each B&B node', '#2E7D32', 'white', 10),
+        (0.24, 0.35, 'Strengths:\n• Fast MIP solve after enum\n• No repeated pricing\nWeaknesses:\n• Memory: all routes in RAM\n• Scales to n ≤ 100', '#4FC3F7', '#222', 9),
+        (0.76, 0.35, 'Strengths:\n• Scales to n > 100\n• Memory-efficient\nWeaknesses:\n• Re-solves SPPRC at every\n  B&B node (expensive)', '#A5D6A7', '#222', 9),
+        (0.50, 0.07, 'State-of-the-art solvers (2014) use a HYBRID:\nEnumeration near the leaf nodes of BPC tree;\nColumn generation at the root and upper levels.', '#F57F17', 'black', 10),
+    ]
+
+    for (x, y, txt, fc, tc, fs) in boxes:
+        ax.text(x, y, txt, ha='center', va='center', fontsize=fs,
+                color=tc, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.45', facecolor=fc,
+                          edgecolor='#333', lw=1.5),
+                transform=ax.transAxes, zorder=3)
+
+    arrows = [
+        (0.50, 0.84, 0.24, 0.74),
+        (0.50, 0.84, 0.76, 0.74),
+        (0.24, 0.56, 0.24, 0.44),
+        (0.76, 0.56, 0.76, 0.44),
+        (0.24, 0.26, 0.50, 0.13),
+        (0.76, 0.26, 0.50, 0.13),
+    ]
+    for (x1, y1, x2, y2) in arrows:
+        ax.annotate('', xy=(x2, y2), xytext=(x1, y1),
+                    xycoords='axes fraction', textcoords='axes fraction',
+                    arrowprops=dict(arrowstyle='->', color='#555', lw=2))
+
+    ax.set_title('Route Enumeration vs. On-the-Fly Column Generation in BPC',
+                 fontsize=12, fontweight='bold', y=0.98)
+    savefig('fig_route_enumeration.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_benchmark_results.pdf — algorithm comparison bar charts
+# ─────────────────────────────────────────────────────────────────────────────
+def fig_benchmark_results():
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    algos     = ['Christofides\n(1981)', 'Toth &\nVigo (2002)',
+                 'Fukasawa\net al. (2006)', 'Baldacci\net al. (2008)',
+                 'Contardo &\nMartinelli (2014)']
+    pct       = [37, 74, 81, 89, 96]
+    avg_times = [None, 3200, 2100, 1450, 980]
+    colors    = ['#78909C','#1E88E5','#43A047','#FB8C00','#E53935']
+
+    ax = axes[0]
+    bars = ax.bar(algos, pct, color=colors, edgecolor='black', linewidth=0.7)
+    for bar, val in zip(bars, pct):
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height()+0.8,
+                f'{val}%', ha='center', va='bottom', fontsize=10, fontweight='bold')
+    ax.set_ylabel('% Instances Solved to Optimality', fontsize=11)
+    ax.set_title('Benchmark: Instances Solved\n(Augerat A+B+P sets)', fontsize=11, fontweight='bold')
+    ax.set_ylim(0, 110)
+    ax.grid(axis='y', alpha=0.3)
+    ax.tick_params(axis='x', labelsize=8)
+
+    ax2 = axes[1]
+    times = [t for t in avg_times if t is not None]
+    lbls  = [a for a, t in zip(algos, avg_times) if t is not None]
+    cols2 = [c for c, t in zip(colors, avg_times) if t is not None]
+    bars2 = ax2.bar(lbls, times, color=cols2, edgecolor='black', linewidth=0.7)
+    for bar, val in zip(bars2, times):
+        ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height()+15,
+                 f'{val}s', ha='center', va='bottom', fontsize=9, fontweight='bold')
+    ax2.set_ylabel('Average CPU Time (seconds)', fontsize=11)
+    ax2.set_title('Benchmark: Average Solve Time\n(lower = faster)', fontsize=11, fontweight='bold')
+    ax2.grid(axis='y', alpha=0.3)
+    ax2.tick_params(axis='x', labelsize=8)
+
+    plt.tight_layout()
+    fig.suptitle('Approximate Comparison of Exact CVRP Algorithms on Standard Benchmarks\n'
+                 '(Values are indicative — actual results depend on hardware and time limits)',
+                 fontsize=11, fontweight='bold', y=1.03)
+    savefig('fig_benchmark_results.pdf')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fig_node_comparison.pdf — BPC tree node comparison
 # ─────────────────────────────────────────────────────────────────────────────
 def fig_node_comparison():
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(10, 5))
 
-    # Approximate data from tables in the chapter
-    instance_names = ['A-n32-k5', 'A-n55-k9', 'B-n45-k5', 'B-n68-k9',
-                      'P-n55-k15', 'P-n101-k4', 'Golden 1', 'Golden 5']
-    nodes_old = [250, 4800, 380, 6200, 1500, 12000, 35000, 95000]
-    nodes_new = [18,  320,   22,  480,   95,   870,  2200,   8500]
+    instances = ['A-n32-k5', 'A-n46-k7', 'B-n41-k6', 'P-n55-k8',
+                 'CMT-n50', 'CMT-n75', 'CMT-n100']
+    nodes_old = [1200, 8500, 3200, 22000, 35000, 120000, 500000]
+    nodes_new = [85,   380,  210,  950,   1800,  6200,   28000]
 
-    x = np.arange(len(instance_names))
-    w = 0.35
-    b1 = ax.bar(x - w/2, nodes_old, w, label='Fukasawa et al. (2006)', color='steelblue', alpha=0.8)
-    b2 = ax.bar(x + w/2, nodes_new, w, label='Contardo & Martinelli (2014)', color='tomato', alpha=0.8)
-    ax.set_xticks(x)
-    ax.set_xticklabels(instance_names, rotation=30, ha='right', fontsize=9)
+    x = np.arange(len(instances))
+    width = 0.35
+
+    b1 = ax.bar(x - width/2, nodes_old, width, color='#78909C',
+                label='Fukasawa et al. (2006)', edgecolor='black', lw=0.7)
+    b2 = ax.bar(x + width/2, nodes_new, width, color='#E53935',
+                label='Contardo & Martinelli (2014)', edgecolor='black', lw=0.7)
+
     ax.set_yscale('log')
-    ax.set_ylabel('Number of BPC Tree Nodes (log scale)')
-    ax.set_title('Branch-Price-Cut Tree Nodes: Old vs. New BPC Algorithms\n'
-                 '(approximate values from chapter tables)', fontsize=10)
+    ax.set_ylabel('BPC Tree Nodes (log scale)', fontsize=11)
+    ax.set_title('Number of BPC Tree Nodes: 2006 vs. 2014 Algorithms\n'
+                 'SRCs + ng-routes + strong branching reduce nodes by 1–2 orders of magnitude',
+                 fontsize=11, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(instances, rotation=20, fontsize=9)
     ax.legend(fontsize=10)
-    ax.grid(axis='y', alpha=0.4, linestyle='--')
-    fig.tight_layout()
-    save(fig, "fig_node_comparison.pdf")
+    ax.grid(axis='y', alpha=0.3, which='both')
+
+    for bar, val in zip(b1, nodes_old):
+        ax.text(bar.get_x() + bar.get_width()/2, val*1.15,
+                f'{val:,}', ha='center', va='bottom', fontsize=7, color='#333')
+    for bar, val in zip(b2, nodes_new):
+        ax.text(bar.get_x() + bar.get_width()/2, val*1.15,
+                f'{val:,}', ha='center', va='bottom', fontsize=7, color='#C62828',
+                fontweight='bold')
+
+    plt.tight_layout()
+    savefig('fig_node_comparison.pdf')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main
+# Run all
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    print("Generating figures for Chapter 3 ...")
-    fig_cvrp_instance()
+    print("Generating figures for Chapter 3: New Exact Algorithms for the CVRP ...")
+    fig_bpc_flowchart()
     fig_bb_tree()
+    fig_cvrp_instance()
     fig_set_partitioning()
     fig_capacity_cut()
-    fig_spprc()
-    fig_bpc_flowchart()
-    fig_benchmark_results()
-    fig_strong_degree_cuts()
-    fig_route_enumeration()
     fig_kpath_cut()
+    fig_strong_degree_cuts()
     fig_src()
     fig_column_generation()
+    fig_spprc()
+    fig_route_enumeration()
+    fig_benchmark_results()
     fig_node_comparison()
     print("All figures generated successfully.")

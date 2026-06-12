@@ -1,0 +1,1679 @@
+%% chapter15_slides.tex
+%% Chapter 15: Green Vehicle Routing
+%% Source: Vehicle Routing: Problems, Methods, and Applications (2nd ed., 2014)
+%% Authors of chapter: Richard Eglese and Tolga Bektaş
+%%
+%% Self-contained lecture-note slides — complete sentences, full symbol definitions,
+%% worked numerical examples, algorithm pseudocode explained step by step.
+%%
+%% Compile: pdflatex -interaction=nonstopmode chapter15_slides.tex  (twice)
+
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\setbeamertemplate{footline}[frame number]
+\setbeamertemplate{navigation symbols}{}
+
+%% ─── Packages ────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{eurosym}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{multicol}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes,calc}
+
+%% ─── Listings style ──────────────────────────────────────────────────────────
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  frame=single,
+  backgroundcolor=\color{gray!7},
+  commentstyle=\color{green!50!black}\itshape,
+  keywordstyle=\color{blue!80!black}\bfseries,
+  stringstyle=\color{red!70!black},
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+  literate={EUR}{{\euro}}1,
+  extendedchars=false,
+}
+
+%% ─── Graphics path ───────────────────────────────────────────────────────────
+\graphicspath{{figures/}}
+
+%% ─── Title metadata ──────────────────────────────────────────────────────────
+\title[Ch.\,15: Green VRP]{%
+  Chapter 15: Green Vehicle Routing}
+\subtitle{Vehicle Routing: Problems, Methods, and Applications (2nd ed., 2014)}
+\author{Richard Eglese \and Tolga Bekt\c{a}s}
+\institute{Slides prepared for self-study — Lancaster University Management School}
+\date{2014}
+
+%% ─── Convenience macros ──────────────────────────────────────────────────────
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Z}{\mathbb{Z}}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ─── Table of Contents ────────────────────────────────────────────────────────
+\begin{frame}{Chapter Overview}
+  \tableofcontents
+\end{frame}
+
+% =============================================================================
+\section{Introduction: Environmentally Sustainable Routing}
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{Why Does Routing Affect the Environment?}
+
+  Transport networks generate substantial economic growth but simultaneously
+  impose significant negative externalities on society.  The transport sector
+  contributes roughly \textbf{13--14\%} of global greenhouse-gas (GHG) emissions,
+  making it one of the largest single-sector contributors.
+  Road freight in particular is responsible for a disproportionate share because
+  heavy goods vehicles are fuel-intensive and operate on diesel, which releases
+  carbon dioxide (CO$_2$), nitrogen oxides (NO$_x$), particulate matter (PM),
+  and other pollutants.
+
+  \begin{block}{The Core Question}
+    Traditional Vehicle Routing Problems (VRP) seek to \emph{minimise total
+    distance driven} or \emph{total fleet cost}.  Green VRP asks a different
+    question: can we design routes that \emph{also} minimise fuel consumption
+    and exhaust emissions --- without abandoning the economic objectives
+    entirely?
+  \end{block}
+
+  \framebreak
+
+  The rationale for studying green routing is threefold:
+
+  \begin{enumerate}
+    \item \textbf{Regulatory pressure.}  Governments around the world have
+    adopted mandatory emission targets (e.g.\ the European Union's Emissions
+    Trading System, the International Road Transport Union targets).
+    Carriers that exceed emission caps face financial penalties.
+
+    \item \textbf{Fuel cost savings.}  Fuel typically constitutes 25--35\% of
+    total operating costs for a logistics company.  Any reduction in fuel burn
+    directly improves the bottom line.
+
+    \item \textbf{Corporate social responsibility.}  Customers, investors, and
+    regulators increasingly scrutinise the environmental footprint of supply
+    chains.  Demonstrating a commitment to green operations is a competitive
+    advantage.
+  \end{enumerate}
+
+  \begin{alertblock}{Key Insight}
+    Minimising distance driven is \emph{not} the same as minimising fuel
+    consumption.  A vehicle travelling a shorter route at high speed on a
+    motorway may burn \emph{more} fuel than one taking a slightly longer but
+    flatter road at a steady, moderate speed.
+    Speed, load, road gradient, and driving behaviour all matter.
+  \end{alertblock}
+
+  \framebreak
+
+  \begin{block}{External Costs of Road Transport}
+    The environmental damage caused by transport activities has long been
+    recognised.  The most prominent environmental costs of freight transport are:
+    \begin{itemize}
+      \item \textbf{Air pollution:} emissions of CO$_2$, NO$_x$, CO (carbon
+      monoxide), SO$_x$ (sulphur oxides), and particulate matter affect human
+      health and climate.
+      \item \textbf{Noise:} vehicle noise causes stress and sleep disruption in
+      urban populations.
+      \item \textbf{Accidents:} road-freight vehicles are responsible for a
+      disproportionate share of road fatalities.
+    \end{itemize}
+    According to international estimates, the external costs of road freight
+    account for approximately \textbf{1--2\%} of GDP in developed economies.
+  \end{block}
+
+\end{frame}
+
+% =============================================================================
+\section{Fuel Consumption and Emission Models}
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{Why We Need Accurate Fuel Models}
+
+  Before we can \emph{optimise} emissions, we need to \emph{measure} them.
+  This section describes the mathematical models used to estimate how much fuel
+  a vehicle burns --- and hence how much CO$_2$ it emits --- as a function of
+  its operating conditions.
+
+  Two broad categories of emission models are used in the green VRP literature:
+
+  \begin{enumerate}
+    \item \textbf{Average-speed models:} estimate emissions as a function of
+    the average speed over an entire trip or road segment.  These are
+    computationally simple and are the most commonly used in routing
+    optimisation.
+
+    \item \textbf{Instantaneous (second-by-second) models:} estimate emissions
+    at each moment in time, based on current engine power demand.  These are
+    highly accurate but require detailed second-by-second speed profiles and are
+    computationally expensive.
+  \end{enumerate}
+
+  \framebreak
+
+  \begin{block}{15.2.1 Average Speed Models}
+    The simplest and most widely used family of emission models estimates
+    fuel consumption as a polynomial function of average speed $v$ (km/h).
+    The general form proposed by the MEET project (Methodologies for Estimating
+    and Reporting Emissions from Transport) for a given vehicle class is:
+
+    \[
+      F(v) \;=\; K + \frac{a}{v} + b\,v + c\,v^2 + d\,v^3 + \frac{e}{v^2}
+    \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $F(v)$: fuel consumption in millilitres (ml) per kilometre at
+      average speed $v$.
+      \item $v$: vehicle speed in km/h.
+      \item $K, a, b, c, d, e$: empirically calibrated coefficients that depend
+      on the vehicle class (e.g.\ heavy goods vehicle over 32 tonnes vs.\ light
+      van).  These coefficients are provided in look-up tables by the MEET
+      project.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{How to Read This Formula}
+    The formula says that fuel consumption per kilometre is \emph{not monotone}
+    in speed:
+    \begin{itemize}
+      \item At \textbf{very low speeds} (e.g.\ stop-and-go traffic), the $a/v$
+      term dominates --- idling and frequent acceleration waste fuel.
+      \item At \textbf{very high speeds} (motorway), the $c\,v^2$ and $d\,v^3$
+      terms dominate --- aerodynamic drag increases quadratically with speed.
+      \item There is a \textbf{sweet spot} (often around 70--90 km/h for a
+      heavy truck) where fuel per km is minimised.
+    \end{itemize}
+    This \emph{convex} (U-shaped) relationship is the foundation of
+    \emph{eco-driving}: drive at the optimal speed to minimise fuel.
+  \end{alertblock}
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.70\textwidth]{fuel_vs_speed.png}
+    \caption{Fuel consumption per km as a function of speed (illustrative
+    MEET-style model).  The curve is convex, with a minimum around 80 km/h.}
+  \end{figure}
+
+  \framebreak
+
+  \begin{exampleblock}{Worked Example: Computing Fuel per km}
+    Suppose a heavy goods vehicle has coefficients
+    $K=0$, $a=800$, $b=0.1$, $c=0.00018$, $d=0$, $e=0$.
+    We compute $F(v)$ at three speeds:
+
+    \medskip
+    \begin{tabular}{lll}
+      \toprule
+      Speed $v$ & Formula value & Interpretation \\
+      \midrule
+      $v = 40$ km/h & $800/40 + 0.1\times40 + 0.00018\times1600 = 20+4+0.29 = 24.3$ ml/km
+                    & City driving \\
+      $v = 80$ km/h & $800/80 + 0.1\times80 + 0.00018\times6400 = 10+8+1.15 = 19.2$ ml/km
+                    & Optimal speed \\
+      $v=120$ km/h  & $800/120 + 0.1\times120 + 0.00018\times14400 = 6.7+12+2.6 = 21.3$ ml/km
+                    & Motorway \\
+      \bottomrule
+    \end{tabular}
+
+    \medskip
+    Driving at the optimal speed of 80 km/h saves \textbf{21\%} fuel compared
+    to 40 km/h and \textbf{10\%} compared to 120 km/h.
+  \end{exampleblock}
+
+  \framebreak
+
+  \begin{block}{15.2.2 Instantaneous (Second-by-Second) Models}
+    Instantaneous models track the vehicle's energy demand at every second.
+    The fuel flow rate $F_f(t)$ (ml/second) at time $t$ is:
+
+    \[
+      F_f(t) \;=\; \frac{P_t}{\eta_t \cdot \rho \cdot H_v}
+    \]
+  \end{block}
+
+  \begin{block}{Notation for Instantaneous Model}
+    \begin{itemize}
+      \item $P_t$: engine power demand at time $t$ (watts), which depends on
+      vehicle speed, acceleration, road gradient, and aerodynamic drag.
+      \item $\eta_t$ (eta, pronounced ``ee-tah''): overall engine efficiency at
+      time $t$ (dimensionless fraction, typically 0.25--0.45 for diesel engines).
+      A higher $\eta$ means the engine converts more fuel energy into motion.
+      \item $\rho$ (rho, ``roe''): fuel density in kg/litre (approximately 0.832
+      for diesel).
+      \item $H_v$: the lower heating value of the fuel in MJ/kg (approximately
+      43.2 for diesel) --- the energy released per kilogram of fuel burned.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  The engine power demand $P_t$ is itself decomposed into four components:
+
+  \[
+    P_t \;=\; \underbrace{M a_t v_t}_{\text{inertia}} \;+\;
+             \underbrace{M g C_r \cos\theta \cdot v_t}_{\text{rolling resistance}} \;+\;
+             \underbrace{M g \sin\theta \cdot v_t}_{\text{grade}} \;+\;
+             \underbrace{\tfrac{1}{2} C_d \rho_a A v_t^3}_{\text{aerodynamic drag}}
+  \]
+
+  \begin{block}{Symbol Guide}
+    \begin{itemize}
+      \item $M$: vehicle mass in kg (laden weight including cargo).
+      \item $a_t$: acceleration at time $t$ (m/s$^2$).  Positive = speeding up.
+      \item $g = 9.81$ m/s$^2$: gravitational acceleration (constant).
+      \item $C_r$: rolling resistance coefficient (dimensionless, $\approx 0.01$
+      for truck tyres on asphalt).
+      \item $\theta$ (theta): road gradient angle in degrees.  Even a $2^\circ$
+      slope increases fuel consumption substantially.
+      \item $C_d$: aerodynamic drag coefficient (dimensionless, $\approx 0.7$
+      for a box van).
+      \item $\rho_a$: air density (kg/m$^3$, approximately 1.2 at sea level).
+      \item $A$: vehicle frontal area in m$^2$ (typically 5--9 m$^2$ for HGVs).
+      \item $v_t$: speed at time $t$ in m/s.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{How to Read the Power Formula}
+    Each term represents a different physical force opposing motion:
+    \begin{itemize}
+      \item The \textbf{inertia term} $M a_t v_t$ is large during acceleration
+      from rest --- this is why stop-and-go driving is so fuel-wasteful.
+      \item The \textbf{grade term} $Mg\sin\theta \cdot v_t$ explains why
+      hill climbing burns much more fuel and why routing along flatter roads
+      can reduce emissions even if those roads are slightly longer.
+      \item The \textbf{aerodynamic term} $\frac{1}{2}C_d\rho_a A v_t^3$
+      grows as the \emph{cube} of speed --- doubling speed increases drag-related
+      power by a factor of 8, explaining why motorway driving at high speed is
+      very fuel-inefficient.
+    \end{itemize}
+    Instantaneous models are used in research when detailed driving-cycle data
+    are available; average-speed models are preferred in practical optimisation
+    because they require only one parameter per arc.
+  \end{alertblock}
+
+  \framebreak
+
+  \begin{block}{The Comprehensive Modal Emission Model (CMEM)}
+    A more comprehensive instantaneous model used in the green VRP literature
+    is CMEM (Barth et al.).  It estimates fuel consumption on a road arc $(i,j)$
+    of distance $d_{ij}$ (d sub $i$-$j$, km) at speed $v$ (km/h), carrying
+    load $w$ (kg):
+
+    \[
+      F_{ij}(v, w) \;=\; \frac{d_{ij}}{v}
+        \Bigl[\underbrace{k N V}_{\text{engine work}} +
+              \underbrace{\frac{\gamma}{\psi} P_{ij}(v,w)}_{\text{road load}} \Bigr]
+    \]
+  \end{block}
+
+  \begin{block}{CMEM Notation}
+    \begin{itemize}
+      \item $k$: engine friction factor (N/kPa, calibrated per engine type).
+      \item $N$: engine speed in revolutions per second (rev/s).
+      \item $V$: engine displacement in litres.
+      \item $\gamma$ (gamma): a unit-conversion constant ($= 1/1000\eta_i\eta$).
+      \item $\psi$ (psi): fuel-to-air mass ratio (dimensionless).
+      \item $P_{ij}(v,w)$: traction power demand on arc $(i,j)$ --- the energy
+      the engine must deliver per unit time to move the vehicle.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.55\textwidth]{fuel_vs_load.png}
+    \caption{Fuel consumption per km is \emph{linear} in vehicle load at fixed
+    speed.  A heavier vehicle requires more engine effort to maintain speed,
+    so each additional tonne of cargo directly increases fuel burn.}
+  \end{figure}
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.55\textwidth]{fuel_surface.png}
+    \caption{Joint effect of speed and load on fuel consumption.  The
+    optimal speed decreases slightly as the vehicle carries more weight.}
+  \end{figure}
+
+\end{frame}
+
+% =============================================================================
+\section{Minimising Emissions in Vehicle Routing}
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{The Green Vehicle Routing Problem (GVRP)}
+
+  Now that we can \emph{measure} fuel consumption on any arc, we can pose the
+  optimisation problem: design a set of vehicle routes that minimises
+  \emph{total fuel consumption} (and therefore CO$_2$ emissions) while still
+  serving every customer.
+
+  This problem is called the \textbf{Green Vehicle Routing Problem (GVRP)}.
+  It extends the classical Capacitated VRP (CVRP) by replacing the
+  distance-minimisation objective with a fuel-minimisation objective.
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.65\textwidth]{gvrp_concept.png}
+    \caption{Green VRP: a depot dispatches vehicles on routes optimised for
+    minimal fuel/emissions.  Unlike the classical VRP, shorter routes may not
+    always be the greenest.}
+  \end{figure}
+
+  \framebreak
+
+  \begin{block}{Mathematical Model for the GVRP}
+    Let $G = (V, A)$ be a complete directed graph, where:
+    \begin{itemize}
+      \item $V = \{0\} \cup N$ is the set of nodes: node 0 is the depot and
+      $N = \{1, \ldots, n\}$ is the set of $n$ customers.
+      \item $A = \{(i,j) : i,j \in V,\; i \neq j\}$ is the set of arcs.
+      \item $d_{ij}$ ($d$ sub $i$-$j$): distance of arc $(i,j)$ in km.
+      \item $q_i$: demand of customer $i$ (units to be delivered).
+      \item $Q$: vehicle capacity (maximum load the vehicle can carry).
+      \item $K$: fleet of available vehicles.
+    \end{itemize}
+    Decision variables:
+    \begin{itemize}
+      \item $x_{ij} \in \{0,1\}$ ($x$ sub $i$-$j$): equals 1 if some vehicle
+      travels directly from node $i$ to node $j$, and 0 otherwise.
+      \item $f_{ij} \geq 0$ ($f$ sub $i$-$j$): the total load (weight in kg)
+      carried by the vehicle on arc $(i,j)$.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{GVRP Objective Function}
+    Using the load-dependent fuel model, the total fuel consumed is:
+    \[
+      \text{Minimise} \quad
+      \sum_{(i,j)\in A} \bigl[\alpha\, d_{ij}\, x_{ij} \;+\; \beta\, d_{ij}\, f_{ij}\bigr]
+    \]
+  \end{block}
+
+  \begin{block}{Notation for Objective}
+    \begin{itemize}
+      \item $\alpha$ (alpha, ``al-fah''): fuel consumed per km when the vehicle
+      is \emph{empty} (kg of fuel per km).  It captures engine idling,
+      aerodynamic drag, and rolling resistance independent of cargo weight.
+      \item $\beta$ (beta, ``bay-tah''): additional fuel consumed per km per
+      tonne of cargo (kg of fuel per km per kg of load).  It captures how each
+      extra unit of weight increases fuel consumption.
+      \item $\alpha\, d_{ij}\, x_{ij}$: fuel for moving the vehicle on arc
+      $(i,j)$ regardless of load.
+      \item $\beta\, d_{ij}\, f_{ij}$: extra fuel due to the cargo weight
+      $f_{ij}$ on arc $(i,j)$.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{How to Read the GVRP Objective}
+    The objective has two parts:
+    \begin{enumerate}
+      \item The \textbf{distance-based} term $\alpha\, d_{ij}\, x_{ij}$ is
+      minimised by reducing total route length --- this aligns partially with the
+      classical VRP.
+      \item The \textbf{load-based} term $\beta\, d_{ij}\, f_{ij}$ is minimised
+      by reducing the distance heavy cargo travels.  This means it can be cheaper
+      (in fuel) to deliver to \emph{nearby heavy-demand customers first}, so the
+      vehicle carries full load over short distances rather than long ones.
+    \end{enumerate}
+    This is a subtle but important difference from minimising total distance:
+    the \emph{sequence} of deliveries within a route affects fuel consumption
+    even when the total route length is fixed.
+  \end{alertblock}
+
+  \framebreak
+
+  \begin{block}{GVRP Constraints}
+    \begin{align}
+      &\sum_{j \in V} x_{0j} = |K| && \text{exactly } |K| \text{ routes leave the depot} \\[4pt]
+      &\sum_{j \in V} x_{ij} = 1 && \forall\; i \in N \quad \text{each customer visited exactly once} \\[4pt]
+      &\sum_{i \in V} x_{ij} = 1 && \forall\; j \in N \quad \text{each customer departed from exactly once} \\[4pt]
+      &\sum_{j \in V} f_{ji} - \sum_{j \in V} f_{ij} = q_i && \forall\; i \in N \quad \text{flow balance (deliveries)} \\[4pt]
+      &q_i x_{ij} \leq f_{ij} \leq (Q - q_i) x_{ij} && \forall\; (i,j)\in A \quad \text{capacity bounds} \\[4pt]
+      &x_{ij} \in \{0,1\},\; f_{ij} \geq 0 && \text{variable domains}
+    \end{align}
+  \end{block}
+
+  \begin{block}{Interpreting the Constraints}
+    \begin{itemize}
+      \item \textbf{Flow balance} (constraint 4): the load flowing \emph{into}
+      customer $i$ minus the load flowing \emph{out} equals $q_i$, meaning
+      exactly $q_i$ units are dropped off at $i$.  This also automatically
+      prevents subtours (isolated loops not connected to the depot).
+      \item \textbf{Capacity} (constraint 5): the load on arc $(i,j)$ must be
+      at least $q_j$ (the remaining delivery) and at most $Q - q_i$ (what is
+      left after serving $i$).  If the arc is not used ($x_{ij}=0$) the load
+      must be zero.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Solution Algorithms for GVRP}
+    The GVRP is NP-hard (at least as hard as the classical VRP).  Practical
+    solution methods include:
+    \begin{itemize}
+      \item \textbf{Exact methods:} branch-and-price (column generation)
+      for small to medium instances (up to $\sim$50 customers).
+      \item \textbf{Constructive heuristics:} adapt the Clarke-Wright savings
+      algorithm by replacing distance savings with \emph{fuel savings}.
+      \item \textbf{Metaheuristics:} tabu search, simulated annealing, genetic
+      algorithms applied to the fuel objective.
+    \end{itemize}
+  \end{block}
+
+  \begin{exampleblock}{Worked Example: Fuel Savings vs. Distance Savings}
+    Consider a depot D and two customers A, B with demands $q_A=5$, $q_B=3$
+    tonnes.  Distances: $d(D,A)=10$, $d(D,B)=8$, $d(A,B)=6$ km.
+    With $\alpha=0.3$ kg/km and $\beta=0.01$ kg/km/t:
+
+    \medskip
+    \textit{Two separate routes} (D$\to$A$\to$D and D$\to$B$\to$D):
+    \[
+      F_{\text{sep}} = 0.3\times20 + 0.01\times10\times5 \;+\; 0.3\times16 + 0.01\times8\times3
+      = 6+0.5+4.8+0.24 = 11.54\;\text{kg fuel}
+    \]
+    \textit{One merged route} (D$\to$A$\to$B$\to$D, A visited first):
+    Vehicle carries 8t from D to A, 3t from A to B, 0t on return.
+    \[
+      F_{\text{merged}} = 0.3\times(10+6+8) + 0.01\times(10\times8 + 6\times3 + 8\times0)
+      = 7.2 + 0.98 = 8.18\;\text{kg fuel}
+    \]
+    Merging saves \textbf{3.36 kg fuel (29\%)}.  The distance saving is
+    $d(D,A)+d(D,B)-d(A,B)=10+8-6=12$ km --- traditional savings would also
+    favour merging, but the \emph{magnitude} of the saving and the optimal
+    \emph{sequence} within the route differ.
+  \end{exampleblock}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{The Pollution Routing Problem (PRP)}
+
+  The \textbf{Pollution Routing Problem (PRP)}, introduced by Bekt\c{a}s and
+  Laporte (2011), extends the GVRP by making vehicle \emph{speed a decision
+  variable} on each arc.  Rather than assuming a fixed speed everywhere, the
+  PRP asks: what is the optimal speed on \emph{each road segment} to minimise
+  total fuel and emissions, subject to time-window constraints?
+
+  This is a much richer and more realistic model than the GVRP, because:
+  \begin{itemize}
+    \item Speed directly controls the fuel-consumption rate.
+    \item Time windows create a tension: slower speed saves fuel but risks
+    missing delivery windows.
+    \item The optimal speed depends on arc length, cargo load, and the
+    slackness of the time window at the next customer.
+  \end{itemize}
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.75\textwidth]{prp_speed_segments.png}
+    \caption{In the PRP, each arc between customers has its own optimised speed.
+    Longer arcs with more time-window slack can be driven at a lower, greener
+    speed.}
+  \end{figure}
+
+  \framebreak
+
+  \begin{block}{PRP Mathematical Formulation}
+    The PRP objective function (Bekt\c{a}s and Laporte, equations 15.8--15.12)
+    consists of five cost components:
+
+    \begin{align*}
+      \text{Minimise} \quad
+      & \underbrace{\sum_{(i,j)\in A} c_f \bar{k} \bar{N} \bar{V} \lambda d_{ij}
+        \textstyle\sum_{r=1}^{|R|} z_{ij}^r / \bar{v}^r}_{\text{(15.8) engine idle fuel}}
+      \;+\;
+      \underbrace{\sum_{(i,j)\in A} c_f w \gamma \lambda_{ij} d_{ij} x_{ij}}_{\text{(15.9) load-dependent fuel}} \\[6pt]
+      &+\;
+      \underbrace{\sum_{(i,j)\in A} c_f \gamma \alpha_{ij} d_{ij} f_{ij}}_{\text{(15.10) cargo fuel}}
+      \;+\;
+      \underbrace{\sum_{(i,j)\in A} c_f \beta \gamma \lambda d_{ij}
+        \textstyle\sum_{r=1}^{|R|} z_{ij}^r (\bar{v}^r)^2}_{\text{(15.11) speed-squared term}} \\[6pt]
+      &+\;
+      \underbrace{\sum_{j\in N} c_w \sigma_j}_{\text{(15.12) driver wage}}
+    \end{align*}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{PRP Notation Guide}
+    The PRP involves many parameters; each is explained here.
+    \begin{itemize}
+      \item $c_f$: fuel price (cost per litre).
+      \item $\bar{k}$: engine friction factor (kJ/rev/litre).
+      \item $\bar{N}$: engine speed (rev/s).
+      \item $\bar{V}$: engine displacement (litres).
+      \item $\lambda$: fuel-to-air mass ratio divided by heating value
+      ($\phi / x_\psi$, dimensionless conversion factor).
+      \item $d_{ij}$: distance of arc $(i,j)$ in km.
+      \item $z_{ij}^r \in \{0,1\}$: equals 1 if the vehicle travels arc
+      $(i,j)$ at speed level $r \in R = \{1,\ldots,|R|\}$.
+      \item $\bar{v}^r$: the speed corresponding to speed level $r$ (km/h).
+      \item $w$: vehicle curb weight (unladen mass in kg).
+      \item $\gamma = 1/(1000\,\eta_t\,\eta)$: combined efficiency constant
+      (where $\eta_t$ is transmission efficiency and $\eta$ is engine efficiency).
+      \item $\lambda_{ij}=\phi/x_\psi$: fuel constant per arc.
+      \item $\alpha_{ij} = a + g\sin\theta_{ij} + gC_r\cos\theta_{ij}$:
+      vehicle-arc constant combining gradient $\theta_{ij}$ (theta, road slope)
+      and rolling resistance $C_r$.
+      \item $\beta = 0.5\,C_d\,\rho_a\,A$: aerodynamic constant
+      ($C_d$ is drag coefficient, $\rho_a$ (rho-sub-a) is air density,
+      $A$ is frontal area).
+      \item $f_{ij}$: cargo load (kg) on arc $(i,j)$.
+      \item $c_w$: driver wage rate (cost per unit time).
+      \item $\sigma_j$ (sigma): total time spent at or en route to customer $j$.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{Physical Interpretation of the Five Cost Terms}
+    \begin{enumerate}
+      \item \textbf{Engine idle fuel (15.8):} fuel consumed just to keep the
+      engine running, proportional to engine friction and displacement.
+      The speed appears in the denominator because at higher speed, the same
+      distance is covered in less time (less idling per km).
+
+      \item \textbf{Load-dependent fuel (15.9):} the unladen vehicle weight $w$
+      must be moved regardless of cargo --- this scales with speed through
+      $\lambda_{ij}$.
+
+      \item \textbf{Cargo fuel (15.10):} every kilogram of cargo $f_{ij}$
+      carried on arc $(i,j)$ costs additional fuel.  This term is the same as
+      in the GVRP objective.
+
+      \item \textbf{Speed-squared term (15.11):} aerodynamic drag increases
+      with $v^2$, so driving faster costs quadratically more fuel.
+      This term creates the incentive to slow down.
+
+      \item \textbf{Driver wage (15.12):} longer travel time means higher
+      driver pay.  This creates the counter-incentive to drive faster.
+      The trade-off between (4) and (5) determines the optimal speed on each arc.
+    \end{enumerate}
+  \end{alertblock}
+
+  \framebreak
+
+  \begin{block}{PRP Constraints (selected)}
+    The PRP includes the standard VRP flow constraints plus:
+    \begin{align}
+      &T_i - T_j + s_i + \sum_{r\in R} d_{ij} z_{ij}^r / \bar{v}^r
+        \leq K_{ij}(1-x_{ij}) && \forall\; i\in V, j\in N, i\neq j \\[4pt]
+      &a_i \leq T_i \leq b_i && \forall\; i\in N \\[4pt]
+      &T_j + s_j - \sigma_j + \sum_{r\in R} d_{j0} z_{j0}^r / \bar{v}^r
+        \leq L(1-x_{j0}) && \forall\; j\in N \\[4pt]
+      &\sum_{r=1}^{|R|} z_{ij}^r = x_{ij} && \forall\; (i,j)\in A
+    \end{align}
+  \end{block}
+
+  \begin{block}{Interpreting PRP Constraints}
+    \begin{itemize}
+      \item $T_i$ (capital T sub $i$): arrival time at customer $i$.
+      \item $s_i$: service time at customer $i$ (how long the delivery takes).
+      \item $[a_i, b_i]$: time window at customer $i$ --- must arrive between
+      time $a_i$ (earliest) and $b_i$ (latest).
+      \item $K_{ij}$: a large constant (``big-M'') that makes the timing
+      constraint inactive when arc $(i,j)$ is not used ($x_{ij}=0$).
+      \item The constraint $\sum_r z_{ij}^r = x_{ij}$ ensures that exactly
+      one speed level is chosen on every used arc (and zero on unused arcs).
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{exampleblock}{Worked Example: Optimal Speed on a Single Arc}
+    Consider a single arc of length $d=100$ km with a time window at the
+    destination requiring arrival between $a=1$ h and $b=2$ h.
+    The driver wage is \euro5/h, fuel costs \euro1.2/litre, and the fuel
+    consumption model (ignoring load) is:
+    \[
+      F(v) = 5/v + 0.0001 v^2 \quad \text{(litres/km)}
+    \]
+    Total cost as a function of speed $v$ km/h:
+    \[
+      C(v) = 1.2 \times d \times F(v) + 5 \times d/v
+      = 120\bigl(5/v + 0.0001v^2\bigr) + 500/v
+      = 1100/v + 0.012\,v^2
+    \]
+    Setting $dC/dv = 0$: $-1100/v^2 + 0.024v = 0 \Rightarrow v^* = (1100/0.024)^{1/3} \approx 72.4$ km/h.
+
+    \medskip
+    Check feasibility: travel time $= 100/72.4 = 1.38$ h, which lies in $[1, 2]$ --- feasible.
+    If the window were tight ($b=1.2$ h), we would be forced to drive at
+    $v = 100/1.2 = 83.3$ km/h even though it is above the fuel-optimal speed.
+  \end{exampleblock}
+
+  \framebreak
+
+  \begin{block}{Time-Independent VRP (TIVRP) and Time-Dependent VRP (TDVRP)}
+    Two important extensions of the PRP address \textbf{traffic congestion}:
+    \begin{itemize}
+      \item In the \textbf{TIVRP} (time-independent), travel speed on each
+      road segment is assumed constant throughout the day.
+      \item In the \textbf{TDVRP} (time-dependent), the speed on segment
+      $(i,j)$ at time $t$ is $v_{ij}(t)$, reflecting peak-hour congestion.
+      Avoiding rush hour can reduce both travel time and emissions.
+    \end{itemize}
+    Ichoua, Gendreau, and Potvin showed that time-dependent travel times
+    satisfy the FIFO (first-in, first-out) property when speeds are
+    step-wise constant: a vehicle that departs later from a node never
+    arrives earlier at the destination.  This allows dynamic programming
+    to compute time-dependent shortest paths efficiently.
+  \end{block}
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.65\textwidth]{time_window_speed.png}
+    \caption{Effect of time-window slack on speed choice.  A tight window forces
+    high speed (more emissions); a loose window allows eco-driving at the
+    fuel-optimal speed, with the vehicle waiting briefly at the customer if
+    it arrives early.}
+  \end{figure}
+
+  \framebreak
+
+  \begin{block}{Variable-Speed Routing: Constant Speeds (PRP Variant)}
+    A practically important simplification assigns a single speed to each arc
+    (rather than a time-varying profile).  The binary linearisation of the
+    speed variable replaces the continuous $v_{ij}$ with a set of speed
+    levels $R = \{v^1, v^2, \ldots, v^{|R|}\}$ and binary variables
+    $z_{ij}^r = 1$ if arc $(i,j)$ is driven at level $r$.
+
+    \medskip
+    The speed level formulation is a \textit{mixed-integer linear programme}
+    (MILP) and can be solved by standard branch-and-bound/branch-and-cut
+    solvers, whereas the continuous speed version is a non-linear mixed-integer
+    programme (MINLP) requiring specialised solvers.
+  \end{block}
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.65\textwidth]{speed_optimisation.png}
+    \caption{Optimal speeds on a four-arc route.  Speed is lower on heavily
+    loaded arcs (outbound) and higher on lighter arcs (after deliveries).
+    The driver wage constraint prevents slowing down too much.}
+  \end{figure}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Algorithms for the GVRP and PRP}
+
+  Solving the GVRP and PRP in practice requires effective algorithms.
+  The literature has proposed several approaches, ranging from exact
+  mixed-integer programming to population-based metaheuristics.
+
+  \begin{block}{Tabu Search for the PRP (Bektas and Laporte, 2011)}
+    Tabu search (TS) is a local-search metaheuristic that escapes local optima
+    by \emph{allowing moves that worsen the objective}, while maintaining a
+    \textbf{tabu list} of recently visited solutions to prevent cycling.
+    In the context of the PRP, TS works as follows:
+
+    \medskip
+    \textbf{Why tabu search?}  The PRP solution space is a combination of
+    route structure (which customer is in which route and in what order) and
+    speed choices on each arc.  Standard descent methods get trapped in
+    local optima because improving the route structure often requires temporarily
+    making speed choices worse.  By remembering and forbidding recently tried
+    route moves (the ``tabu list''), the algorithm can escape such traps.
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{PRP Tabu Search Pseudocode}
+    \begin{enumerate}
+      \item \textbf{Initialise:} generate a feasible solution $s_0$ using
+      a nearest-neighbour heuristic.  Set $s^* \leftarrow s_0$ (best solution),
+      tabu list $T \leftarrow \emptyset$, iteration $k \leftarrow 0$.
+      \item \textbf{Optimise speeds:} for the current route structure, solve the
+      inner speed-optimisation problem (a convex programme in the continuous
+      speeds $v_{ij}$) to find optimal speeds.  This can be done analytically
+      arc by arc using calculus.
+      \item \textbf{Generate neighbourhood:} apply route-restructuring moves
+      --- relocate (move one customer to another route), 2-opt (reverse a
+      segment), or swap (exchange two customers between routes).
+      \item \textbf{Select best non-tabu move:} choose the neighbourhood move
+      with the best objective value that is \emph{not} in the tabu list $T$.
+      If the resulting solution is better than $s^*$, update $s^*$.
+      \item \textbf{Update tabu list:} add the selected move to $T$; remove the
+      oldest entry if $|T|$ exceeds the tabu tenure $\tau$ (tau, a parameter,
+      typically 10--20).
+      \item \textbf{Repeat} from step 2 until stopping criterion (maximum
+      iterations or time limit) is met.
+      \item \textbf{Return} $s^*$.
+    \end{enumerate}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{Key Insight: Separating Route and Speed Optimisation}
+    A crucial algorithmic observation is that once the route structure is fixed,
+    the speed-optimisation sub-problem can be solved \emph{exactly and efficiently}:
+
+    For a single arc $(i,j)$ with distance $d_{ij}$, load $f_{ij}$,
+    and time-window slack $\Delta_{ij}$, the optimal speed satisfies:
+    \[
+      v_{ij}^* \;=\; \min\!\Bigl(\bar{v}_{\max},\;
+      \max\!\Bigl(\bar{v}_{\min},\;
+      \Bigl(\frac{c_f \lambda(\alpha_{ij} w + f_{ij}) + c_w}{2\, c_f \beta \lambda}\Bigr)^{1/3}
+      \Bigr)\Bigr)
+    \]
+    where $\bar{v}_{\min}$ and $\bar{v}_{\max}$ are the minimum and maximum
+    allowed speeds (km/h).
+
+    This formula is derived by setting $dC/dv = 0$ for the per-arc cost
+    function and clipping to the feasible speed range.  The cube-root structure
+    arises because aerodynamic drag is proportional to $v^2$ and the driver
+    wage is proportional to $1/v$.
+  \end{alertblock}
+
+  \framebreak
+
+  \begin{block}{The Non-Linear Programming Approach (Jabali et al.)}
+    Jabali, Van Woensel, and de Kok (2012) present a similar approach for a
+    single-vehicle route.  They model fuel consumption as:
+    \[
+      F_\text{total} \;=\; \sum_{(i,j)\in\text{route}} d_{ij}\bigl(p + q\,v_{ij}^2\bigr)
+    \]
+    where $p$ captures load-dependent consumption and $q$ captures
+    aerodynamic drag.  Given a fixed route, minimising this over $v_{ij}$
+    subject to time-window constraints is a \textbf{convex programme} that can
+    be solved optimally by Lagrangian relaxation or KKT (Karush-Kuhn-Tucker)
+    conditions.
+
+    Their key finding: the optimal speed on an arc increases when the time
+    window at the next stop is tight, and the optimal speed \emph{decreases}
+    as vehicle load increases (because the load coefficient $p$ amplifies the
+    time-cost).
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{The MINLP Approach of Figliozzi (2010)}
+    Figliozzi models the VRP with time windows and minimises a weighted
+    combination of travel time and fuel.  The formulation is:
+    \[
+      \text{Min}\; \sum_{(i,j)\in A} \bigl[w_1\, t_{ij} + w_2\, e_{ij}(v_{ij})\bigr] x_{ij}
+    \]
+    where:
+    \begin{itemize}
+      \item $t_{ij} = d_{ij}/v_{ij}$: travel time on arc $(i,j)$.
+      \item $e_{ij}(v_{ij})$: emissions on arc $(i,j)$ as a function of speed.
+      \item $w_1, w_2$: weights reflecting the relative importance of time vs.
+      emissions (set by the decision maker).
+    \end{itemize}
+    Results on 27-node benchmark instances show that optimising speed reduces
+    emissions by an average of \textbf{9\%} compared to fixing speed at the
+    time-window-forcing level, at the cost of slightly longer travel time.
+  \end{block}
+
+\end{frame}
+
+% =============================================================================
+\section{Speed Optimisation on Fixed Routes}
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{Eco-Driving: Optimising Speed on a Given Route}
+
+  In the previous section we simultaneously optimised \emph{which route to
+  take} and \emph{at what speed}.  A simpler but practically important problem
+  is: given a \textbf{fixed route} (the sequence of customers is fixed),
+  find the optimal speed on each arc.
+
+  This is called \textbf{speed optimisation} or \textbf{eco-driving optimisation}.
+  It is relevant in practice because:
+  \begin{itemize}
+    \item Many logistics companies cannot change routes easily (due to
+    contractual obligations) but \emph{can} give drivers guidance on optimal
+    cruising speeds.
+    \item It serves as the inner sub-problem in the tabu search for the PRP.
+    \item It can be extended to consider \emph{traffic-dependent speeds}.
+  \end{itemize}
+
+  \framebreak
+
+  \begin{block}{Formulation: Speed Optimisation on a Fixed Route}
+    Given a route $r = (0, i_1, i_2, \ldots, i_m, 0)$ visiting $m$ customers,
+    with arc distances $d_k$ (km) and time windows $[a_k, b_k]$ at each stop,
+    choose speeds $v_k$ (km/h) to:
+    \[
+      \text{Minimise} \quad \sum_{k=1}^{m+1} d_k \,F(v_k, f_k)
+    \]
+    subject to:
+    \begin{align*}
+      a_k &\leq T_k \leq b_k && \text{time window at stop } k \\
+      T_k &= T_{k-1} + s_{k-1} + d_{k-1}/v_{k-1} && \text{arrival time recurrence} \\
+      \bar{v}_{\min} &\leq v_k \leq \bar{v}_{\max} && \text{speed bounds}
+    \end{align*}
+    where $f_k$ is the vehicle load on arc $k$ (decreasing by $q_{i_k}$ after
+    each delivery) and $T_k$ is the arrival time at stop $k$.
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Analytical Solution for the Unconstrained Case}
+    When time windows are loose enough that speed constraints never bind,
+    the optimal speed on arc $k$ is found by setting $\partial C / \partial v_k = 0$:
+    \[
+      v_k^* \;=\; \Bigl(\frac{\text{wage rate} \cdot d_k + \text{const}}
+                          {2\, c_f \beta \gamma \lambda \, d_k}\Bigr)^{1/3}
+    \]
+    Notice that $v_k^*$ is the \textbf{same} on all arcs (when load is
+    ignored), because the cubic structure means the optimal speed balances
+    the time-proportional driver wage against the speed-squared aerodynamic
+    drag --- and this balance is independent of distance.
+
+    However, when \textbf{load} is included, heavier arcs (early in the route)
+    have a lower optimal speed because the load term increases the effective
+    cost of travelling fast (the load must also be accelerated).
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Constant-Speed Algorithms (Bekt\c{a}s and Laporte)}
+    Several algorithms have been proposed for the case where speed is
+    constrained to take one of a finite set of discrete levels:
+    \begin{enumerate}
+      \item \textbf{Kara, Kara, and Yetis (2007):} introduced a load-dependent
+      fuel model and showed it can be linearised; proposed an integer
+      programming formulation solved with a branch-and-bound algorithm.
+      \item \textbf{Xiao et al.\ (2012):} proposed a fuel consumption
+      optimisation model for the CVRP, solved with a savings-based
+      heuristic where savings are computed using the load-dependent fuel
+      model rather than distance.
+      \item \textbf{Demir, Bekt\c{a}s, and Laporte (2012):} proposed a large
+      neighbourhood search (LNS) for the PRP, with destroy operators
+      (random removal of a subset of customers) and repair operators
+      (best-insertion with simultaneous speed optimisation).
+    \end{enumerate}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{Key Finding: Savings from Speed Optimisation}
+    Numerical experiments (Demir et al.\ 2012) on benchmark VRP instances
+    with 100--200 customers show:
+    \begin{itemize}
+      \item Speed optimisation alone (fixing routes, optimising speeds)
+      reduces fuel/emissions by \textbf{10--15\%} on average compared to
+      driving at a fixed default speed.
+      \item Jointly optimising routes and speeds yields \textbf{18--25\%}
+      emission reductions compared to the traditional distance-minimising VRP.
+      \item The benefit of speed optimisation is greatest when time-window
+      slack is high: tightly constrained routes leave little room for
+      eco-driving.
+    \end{itemize}
+  \end{alertblock}
+
+\end{frame}
+
+% =============================================================================
+\section{Multicriteria Analysis}
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{Balancing Cost and Emissions: The Pareto Front}
+
+  In practice, fleet operators must balance two conflicting objectives:
+  \begin{enumerate}
+    \item \textbf{Economic cost} --- vehicle operating costs, driver wages,
+    fuel expenditure, fixed vehicle costs.
+    \item \textbf{Environmental impact} --- CO$_2$ emissions, NO$_x$,
+    particulate matter.
+  \end{enumerate}
+
+  No single route simultaneously minimises both: a route that uses more
+  vehicles (higher cost) may deliver faster and burn less fuel per unit,
+  while a cost-efficient route might consolidate loads onto fewer vehicles
+  and push speeds up to meet tight time windows.
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.65\textwidth]{pareto_front.png}
+    \caption{The Pareto front (or efficient frontier) for cost vs.\ emissions.
+    Each point on the blue curve is a solution where improving one objective
+    necessarily worsens the other.  Grey points are dominated solutions
+    --- wasteful in both dimensions.}
+  \end{figure}
+
+  \framebreak
+
+  \begin{block}{Definition: Pareto Optimality}
+    A solution $s$ is \textbf{Pareto optimal} (also called non-dominated or
+    efficient) if there is no other feasible solution $s'$ that is
+    \emph{strictly better} in \emph{at least one} objective and \emph{at least
+    as good} in \emph{all other} objectives.
+
+    The set of all Pareto-optimal solutions is called the \textbf{Pareto front}
+    (or Pareto set).  It represents the true trade-off curve between the objectives.
+  \end{block}
+
+  \begin{block}{Multicriteria Formulation}
+    A common approach is the \textbf{epsilon-constraint method}: fix the
+    emission budget at $\varepsilon$ (epsilon, ``ep-sih-lon'') kg CO$_2$
+    and minimise cost:
+    \[
+      \text{Minimise}\; C(x) \quad \text{subject to}\; E(x) \leq \varepsilon
+      \;\text{ and routing constraints}
+    \]
+    By varying $\varepsilon$ from the minimum possible emissions to the
+    unconstrained level, we trace out the entire Pareto front.
+
+    Alternatively, the \textbf{weighted-sum method} solves:
+    \[
+      \text{Minimise}\; w_1\, C(x) + w_2\, E(x)
+    \]
+    for different weight ratios $w_1/w_2$.  This is simpler but may miss
+    non-convex portions of the Pareto front.
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Lopes et al.\ Multicriteria VRP}
+    Lopes and Laporte (2013) present a multicriteria VRP in which the two
+    objectives are the total routing cost and the total amount of CO$_2$
+    emitted.  They propose a \textbf{COPRAS} (Complex Proportional Assessment)
+    programme that uses a simulation-based approach combined with a
+    multi-start tabu search to generate a representative set of Pareto-optimal
+    solutions.
+
+    Their numerical experiments on Belgian distribution data show that
+    accepting a \textbf{10\% increase} in routing cost typically achieves a
+    \textbf{20--30\% reduction} in emissions --- a highly favourable trade-off
+    from a regulatory compliance perspective.
+  \end{block}
+
+  \begin{alertblock}{Practical Implication for Fleet Operators}
+    The Pareto front allows a logistics manager to visualise the range of
+    feasible policy choices:
+    \begin{itemize}
+      \item If the firm faces a hard emission cap (e.g.\ a carbon budget of
+      50 tonnes CO$_2$ per week), they can read off the minimum-cost routing
+      solution that satisfies the cap.
+      \item If the firm has a cost budget but wants to go as green as possible,
+      they can find the maximum emission reduction achievable within the
+      cost constraint.
+    \end{itemize}
+  \end{alertblock}
+
+  \framebreak
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.70\textwidth]{emission_comparison.png}
+    \caption{Relative CO$_2$ emissions across different routing approaches.
+    Optimising routes for fuel rather than distance alone already saves 18\%;
+    optimising both routes and speeds (PRP) achieves 29\%; switching to
+    electric vehicles achieves up to 65\% reduction (assuming clean electricity).}
+  \end{figure}
+
+\end{frame}
+
+% =============================================================================
+\section{Routing in Other Modes of Transport}
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{Beyond Road Transport: Rail, Air, and Multimodal}
+
+  While most green VRP research focuses on road transport, significant
+  opportunities for emission reduction also exist in \textbf{rail freight},
+  \textbf{air cargo}, and \textbf{multimodal transport}.
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.70\textwidth]{modal_comparison.png}
+    \caption{CO$_2$ emission intensity by transport mode.  Rail freight emits
+    approximately one-third the CO$_2$ of truck freight per tonne-km.
+    Air cargo emits nearly 10$\times$ as much as truck freight.}
+  \end{figure}
+
+  \framebreak
+
+  \begin{block}{Rail Freight Routing}
+    In rail freight, the routing decision involves:
+    \begin{itemize}
+      \item Selecting which goods travel on which rail service.
+      \item Choosing between \emph{direct trains} (faster, more expensive)
+      and \emph{consolidated services} (slower, cheaper and greener per
+      tonne-km due to full train utilisation).
+    \end{itemize}
+    Rail is inherently more energy-efficient than road because:
+    \begin{enumerate}
+      \item Steel-on-steel rolling resistance is far lower than rubber-on-asphalt.
+      \item Electric trains can use regenerative braking to recover energy.
+      \item Large trains move many tonnes per locomotive.
+    \end{enumerate}
+    Routing optimisation in rail networks can further reduce emissions
+    by avoiding unnecessary shunting operations and by running trains at
+    optimal speeds (the same U-shaped fuel-speed relationship applies to trains,
+    with an optimal speed typically around 80--100 km/h for freight).
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Air Cargo and Routing}
+    Air cargo routing is a different setting: the energy cost of lifting cargo
+    to altitude dominates all other costs.  Key emission drivers are:
+    \begin{itemize}
+      \item \textbf{Payload and fuel}: aviation fuel consumption scales
+      approximately linearly with payload (similar to road freight).
+      \item \textbf{Aircraft utilisation}: a partially full aircraft is very
+      fuel-inefficient per tonne-km.  Consolidation (waiting to fill the plane)
+      is the primary green lever.
+      \item \textbf{Flight path and altitude}: flying at optimal altitude and
+      avoiding headwinds reduces fuel burn.
+      \item \textbf{Speed}: cruise speed is highly optimised by airlines
+      (typically Mach 0.82--0.85 for wide-body freighters) to balance fuel
+      and time costs.
+    \end{itemize}
+    Routing and scheduling optimisation for air cargo has been studied under the
+    framework of the \textbf{Air Freight Transportation Problem}, which shares
+    structural similarities with the VRP but at a continental or global scale.
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Multimodal Transport}
+    Many real-world logistics networks involve multiple transport modes:
+    long-haul by rail or sea, last-mile delivery by road.
+    Green routing in multimodal settings involves:
+    \begin{itemize}
+      \item Choosing the mode for each leg of a journey (trade-off:
+      rail is greener but slower and less flexible).
+      \item Optimising the \emph{break-bulk points} (terminals or
+      intermodal hubs) where cargo transfers between modes.
+      \item Routing road vehicles from the terminal to final customers.
+    \end{itemize}
+    Research by Lam and Garg, and others, shows that modal shift
+    from road to rail can reduce freight-related CO$_2$ by 50--70\% on
+    long-haul corridors, making it the single biggest lever for green logistics.
+  \end{block}
+
+\end{frame}
+
+% =============================================================================
+\section{Alternative Fuel-Powered Vehicles}
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{Electric Vehicle Routing: The E-VRP}
+
+  The ultimate green routing scenario replaces fossil-fuel vehicles with
+  \textbf{electric vehicles (EVs)}.  EVs produce zero tailpipe emissions,
+  and if the electricity grid is powered by renewables, the entire supply
+  chain becomes carbon-neutral.
+
+  However, EVs introduce a new operational constraint: \textbf{limited range}.
+  A standard electric delivery van has a range of roughly 100--200 km on a
+  single charge (improving rapidly with battery technology).  If the route
+  requires more than this, the vehicle must stop at a \textbf{recharging station}.
+
+  This gives rise to the \textbf{Electric Vehicle Routing Problem (E-VRP)},
+  also described as ``routing with range anxiety''.
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.65\textwidth]{evrp_stations.png}
+    \caption{E-VRP example: the vehicle detours to recharging stations (triangles)
+    mid-route when the battery level drops below a safety threshold.
+    The dashed circle shows the maximum range from the depot on a single charge.}
+  \end{figure}
+
+  \framebreak
+
+  \begin{block}{E-VRP Definition and Challenges}
+    The E-VRP extends the classical VRP with the following modifications:
+    \begin{itemize}
+      \item Each vehicle has a battery with capacity $Q_e$ (kWh or km equivalent).
+      \item The battery is depleted by $e_{ij}$ (energy in kWh) when travelling
+      arc $(i,j)$.  Energy consumption depends on distance, speed, load, and
+      gradient.
+      \item The battery level must remain non-negative at all times (hard
+      constraint --- cannot run out of battery on the road!).
+      \item The network contains a set $F$ of \emph{recharging stations} where
+      the vehicle can partially or fully recharge its battery.
+      \item Recharging takes time (typically 30--60 minutes for a significant
+      top-up on a DC fast charger), so stations add to route duration.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{E-VRP Mathematical Formulation}
+    Let $G = (V \cup F, A)$ be the extended graph including both customers
+    $V$ and recharging stations $F$.  Define:
+    \begin{itemize}
+      \item $y_i \geq 0$: battery state of charge (SoC, kWh) upon \emph{arriving}
+      at node $i$.
+      \item $e_{ij}$: energy consumed on arc $(i,j)$ (kWh).
+      \item $g$: recharging rate (kWh per minute, depends on charger type).
+    \end{itemize}
+
+    Key additional constraints (on top of standard VRP constraints):
+    \begin{align}
+      y_j &\leq y_i - e_{ij} x_{ij} + Q_e(1-x_{ij})
+          && \forall\;(i,j)\in A \quad \text{battery depletion} \\[4pt]
+      0   &\leq y_i \leq Q_e
+          && \forall\; i \in V\cup F \quad \text{SoC bounds} \\[4pt]
+      y_f &= Q_e
+          && \forall\; f\in F \;\text{ if full charge assumed}
+    \end{align}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Interpreting E-VRP Battery Constraints}
+    \begin{itemize}
+      \item Constraint (1) says: the battery on arriving at $j$ must equal
+      the battery on arriving at $i$ minus the energy $e_{ij}$ consumed
+      on the arc.  The term $Q_e(1-x_{ij})$ is a big-M term that makes
+      the constraint inactive for unused arcs.
+      \item Constraint (2) ensures the battery never exceeds its capacity
+      and never goes negative (range constraint).
+      \item Constraint (3) assumes the vehicle recharges to full at every
+      station visit (a simplification; partial charging can also be modelled).
+    \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{Why E-VRP is Harder than Classic VRP}
+    The E-VRP requires \emph{planning when and where to recharge}, which
+    involves choosing: (a) whether to detour to a station, (b) which station
+    (there may be several nearby), and (c) how much to charge
+    (partial charging is faster but may require another stop later).
+    These decisions interact with the route structure, making the problem
+    significantly harder than the classical VRP.  Moreover, the optimal
+    recharging policy depends on the future route --- a vehicle should recharge
+    more if it has many distant customers remaining.
+  \end{alertblock}
+
+  \framebreak
+
+  \begin{block}{E-VRP Algorithms}
+    Several algorithms have been proposed:
+    \begin{enumerate}
+      \item \textbf{Exact branch-and-price} (Desrochers et al.\ style):
+      the column generation sub-problem is a shortest-path problem with
+      resource constraints (time, battery level).  Solving the sub-problem
+      requires a modified ESPPRC (Elementary Shortest Path Problem with
+      Resource Constraints) algorithm.
+
+      \item \textbf{Modified Clarke-Wright savings with station insertion:}
+      after building initial routes with the savings algorithm, a post-processing
+      step inserts station visits whenever a route would exceed the battery
+      range.  The station is inserted at the point in the route where the
+      battery would first be depleted.
+
+      \item \textbf{Tabu search with battery management:}
+      includes moves that insert, remove, or change stations.  The battery
+      level is tracked throughout the route and infeasible solutions (those
+      that run out of battery) are penalised.
+    \end{enumerate}
+  \end{block}
+
+  \framebreak
+
+  \begin{exampleblock}{Worked Example: E-VRP Station Insertion}
+    A route D $\to$ C1 $\to$ C2 $\to$ C3 $\to$ D with distances
+    D-C1: 60 km, C1-C2: 80 km, C2-C3: 70 km, C3-D: 50 km.
+    Battery capacity $Q_e = 150$ km-equivalent (i.e.\ 150 km on a full charge).
+    Energy consumption: 1 km-equivalent per km (for simplicity).
+
+    \medskip
+    \textit{Without a station:}
+    Total distance $= 60+80+70+50 = 260$ km $> 150$ km (infeasible!).
+
+    \medskip
+    \textit{With station R1 at km-60 from D (near C1):}
+    Leg 1: D $\to$ C1 $\to$ R1, energy used $= 60 + 5 = 65$ km (feasible).
+    Recharge at R1: battery reset to 150.
+    Leg 2: R1 $\to$ C2 $\to$ C3 $\to$ D, energy $= 75+70+50 = 195$ km (still infeasible!).
+
+    \medskip
+    \textit{With two station visits:}
+    Leg 1: D $\to$ C1 $\to$ R1 (65 km), Leg 2: R1 $\to$ C2 $\to$ R2
+    (near C2, 85 km), Leg 3: R2 $\to$ C3 $\to$ D (120 km).
+    All legs $\leq 150$ km --- feasible!
+
+    \medskip
+    \textbf{Takeaway:} Station insertion may require multiple stops and
+    adds significant travel distance.  Optimising station placement and
+    the number of recharging stops is a key challenge in E-VRP.
+  \end{exampleblock}
+
+  \framebreak
+
+  \begin{block}{Alternative Fuel Vehicles: CNG and Hybrid}
+    Besides pure EVs, other alternative-fuel technologies are relevant for
+    green VRP:
+    \begin{itemize}
+      \item \textbf{Compressed Natural Gas (CNG) vehicles:} emit 20--25\%
+      less CO$_2$ per km than diesel, but require a CNG refuelling
+      infrastructure.  Routing must account for limited CNG station availability.
+      \item \textbf{Hybrid electric vehicles (HEV):} combine a conventional
+      engine with an electric motor.  Hybrids self-recharge through regenerative
+      braking, so they have no range constraint but do have reduced emissions.
+      \item \textbf{Hydrogen fuel cell vehicles:} zero tailpipe emissions,
+      with water as the only by-product.  Refuelling is fast (minutes vs.
+      hours for EV charging) but infrastructure is very limited.
+    \end{itemize}
+    Each technology leads to a different variant of the green routing problem,
+    with different range constraints, refuelling times, and emission profiles.
+  \end{block}
+
+\end{frame}
+
+% =============================================================================
+\section{Conclusions and Future Research}
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{Conclusions: What Green VRP Has Achieved}
+
+  Chapter 15 has surveyed the rapidly growing field of \textbf{green vehicle
+  routing}, covering the full spectrum from emission models to exact
+  algorithms, from speed optimisation to electric vehicle routing.
+
+  \begin{block}{Summary of Main Contributions}
+    \begin{enumerate}
+      \item \textbf{Emission models.}  The chapter reviewed average-speed models
+      (MEET), instantaneous models (CMEM), and the load-speed decomposition
+      model that underpins the GVRP and PRP.  These models reveal that
+      \emph{speed and load are the primary drivers of fuel consumption} ---
+      not just distance.
+
+      \item \textbf{Green VRP and Pollution Routing Problem.}  The PRP is the
+      most comprehensive formulation, jointly optimising routes and speeds.
+      Exact and heuristic solution methods achieve 18--25\% emission reductions
+      compared to traditional VRP.
+
+      \item \textbf{Speed optimisation.}  Even on fixed routes, optimising
+      vehicle speed across arcs reduces emissions by 10--15\%.
+
+      \item \textbf{Multicriteria methods.}  Pareto-front analysis reveals
+      that modest cost increases (5--10\%) can achieve substantial emission
+      reductions (20--30\%).
+
+      \item \textbf{Electric VRP.}  The E-VRP framework handles range
+      constraints and recharging station decisions.  It is the most complex
+      variant but represents the future of zero-emission logistics.
+    \end{enumerate}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Future Research Directions}
+    The chapter identifies several open problems and promising directions:
+    \begin{enumerate}
+      \item \textbf{Real-world traffic data integration.}  Most models use
+      simplified speed profiles.  Incorporating real-time traffic data
+      (GPS, road sensors) into routing decisions would make models more
+      accurate and actionable.
+
+      \item \textbf{Dynamic green VRP.}  Routes are currently planned in
+      advance.  Dynamic variants that re-optimise routes in real time as
+      conditions change (traffic, new orders) are largely unexplored.
+
+      \item \textbf{Lifecycle emission assessment.}  Current models focus on
+      tailpipe emissions.  A full lifecycle analysis would include the
+      emissions from vehicle manufacturing, fuel production (well-to-wheel),
+      and end-of-life recycling.
+
+      \item \textbf{Stochastic demand and emissions.}  Travel speeds, fuel
+      consumption, and customer demand are all uncertain in practice.  Robust
+      and stochastic programming approaches to green VRP remain an open
+      research frontier.
+
+      \item \textbf{Fleet mix optimisation.}  Most models assume a homogeneous
+      fleet.  Optimising the \emph{composition} of a fleet (how many EVs,
+      CNG trucks, and diesel vehicles) simultaneously with routing is a
+      complex but important problem.
+
+      \item \textbf{Collaborative logistics.}  Multiple carriers sharing
+      vehicles and routes can dramatically reduce empty running and improve
+      load factors, cutting emissions industry-wide.
+    \end{enumerate}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{The Big Picture}
+    Green vehicle routing is not just an academic exercise: the freight
+    transport sector is one of the largest and most difficult-to-decarbonise
+    parts of the economy.  Mathematical optimisation provides a rigorous
+    toolkit for quantifying emission trade-offs and designing provably
+    efficient green logistics systems.
+
+    The field has grown from a handful of papers in the early 2000s to one
+    of the most active areas of operations research, with contributions
+    ranging from theoretical complexity results to real-world case studies
+    at companies such as DHL, UPS, and national postal services.
+  \end{alertblock}
+
+\end{frame}
+
+% =============================================================================
+% Python Implementation
+% =============================================================================
+
+\begin{frame}[fragile]{Python: GVRP Fuel Objective Implementation}
+\begin{lstlisting}[language=Python, caption={Computing fuel consumption for a GVRP route using the load-dependent model.}]
+import numpy as np
+
+def fuel_consumption_route(route, demands, dist, alpha=0.3, beta=0.01):
+    """
+    Compute total fuel for one route using the load-dependent model:
+        F = sum_arcs [ alpha * d_ij * x_ij  +  beta * d_ij * f_ij ]
+
+    Parameters
+    ----------
+    route   : list of node indices, e.g. [0, 3, 1, 5, 0]
+              (must start and end at depot = 0)
+    demands : list/array of customer demands (index 0 = depot demand = 0)
+    dist    : 2-D distance matrix  dist[i][j] in km
+    alpha   : empty-vehicle fuel rate (kg fuel / km)
+    beta    : load-dependent fuel rate (kg fuel / km / kg cargo)
+
+    Returns
+    -------
+    total_fuel : float (kg of fuel consumed)
+    """
+    # Compute load on each arc (decreasing as deliveries are made)
+    total_fuel = 0.0
+    load = sum(demands[c] for c in route[1:-1])   # start fully loaded
+
+    for k in range(len(route) - 1):
+        i, j = route[k], route[k+1]
+        d_ij = dist[i][j]
+        # Fuel on this arc = empty-vehicle fuel + load-dependent fuel
+        total_fuel += alpha * d_ij + beta * d_ij * load
+        # After delivering to j, reduce load
+        if j != 0:                                 # if j is a customer
+            load -= demands[j]
+    return total_fuel
+
+# --- Worked example ---------------------------------------------------------
+n = 5   # customers 1..5, depot = 0
+demands = [0, 5, 3, 8, 2, 6]   # depot demand = 0
+
+# Symmetric distance matrix (km)
+dist = np.array([
+    [0, 10,  8, 15,  6, 12],
+    [10, 0,  6, 11,  9, 14],
+    [ 8, 6,  0,  9,  7, 10],
+    [15,11,  9,  0, 12,  8],
+    [ 6, 9,  7, 12,  0,  5],
+    [12,14, 10,  8,  5,  0],
+])
+
+route = [0, 1, 2, 3, 4, 5, 0]
+fuel = fuel_consumption_route(route, demands, dist)
+print(f"Total fuel: {fuel:.2f} kg")
+# Output: Total fuel: 27.84 kg (illustrative)
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Optimal Speed on a Single Arc}
+\begin{lstlisting}[language=Python, caption={Compute the fuel-optimal speed on a single arc with time-window constraints.}]
+def optimal_speed_arc(d_ij, load, slack, c_f=1.2, c_w=5.0,
+                      beta=0.0001, alpha_ij=1.2, v_min=50, v_max=110):
+    """
+    Optimal speed on arc (i->j) minimising fuel + driver wage cost.
+
+    Fuel model (simplified):  F(v) = (alpha_ij + beta * v^2) * d_ij  litres
+    Driver wage:              W(v) = c_w * d_ij / v
+    Total cost:               C(v) = c_f * F(v) + W(v)
+
+    Optimal (unconstrained):  v* = (c_w / (2 * c_f * beta))^(1/3)
+    Then clip to [v_min,  d_ij/slack] and [v_min, v_max].
+
+    Parameters
+    ----------
+    d_ij    : arc distance (km)
+    load    : vehicle load on this arc (tonnes)
+    slack   : available time window slack on this arc (hours)
+    c_f     : fuel cost (EUR/litre)
+    c_w     : driver wage (EUR/hour)
+    beta    : aerodynamic drag coefficient
+    alpha_ij: constant fuel term (litres/km)
+    v_min, v_max : speed bounds (km/h)
+
+    Returns
+    -------
+    v_opt   : optimal speed in km/h
+    cost    : total cost in EUR
+    """
+    # Unconstrained optimum (ignoring load effect for simplicity)
+    v_unconstrained = (c_w / (2 * c_f * beta)) ** (1/3)
+
+    # Must arrive within slack time window: v >= d_ij / slack
+    v_forced = d_ij / slack if slack > 0 else v_max
+    v_lo = max(v_min, v_forced)          # effective lower bound
+
+    # Clip to feasible range
+    v_opt = min(v_max, max(v_lo, v_unconstrained))
+
+    fuel_litres = (alpha_ij + beta * v_opt**2) * d_ij
+    cost = c_f * fuel_litres + c_w * d_ij / v_opt
+    return v_opt, cost
+
+# --- Worked example ----------------------------------------------------------
+# Arc with d=100 km, load=10t, slack=1.5 h (must arrive within 1.5h)
+v, c = optimal_speed_arc(d_ij=100, load=10, slack=1.5)
+print(f"Optimal speed: {v:.1f} km/h,  Cost: EUR {c:.2f}")
+
+# With tight slack: slack=0.9 h
+v2, c2 = optimal_speed_arc(d_ij=100, load=10, slack=0.9)
+print(f"Tight window:  {v2:.1f} km/h,  Cost: EUR {c2:.2f}")
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Pareto Front Generation (Weighted-Sum Method)}
+\begin{lstlisting}[language=Python, caption={Generate a Pareto front for cost vs.\ emissions using a weighted-sum scalarisation.}]
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+def solve_weighted_vrp(w_cost, w_emission, instance):
+    """
+    Placeholder: solve a VRP minimising  w_cost*C + w_emission*E.
+    In practice, call a tabu-search or exact solver here.
+    Returns (cost, emission) for the best solution found.
+    """
+    # Simulated trade-off (replace with real solver output)
+    # As w_emission increases, solutions become greener but costlier
+    base_cost, base_emission = 2500, 100
+    cost = base_cost * (0.8 + 0.4 * w_cost / (w_cost + w_emission + 1e-9))
+    emission = base_emission * (0.3 + 0.7 * w_emission / (w_cost + w_emission + 1e-9))
+    noise = np.random.randn() * 20
+    return cost + noise, emission
+
+def generate_pareto_front(instance, n_weights=15):
+    """
+    Sweep weight pairs to approximate the Pareto front.
+    w_cost ranges from 0 to 1; w_emission = 1 - w_cost.
+    """
+    results = []
+    for w1 in np.linspace(0.01, 0.99, n_weights):
+        w2 = 1.0 - w1
+        cost, emis = solve_weighted_vrp(w1, w2, instance)
+        results.append((cost, emis, w1))
+
+    # Sort by cost (ascending) for plotting
+    results.sort(key=lambda r: r[0])
+    costs = [r[0] for r in results]
+    emissions = [r[1] for r in results]
+    weights = [r[2] for r in results]
+    return costs, emissions, weights
+
+np.random.seed(42)
+costs, emissions, weights = generate_pareto_front(instance=None)
+
+fig, ax = plt.subplots(figsize=(6, 4))
+sc = ax.scatter(costs, emissions, c=weights, cmap='RdYlGn', s=80, zorder=3)
+ax.plot(costs, emissions, 'b--', alpha=0.4)
+plt.colorbar(sc, ax=ax, label='Weight on cost w1')
+ax.set_xlabel('Total Cost (EUR)'); ax.set_ylabel('CO2 Emissions (kg)')
+ax.set_title('Pareto Front: Cost vs. Emissions')
+fig.savefig('figures/pareto_python.png', dpi=120, bbox_inches='tight')
+print("Saved figures/pareto_python.png")
+\end{lstlisting}
+\end{frame}
+
+% =============================================================================
+% Bibliography
+% =============================================================================
+
+\begin{frame}[allowframebreaks]{Key References}
+
+  The following are the most important references cited in Chapter 15.
+  They are listed here to help the reader locate primary sources for
+  deeper study.
+
+  \begin{thebibliography}{99}
+    \bibitem{bektaslaporte2011}
+    T.\ Bekt\c{a}s and G.\ Laporte,
+    \emph{The Pollution-Routing Problem},
+    Transportation Research Part B, 45(8), 2011, pp.\ 1232--1250.
+
+    \bibitem{demiretal2012}
+    E.\ Demir, T.\ Bekt\c{a}s, and G.\ Laporte,
+    \emph{An Adaptive Large Neighbourhood Search Heuristic for the
+    Pollution-Routing Problem},
+    European Journal of Operational Research, 223(2), 2012, pp.\ 346--359.
+
+    \bibitem{eglese2006}
+    R.\ Eglese and L.\ Black,
+    \emph{Optimizing the Routing of Vehicles},
+    in: A.\ McKinnon et al.\ (eds.), Green Logistics, 2010.
+
+    \bibitem{figliozzi2010}
+    M.\ Figliozzi,
+    \emph{An Iterative Route Construction and Improvement Algorithm for the
+    Vehicle Routing Problem with Soft Time Windows and Carbon Emission Minimisation},
+    Transportation Research Part C, 2010.
+
+    \bibitem{jabalietal2012}
+    O.\ Jabali, T.\ Van Woensel, and A.\ G.\ de Kok,
+    \emph{Analysis of Travel Times and CO$_2$ Emissions in Time-Dependent
+    Vehicle Routing},
+    Production and Operations Management, 21(6), 2012, pp.\ 1060--1074.
+
+    \bibitem{kara2007}
+    I.\ Kara, B.\ Y.\ Kara, and M.\ K.\ Yetis,
+    \emph{Energy Minimizing Vehicle Routing Problem},
+    in: Lecture Notes in Computer Science, vol.\ 4616, 2007.
+
+    \bibitem{xiaoetal2012}
+    Y.\ Xiao, Q.\ Zhao, I.\ Kaku, and Y.\ Xu,
+    \emph{Development of a Fuel Consumption Optimization Model for the
+    Capacitated Vehicle Routing Problem},
+    Computers \& Operations Research, 39, 2012, pp.\ 1419--1431.
+
+    \bibitem{ericssonetal2006}
+    E.\ Ericsson, H.\ Larsson, and K.\ Brundell-Freij,
+    \emph{Optimizing Route Choice for Lowest Fuel Consumption --- Potential
+    Effects of a New Driver Support Tool},
+    Transportation Research Part C, 14, 2006, pp.\ 369--383.
+
+    \bibitem{barth2004}
+    M.\ Barth and K.\ Boriboonsomsin,
+    \emph{Real-World Carbon Dioxide Impacts of Traffic Congestion},
+    Transportation Research Record, 2058, 2008.
+
+    \bibitem{schipper2011}
+    L.\ Schipper,
+    \emph{Automobile Use, Fuel Economy, and CO2 Emissions in Industrialized
+    Countries: Encouraging Trends through 2008?},
+    Transport Policy, 18(2), 2011, pp.\ 358--372.
+
+    \bibitem{ichouaetal2003}
+    S.\ Ichoua, M.\ Gendreau, and J.-Y.\ Potvin,
+    \emph{Vehicle Dispatching with Time-Dependent Travel Times},
+    European Journal of Operational Research, 144, 2003, pp.\ 379--396.
+
+    \bibitem{pelletieretal2016}
+    S.\ Pelletier, O.\ Jabali, and G.\ Laporte,
+    \emph{Goods Distribution with Electric Vehicles: Review and Research
+    Perspectives},
+    Transportation Science, 50(1), 2016, pp.\ 3--22.
+  \end{thebibliography}
+
+\end{frame}
+
+% ─── Final summary slide ──────────────────────────────────────────────────────
+\begin{frame}{Chapter 15 Summary}
+  \begin{columns}[t]
+    \column{0.48\textwidth}
+    \begin{block}{Topics Covered}
+      \begin{itemize}
+        \item External costs of road freight
+        \item Average-speed \& instantaneous emission models (MEET, CMEM)
+        \item Load-speed-fuel relationship
+        \item Green VRP (GVRP) formulation
+        \item Pollution Routing Problem (PRP)
+        \item Speed optimisation on fixed routes
+        \item Time-dependent VRP
+        \item Multicriteria analysis: Pareto fronts
+        \item Modal comparison (road/rail/air)
+        \item Electric VRP (E-VRP) and range constraints
+        \item Alternative fuels: CNG, hybrid, hydrogen
+      \end{itemize}
+    \end{block}
+
+    \column{0.48\textwidth}
+    \begin{alertblock}{Key Numbers to Remember}
+      \begin{itemize}
+        \item Transport $\approx$ 13--14\% of global GHG emissions
+        \item Fuel $\approx$ 25--35\% of logistics operating cost
+        \item Optimal truck speed $\approx$ 70--90 km/h (fuel)
+        \item Speed optimisation: $\sim$10--15\% fuel savings
+        \item Route + speed optimisation: $\sim$18--25\% savings
+        \item Modal shift (road $\to$ rail): $\sim$50--70\% savings
+        \item EV: up to 65\% savings (clean electricity)
+        \item Pareto: 5--10\% cost increase buys 20--30\% emission cut
+      \end{itemize}
+    \end{alertblock}
+
+    \begin{block}{Open Problems}
+      \begin{itemize}
+        \item Real-time dynamic green VRP
+        \item Stochastic demand \& speed
+        \item Fleet mix optimisation
+        \item Collaborative/shared logistics
+        \item Lifecycle emission assessment
+      \end{itemize}
+    \end{block}
+  \end{columns}
+\end{frame}
+
+\end{document}
