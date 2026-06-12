@@ -549,6 +549,47 @@ $W = 3000$, $T = 1$, running for 150 steps:
 
 \end{frame}
 
+\begin{frame}[allowframebreaks]{The Boltzmann Distribution: Intuition and Limiting Behaviour}
+
+The Boltzmann distribution $\pi^T_v \propto e^{-H(v)/T}$ is the cornerstone of
+all algorithms in this chapter.  Before proceeding to individual methods,
+it is worth understanding its behaviour at extreme temperatures through a
+concrete numerical example.
+
+\begin{exampleblock}{Worked Example: Three-State Space}
+  Suppose $V = \{A, B, C\}$ with costs $H(A) = 1$, $H(B) = 3$, $H(C) = 7$.
+  The Boltzmann weights at temperature $T$ are $e^{-1/T}$, $e^{-3/T}$,
+  $e^{-7/T}$ respectively, and the normalising constant is
+  $z_T = e^{-1/T} + e^{-3/T} + e^{-7/T}$.
+
+  \medskip
+  \begin{tabular}{lrrr}
+    \toprule
+    Temperature $T$ & $\pi^T_A$ & $\pi^T_B$ & $\pi^T_C$\\
+    \midrule
+    $T = 10$ & 0.461 & 0.334 & 0.205 (nearly uniform)\\
+    $T = 1$  & 0.659 & 0.239 & 0.101 (A preferred)\\
+    $T = 0.5$& 0.841 & 0.113 & 0.046 (A strongly preferred)\\
+    $T = 0.1$& 0.998 & 0.002 & $\approx 0$ (point mass on A)\\
+    \bottomrule
+  \end{tabular}
+
+  \medskip
+  State $A$ has the smallest cost $H(A) = 1$ and is the optimal solution.
+  As $T \to 0$, $\pi^T_A \to 1$: the entire probability mass concentrates on
+  the minimiser.  At high $T$, the distribution is spread out and the chain
+  can explore freely.
+\end{exampleblock}
+
+\begin{alertblock}{The Fundamental Trade-off}
+  Every algorithm in this chapter must choose a temperature (or a schedule
+  of temperatures).  Too high: the chain explores everywhere but cannot
+  identify the optimum.  Too low: the optimum is identified but the chain
+  gets stuck.  The five methods differ in how they resolve this trade-off.
+\end{alertblock}
+
+\end{frame}
+
 \begin{frame}[fragile]{Algorithm 61: Metropolis for Boltzmann Distribution}
   \begin{lstlisting}[style=python]
 import numpy as np
@@ -871,6 +912,47 @@ def geometric_cooling(T0=10.0, beta=0.99):
   \end{lstlisting}
 \end{frame}
 
+\begin{frame}[allowframebreaks]{Remark 7.2.1: The Modified Boltzmann Distribution}
+
+The Metropolis acceptance probability at temperature $T_k$ uses the standard
+Boltzmann distribution $\pi^T_v \propto e^{-H(v)/T}$.  However, when the graph
+$G$ is \emph{not} regular (i.e., different states have different numbers of
+neighbours), the transition matrix involves the degree ratio $\deg(v)/\deg(v')$.
+The \textbf{modified Boltzmann distribution} absorbs the degree into the
+stationary distribution:
+
+\begin{block}{Modified Boltzmann Distribution (Remark 7.2.1)}
+  \[
+    \tilde\pi^T_v = \frac{\deg(v)\,e^{-H(v)/T}}
+      {\displaystyle\sum_{v' \in V}\deg(v')\,e^{-H(v')/T}},
+    \qquad v \in V.
+  \]
+  Here $\deg(v)$ (degree of $v$, i.e., number of neighbours) appears as a
+  pre-factor.  This modified distribution is the \emph{exact} stationary
+  distribution of the Metropolis chain with transition probability
+  $p^T_{vv'} = \frac{1}{\deg(v)}\min\!\bigl(1,
+  \frac{\deg(v)}{\deg(v')}e^{(H(v)-H(v'))/T}\bigr)$
+  for $v' \in \calN(v)$.
+\end{block}
+
+For \emph{regular} graphs (all $\deg(v)$ equal), $\tilde\pi^T_v = \pi^T_v$:
+the degree factors cancel and the two distributions are identical.  For
+non-regular graphs, the modified distribution places slightly more probability
+on high-degree states.  Since both distributions have the \emph{same} mode
+(the minimiser of $H$), this does not affect the optimisation objective.
+
+\medskip
+\textbf{Practical consequence.}  When using Metropolis for optimisation on a
+\emph{non-regular} graph, the standard implementation computes the acceptance
+ratio $\min(1, (\deg(v)/\deg(v')) \cdot e^{(H(v)-H(v'))/T})$, which
+automatically targets the modified Boltzmann distribution $\tilde\pi^T$.
+No special adjustment is needed; the degree ratio simply appears in the
+formula.  For the substitution-cipher example, the graph is regular (every
+permutation has $\binom{26}{2} = 325$ neighbours), so the degree ratio equals
+1 and the acceptance reduces to $\min(1, e^{l(\sigma')-l(\sigma)})$.
+
+\end{frame}
+
 \begin{frame}[allowframebreaks]{7.2 SA for the Travelling Salesman Problem}
 
 In the TSP, the state space is $\calS = \mathcal{S}_n$ (all tours of $n$
@@ -920,19 +1002,30 @@ tours than transpositions because it can undo ``crossed'' edges directly.
 
 \framebreak
 
-\textbf{The 13-city USA benchmark distance matrix.}
+\textbf{The 13-city USA benchmark: exact distance matrix.}
 
-The 13 USA cities have pairwise distances (in miles) given by the matrix
-below, taken from the Google Operations Research routing benchmark.
+The 13 USA cities benchmark uses the pairwise road distances (in miles) given
+in the $13 \times 13$ symmetric matrix $\mathbf{M}$ below, taken from the
+Google Operations Research routing benchmark.  Entry $M(i,j) = M(j,i)$ is the
+road distance from city $i$ to city $j$.  The diagonal $M(i,i) = 0$ (a city
+has zero distance to itself).
 
 \begin{center}
   \includegraphics[width=0.70\textwidth]{fig_distance_matrix}
 \end{center}
 
-{\small The optimal tour of length \textbf{7024} was found by the Held--Karp
-algorithm (dynamic programming, $O(n^2 2^n)$ time) in 0.068 seconds.  A
+{\small \textbf{Key values from the 13-city USA distance matrix (Fig.~7.3):}
+Selected entries (rows/columns indexed 1--13):
+\begin{itemize}
+  \item Shortest inter-city distance: $M(1,8) = 213$ miles (cities 1 and 8).
+  \item Longest inter-city distance: $M(3,9) = 1858$, $M(8,9) = 2699$ miles.
+  \item The symmetric matrix has $13\times 12/2 = 78$ distinct upper-triangular entries.
+\end{itemize}
+The optimal tour of length \textbf{7024} was found by the Held--Karp
+dynamic-programming algorithm ($O(n^2 2^n)$ time) in 0.068 seconds.  A
 uniformly random tour has average length $\approx 15938$ (standard deviation
-$\approx 1789$), which is $2.27 \times$ the optimal.}
+$\approx 1789$), which is $2.27 \times$ the optimal.  The image above shows
+the full $13 \times 13$ matrix.}
 
 \framebreak
 
@@ -959,6 +1052,76 @@ representative single run of all five algorithms covered in this chapter.}
   (Haj\'ek's theorem).  Geometric cooling ($T_k = \beta^k T_0$) is faster
   in practice but without this guarantee.
 \end{alertblock}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{SA for TSP: Algorithms 66 and 67 in Detail}
+
+Recall the TSP setup: we have $n$ cities and a symmetric distance matrix
+$\mathbf{M}$ with $M(i,j) = M(j,i)$ = distance from city $i$ to city $j$.
+A tour is a permutation $\sigma \in \mathcal{S}_n$ and its length is
+$l(\sigma) = \sum_{k=1}^{n-1} M(\sigma(k), \sigma(k+1)) + M(\sigma(n), \sigma(1))$.
+We want to \emph{minimise} $l(\sigma)$, equivalently to sample from
+$\pi^T_\sigma \propto e^{-l(\sigma)/T}$ (so $H(\sigma) = l(\sigma)$).
+
+\textbf{Algorithm 66: Fixed-temperature Metropolis for TSP.}
+
+Starting from a current tour $\sigma = Y_k$, one step of Metropolis proceeds as:
+\begin{enumerate}
+  \item Choose two distinct indices $i, j \in \{1,\ldots,n\}$ uniformly at
+    random (one of $\binom{n}{2}$ choices).
+  \item Define the proposed tour $\sigma'$ by swapping $\sigma(i)$ and
+    $\sigma(j)$: so $\sigma'(i) = \sigma(j)$, $\sigma'(j) = \sigma(i)$, and
+    $\sigma'(k) = \sigma(k)$ for all other $k$.
+  \item Compute the acceptance probability:
+    $\alpha = \min\!\bigl(1,\, e^{(l(\sigma)-l(\sigma'))/T}\bigr)$.
+    Since the graph is regular ($\deg(\sigma) = \binom{n}{2}$ for all $\sigma$),
+    the degree ratio is 1.
+  \item Generate $U \sim \mathcal{U}[0,1]$: if $U \le \alpha$, set
+    $Y_{k+1} = \sigma'$; otherwise $Y_{k+1} = Y_k$.
+\end{enumerate}
+
+\textbf{Why the swap proposal?}  A transposition changes only two edges in
+the tour: the edges incident to positions $i$ and $j$.  If the swap reduces
+tour length ($l(\sigma') < l(\sigma)$), then $\alpha = 1$ and we always
+accept.  If it increases tour length (the exponent is negative), we accept
+with probability $e^{(l(\sigma)-l(\sigma'))/T} \in (0,1)$, which decreases
+as $T$ decreases.
+
+\textbf{Algorithm 67: Simulated Annealing for TSP.}
+
+Algorithm 67 is identical to Algorithm 66 except the temperature changes
+at every step: at step $k$ (from time $k$ to $k+1$), use temperature $T_k$
+from a cooling schedule $T_0 \ge T_1 \ge \cdots \searrow 0$.  The
+acceptance probability at step $k$ is:
+\[
+  \alpha_k = \min\!\left(1,\; e^{(l(\sigma)-l(\sigma'))/T_k}\right).
+\]
+With the TSP cooling schedule $T_k = 1/\log(k+2)$ (logarithmic, satisfying
+Haj\'ek's condition with $c \le 1$ and $d = 1$), the SA chain is guaranteed
+to converge to the global minimum.  With geometric cooling $T_k = 0.99^k
+\cdot T_0$, it converges faster in practice but without a global guarantee.
+
+\begin{exampleblock}{Worked Example: One SA Step for TSP ($n=4$)}
+  Current tour: $\sigma = (1, 3, 2, 4)$ with $l(\sigma) = M(1,3) + M(3,2)
+  + M(2,4) + M(4,1)$.  Propose swap of positions 2 and 3:
+  $\sigma' = (1, 2, 3, 4)$ with $l(\sigma') = M(1,2) + M(2,3) + M(3,4) +
+  M(4,1)$.  Compute $\Delta l = l(\sigma') - l(\sigma)$.  If $\Delta l < 0$
+  (tour got shorter): accept always.  If $\Delta l = +50$ (tour got longer
+  by 50 miles) and $T_k = 100$: $\alpha = e^{-50/100} = e^{-0.5} \approx
+  0.607$.  We accept the worse tour with 60.7\% probability.  At $T_k = 10$:
+  $\alpha = e^{-5} \approx 0.007$---only 0.7\% chance, showing how the chain
+  increasingly resists worsening moves as temperature drops.
+\end{exampleblock}
+
+\medskip
+\textbf{Simulation results for 13-city USA TSP.}  Running Algorithm 66
+(constant $T=1$) and Algorithm 67 ($T_k = 1/\log(k+2)$) for 100 steps
+each, starting from a uniformly random tour (average length $\approx 15938$):
+SA finds better solutions in approximately \textbf{60\%} of replications when
+both algorithms run for only 10 steps.  Over 100 steps, both converge toward
+tour length $\approx 7024$--$9000$, with SA tracking the lower values earlier
+in the run.
 
 \end{frame}
 
@@ -1073,6 +1236,138 @@ LIP; for $\beta < 1$: faster approximation.
   step with the correct stationary distribution.  LIP is a discrete
   analogue of the Metropolis-Adjusted Langevin Algorithm (MALA), which uses
   the gradient to guide proposals in continuous spaces.
+\end{alertblock}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Algorithm 68: LIP in Detail and Acceptance Ratio Derivation}
+
+We now derive the Metropolis--Hastings acceptance ratio for LIP (Algorithm 68).
+Recall the LIP proposal at current state $s$: we generate $M$ candidate
+neighbours $s^{(1)},\ldots,s^{(M)}$ (either all neighbours or a fraction
+$\beta$ of them) and propose state $s^{(j)}$ with probability:
+\[
+  q^{\mathrm{LIP}}_{s,s^{(j)}} = \frac{g(\pi_{s^{(j)}}/\pi_s)\,q_{s,s^{(j)}}}{Z_g(s)},
+  \qquad Z_g(s) = \sum_{l=1}^{M} g\!\left(\frac{\pi_{s^{(l)}}}{\pi_s}\right) q_{s,s^{(l)}}.
+\]
+
+Suppose the proposal selects $X = s^{(j)}$ from the current state $s$.
+The Metropolis--Hastings acceptance probability is:
+\[
+  \alpha = \min\!\left(1,\;
+    \frac{\pi_X \cdot q^{\mathrm{LIP}}_{X,s}}{\pi_s \cdot q^{\mathrm{LIP}}_{s,X}}
+  \right).
+\]
+Now compute $q^{\mathrm{LIP}}_{X,s}$ (the LIP probability of proposing $s$
+from $X$, over the candidate set evaluated at $X$):
+\[
+  q^{\mathrm{LIP}}_{X,s} = \frac{g(\pi_s/\pi_X)\,q_{X,s}}{Z_g(X)}.
+\]
+Substituting and using $q_{X,s} = q_{s,X}$ (symmetric proposal):
+\[
+  \frac{\pi_X\,q^{\mathrm{LIP}}_{X,s}}{\pi_s\,q^{\mathrm{LIP}}_{s,X}}
+  = \frac{\pi_X \cdot g(\pi_s/\pi_X) \cdot q_{X,s} / Z_g(X)}
+         {\pi_s \cdot g(\pi_X/\pi_s) \cdot q_{s,X} / Z_g(s)}
+  = \frac{\pi_X \cdot g(\pi_s/\pi_X)}{\pi_s \cdot g(\pi_X/\pi_s)}
+    \cdot \frac{Z_g(s)}{Z_g(X)}.
+\]
+When $g(r) = \sqrt{r}$: $g(\pi_s/\pi_X) = \sqrt{\pi_s/\pi_X}$ and
+$g(\pi_X/\pi_s) = \sqrt{\pi_X/\pi_s}$, so:
+\[
+  \frac{\pi_X \cdot \sqrt{\pi_s/\pi_X}}{\pi_s \cdot \sqrt{\pi_X/\pi_s}}
+  = \frac{\sqrt{\pi_X \pi_s}}{\sqrt{\pi_X \pi_s}} = 1.
+\]
+Therefore the acceptance probability simplifies beautifully to:
+
+\begin{block}{LIP Acceptance Ratio with $g(r)=\sqrt{r}$}
+  \[
+    \alpha = \min\!\left(1,\; \frac{Z_g(s)}{Z_g(X)}\right).
+  \]
+  The acceptance probability depends only on the ratio of normalising
+  constants at the current state $s$ and the proposed state $X$.  If the
+  proposed state $X$ has a larger local normalising constant $Z_g(X) > Z_g(s)$
+  (meaning its neighbourhood is richer/has higher $\pi$-values), the move
+  is accepted with probability $< 1$; otherwise it is always accepted.
+\end{block}
+
+\textbf{Intuition.}  The normalising constant $Z_g(s)$ is a measure of how
+``good'' the neighbourhood of $s$ looks.  Moving to $X$ is penalised if $X$
+has a better-looking neighbourhood, because we want to balance exploration
+and not get carried away to states that seem good but are surrounded by
+equally good neighbours.
+
+\begin{exampleblock}{Worked Example: LIP on 3-Neighbour Graph}
+  Suppose $\pi_A = 0.5$, $\pi_B = 0.3$, $\pi_C = 0.1$, $\pi_D = 0.1$,
+  and $A$'s neighbours are $\{B, C, D\}$ (symmetric, uniform $q=1/3$).
+  At state $A$ with $g(r) = \sqrt{r}$:
+  \[
+    Z_g(A) = \sqrt{0.3/0.5}/3 + \sqrt{0.1/0.5}/3 + \sqrt{0.1/0.5}/3
+    = \tfrac{1}{3}(0.775 + 0.447 + 0.447) = 0.556.
+  \]
+  The LIP proposal probabilities: $q^{\mathrm{LIP}}_{A,B} = 0.775/(3\times 0.556)
+  = 0.465$, $q^{\mathrm{LIP}}_{A,C} = q^{\mathrm{LIP}}_{A,D} = 0.268$.
+  So $B$ (the best neighbour) is proposed with 46.5\% probability, vs
+  33.3\% with uninformed Metropolis.  LIP has successfully biased the
+  proposal toward the better neighbour.
+\end{exampleblock}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{LIP for the TSP: Example 7.3.2}
+
+The LIP method can be applied to the TSP by evaluating the Boltzmann weight
+ratio $\pi_{\sigma'}/\pi_\sigma = e^{(l(\sigma)-l(\sigma'))/T}$ for each of
+the $M$ candidate neighbours (transpositions) and then sampling proportionally
+to $\sqrt{e^{(l(\sigma)-l(\sigma'))/T}} = e^{(l(\sigma)-l(\sigma'))/(2T)}$.
+
+\textbf{Computational cost.}  In plain Metropolis for TSP, we evaluate
+the ratio for only 1 randomly chosen transposition.  In LIP, we evaluate it
+for $M$ transpositions (either all $\binom{n}{2}$ or a random subset of
+fraction $\beta$).  For $n=13$: $\binom{13}{2} = 78$ total transpositions.
+Full LIP ($\beta = 1$): evaluate all 78.  Partial LIP ($\beta = 0.5$):
+evaluate $\approx 39$.
+
+\textbf{Why this helps for TSP.}  In a random tour, many transpositions will
+shorten the tour (positive $\Delta l$) while others lengthen it.  LIP
+preferentially proposes the length-reducing transpositions by sampling
+proportional to their Boltzmann weight.  The MH correction with
+$\alpha = \min(1, Z_g(s)/Z_g(X))$ then ensures the target distribution
+remains exact.
+
+\begin{block}{LIP for TSP: Proposal Weight for Transposition $(i,j)$}
+  Let $\sigma' = \tau_{ij}(\sigma)$ (tour with positions $i$ and $j$
+  swapped).  The LIP weight for this transposition is:
+  \[
+    w_{ij} = g\!\left(\frac{\pi_{\sigma'}}{\pi_\sigma}\right)
+    = \sqrt{e^{(l(\sigma)-l(\sigma'))/T}}
+    = e^{(l(\sigma)-l(\sigma'))/(2T)}.
+  \]
+  The LIP proposal: choose transposition $(i,j)$ with probability
+  $w_{ij} / \sum_{i'<j'} w_{i'j'}$.  For transpositions that shorten the
+  tour ($l(\sigma') < l(\sigma)$): $l(\sigma) - l(\sigma') > 0$ so
+  $w_{ij} > 1$, meaning they are overweighted.  For lengthening transpositions:
+  $w_{ij} < 1$, underweighted.
+\end{block}
+
+\textbf{Simulation results from the book.}
+Running 100 replications, 100 steps each, $T = 1$, $M = 100$ candidate
+neighbours:
+\begin{itemize}
+  \item Plain Metropolis: found optimal 7024 in $\approx 0.33$ of 100 runs.
+  \item LIP ($M = 100$): found optimal 7024 in $\approx 9.66$ of 100 runs.
+  \item LIP is $\approx 29\times$ more likely to find the optimum per run.
+\end{itemize}
+The runtime trade-off: LIP evaluates $M = 100$ ratio computations per step
+vs 1 for Metropolis, so each step takes about 100$\times$ longer.  But for
+the same wall-clock time, LIP finds much better solutions because its proposal
+quality is dramatically higher.
+
+\begin{alertblock}{Key Insight for LIP}
+  LIP works because the Boltzmann weight ratio $\pi_{s'}/\pi_s$ is cheap to
+  compute for each neighbour (it requires only the cost difference
+  $H(s) - H(s')$), and the balancing function $g(\sqrt{\cdot})$ provides an
+  exact MH correction.  The quality gain from informed proposals far outweighs
+  the cost of evaluating $M$ ratios instead of 1.
 \end{alertblock}
 
 \end{frame}
@@ -1367,6 +1662,65 @@ $\sum_j \theta_{ij} = 1$ for all $i$), the optimal $\theta'_{ab}$ is:
 tours found so far, the next round of sampling will also tend to visit $j$
 after $i$.  Over iterations, the matrix $\btheta$ converges to
 (approximately) the permutation matrix of the optimal tour.
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Algorithm 71: CE for TSP -- Full Procedure}
+
+We now describe the complete CE algorithm for the TSP, combining sampling
+(Algorithm 70) with the parameter update (Eq.~7.4.9).
+
+\textbf{Setup.}  Let $n$ be the number of cities, $\mathbf{M}$ the distance
+matrix, and $h(\sigma) = -l(\sigma)$ the performance function (negative tour
+length, so higher is better).  The parameter $\btheta^{(0)}$ is initialised
+as a stochastic matrix with $\theta^{(0)}_{ij} = 1/(n-1)$ for $i \ne j$ and
+$\theta^{(0)}_{ii} = 0$: all transitions to unvisited cities are equally likely.
+
+\begin{block}{Algorithm 71: CE for TSP}
+  \textbf{Require:} $\btheta^{(0)}$, sample size $M$, elite fraction $\rho$,
+  smoothing $\alpha \in (0,1]$, max iterations $T$, stopping depth $d$.
+
+  \textbf{For} $t = 1, 2, \ldots, T$:
+  \begin{enumerate}
+    \item Sample $M$ tours $X_1,\ldots,X_M$ using Algorithm 70 with
+      $\btheta^{(t-1)}$.
+    \item Compute performances $\eta_i = h(X_i) = -l(X_i)$ for each tour.
+    \item Set $\gamma_t = \eta_{(\lceil(1-\rho)M\rceil)}$ (top-$\rho$
+      quantile of $\{\eta_i\}$).
+    \item Compute raw update $\theta'_{ab}$ via Eq.~7.4.9 (edge-frequency
+      count normalised by row).
+    \item Apply smoothing: $\btheta^{(t)} = \alpha \btheta' + (1-\alpha)
+      \btheta^{(t-1)}$.
+    \item \textbf{Stop} if $\gamma_t$ unchanged for $d$ consecutive iterations.
+  \end{enumerate}
+  \textbf{Return:} best tour found in any sample across all iterations.
+\end{block}
+
+\textbf{What the parameter $\btheta$ learns.}  Initially $\btheta^{(0)}$ is
+uniform (no preference).  After the first iteration, edges that appear
+frequently in short tours (elite set) get higher weights.  After many
+iterations, $\btheta^{(t)}$ converges to (approximately) the permutation
+matrix of the optimal tour: $\theta^{(\infty)}_{ij} = 1$ if city $j$
+follows city $i$ in the optimal tour, and $0$ otherwise.  The smoothing
+parameter $\alpha$ prevents premature convergence: with $\alpha = 1$
+(no smoothing) the matrix would snap to a single tour after the first
+iteration; with $\alpha = 0.7$ (default), it updates slowly and stably.
+
+\begin{exampleblock}{Convergence intuition for 4-city TSP}
+  Suppose the optimal tour is $1 \to 3 \to 2 \to 4 \to 1$.  Then
+  over iterations: $\theta_{13} \to 1$, $\theta_{32} \to 1$,
+  $\theta_{24} \to 1$, $\theta_{41} \to 1$, while all other entries
+  $\to 0$.  Sampling from this converged $\btheta$ almost certainly
+  produces the optimal tour every time.  The CE algorithm discovered
+  the optimal tour structure by analysing which edges appear repeatedly
+  in the best tours.
+\end{exampleblock}
+
+\textbf{Simulation results (book, Sect.~7.6.1).}  With $M = 100$ tours per
+iteration, $\rho = 0.35$, $\alpha = 0.7$, running for 100 steps:
+CE found tour length $\approx 7300$ (median over 100 replications),
+winning 61 of 100 replications.  Runtime: $\approx 230$\,s (versus $<1$\,s
+for plain Metropolis at 100 steps).
 
 \end{frame}
 
@@ -1682,6 +2036,63 @@ valuable items or add items that exceed the capacity.
   correctness, then try SA or LIP for better quality, and use CE or
   Metropolis-CE for the highest-quality solutions.
 \end{alertblock}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Understanding the Win Scores: How to Read the Comparison Table}
+
+The ``win score'' reported for each algorithm is computed as follows.
+For each of the 100 replications (same problem, same start, different random
+seed), each algorithm is run and the best solution value is recorded.  The
+algorithm with the strictly highest value (for knapsack) or strictly lowest
+tour length (for TSP) wins that replication outright (score: 1.0).  If $k$
+algorithms tie for best, each receives $1/k$.
+
+\textbf{Why win scores don't sum to exactly 100.}
+Ties (multiple algorithms finding the same best value) mean one replication
+contributes a fractional win to each tied algorithm.  The win scores sum to
+100 only if there are no ties.
+
+\textbf{The Knapsack result: why Metropolis-CE wins 100/100.}
+The key reason Metropolis-CE dominates the knapsack is that it \emph{learns}
+which specific bit-flips improve the current solution from the current
+position.  Consider the situation after 50 steps: the knapsack is nearly
+full (weight $\approx 2900$ out of 3000).  The only profitable moves are
+to swap a low-value item currently included for a high-value item currently
+excluded.  Uninformed Metropolis picks a random bit to flip: most flips
+either (a) remove a valuable item (rejected), (b) try to add an item that
+doesn't fit (infeasible, rejected), or (c) swap low for high (accepted).
+Only option (c) is productive, and it has low probability $\approx 1/d$.
+Metropolis-CE's adaptive $\btheta$ learns to concentrate probability on
+exactly these productive swaps, making nearly every step productive.
+
+\textbf{The TSP result: why CE wins most often.}
+CE uses $M = 100$ fresh samples from the global distribution at every step,
+covering the whole tour space.  Metropolis-CE only generates $M = 100$
+neighbours of the current tour (local search).  For TSP with $n = 13$, the
+local neighbourhood (all transpositions) has $\binom{13}{2} = 78$ elements.
+CE samples from a richer distribution and can ``jump'' to distant tours
+that no local method can reach in one step.  This global coverage helps CE
+on the TSP.
+
+\begin{exampleblock}{Understanding the Speed-Quality Trade-off}
+  The trade-off between the five methods can be summarised as:
+  \begin{center}
+    \begin{tabular}{lll}
+      \toprule
+      Method & Quality (TSP wins/100) & Speed (steps/s)\\
+      \midrule
+      Metropolis & 0.33 & $\sim 10^4$\\
+      SA & 0.00 & $\sim 10^4$\\
+      LIP & 9.66 & $\sim 100$\\
+      CE & 61.0 & $\sim 1$ (230\,s for 100 steps)\\
+      Metropolis-CE & 29.0 & $\sim 10$ (10\,s for 100 steps)\\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  Metropolis-CE achieves $29/61 \approx 48\%$ of CE's wins at $1/23$ of the
+  cost: an excellent quality-per-second ratio.
+\end{exampleblock}
 
 \end{frame}
 
