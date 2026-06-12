@@ -1,0 +1,1028 @@
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\graphicspath{{figures/}}
+
+% ---------- listings style ----------
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  frame=single,
+  backgroundcolor=\color{gray!7},
+  keywordstyle=\color{blue!70!black}\bfseries,
+  commentstyle=\color{green!50!black}\itshape,
+  stringstyle=\color{red!60!black},
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=2,
+}
+
+\setbeamertemplate{footline}[frame number]
+\setbeamertemplate{navigation symbols}{}
+
+% ---------- macros ----------
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\by}{\mathbf{y}}
+\newcommand{\bw}{\mathbf{w}}
+\newcommand{\bff}{\mathbf{f}}
+\newcommand{\ba}{\mathbf{a}}
+\newcommand{\bb}{\mathbf{b}}
+\newcommand{\R}{\mathbb{R}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+% =====================================================================
+\title[Chapter 15]{Chapter 15: Multiobjective Optimization}
+\subtitle{Algorithms for Optimization, 2nd ed.\ (Kochenderfer \& Wheeler, 2026)}
+\author{Lecture Notes}
+\date{2026}
+% =====================================================================
+
+\begin{document}
+
+% ── TITLE SLIDE ──────────────────────────────────────────────────────
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ── OUTLINE ──────────────────────────────────────────────────────────
+\begin{frame}{Outline}
+  \tableofcontents
+\end{frame}
+
+% =====================================================================
+\section{Introduction}
+% =====================================================================
+
+\begin{frame}{Motivation: Why Multiple Objectives?}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{itemize}
+  \item Single-objective optimization: one scalar $f(\bx)\in\R$.
+  \item Reality: engineering involves \textbf{competing objectives}.
+  \begin{itemize}
+    \item Cost \emph{vs.}\ performance
+    \item Speed \emph{vs.}\ accuracy
+    \item Alert rate \emph{vs.}\ collision rate
+  \end{itemize}
+  \item \textbf{Multiobjective} (vector) optimization:
+  \[
+    \min_{\bx\in\mathcal{X}}\; \bff(\bx) = [f_1(\bx),\ldots,f_m(\bx)]^\top
+  \]
+  \item Two broad strategies:
+  \begin{enumerate}
+    \item \textbf{Scalarize} $\bff$ into a single objective.
+    \item Find the \textbf{Pareto frontier} — the set of all best trade-offs.
+  \end{enumerate}
+\end{itemize}
+\column{0.42\textwidth}
+\begin{block}{Criterion Space $\mathcal{Y}$}
+  The image of the design space $\mathcal{X}$ through $\bff$:
+  \[
+    \mathcal{Y} = \{\bff(\bx) : \bx\in\mathcal{X}\} \subseteq \R^m
+  \]
+  Each point $\by\in\mathcal{Y}$ represents one achievable trade-off.
+\end{block}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\section{Pareto Optimality}
+% =====================================================================
+
+\begin{frame}{15.1.1 Dominance}
+\begin{columns}
+\column{0.5\textwidth}
+\begin{block}{Definition: Dominance (Eq.\ 15.1)}
+  $\bx$ \textbf{dominates} $\bx'$ if and only if
+  \[
+    f_i(\bx)\le f_i(\bx')\ \forall i \in 1{:}m
+  \]
+  \[
+    \text{and}\quad f_i(\bx) < f_i(\bx')\ \text{for some } i
+  \]
+  \vspace{0.2em}
+  Compact check: \texttt{all($\by \le \by'$) and any($\by < \by'$)}
+\end{block}
+\begin{itemize}
+  \item Single objective: always comparable.
+  \item Multiple objectives: \emph{ambiguity region} exists (neither dominates).
+\end{itemize}
+\column{0.47\textwidth}
+\includegraphics[width=\linewidth]{fig_dominance.pdf}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Dominance in Python}
+\begin{lstlisting}
+import numpy as np
+
+def dominates(y: np.ndarray, y_prime: np.ndarray) -> bool:
+    """Return True if y dominates y_prime (minimization)."""
+    return bool(np.all(y <= y_prime) and np.any(y < y_prime))
+
+# Example: 2 objectives
+y  = np.array([1.0, 3.0])
+y1 = np.array([2.0, 4.0])  # dominated by y
+y2 = np.array([0.5, 5.0])  # not dominated by y (y2[0] < y[0])
+y3 = np.array([0.5, 2.0])  # dominates y
+
+print(dominates(y, y1))   # True  -- y is better in both
+print(dominates(y, y2))   # False -- y2 wins on f1
+print(dominates(y3, y))   # True  -- y3 dominates y
+\end{lstlisting}
+\begin{block}{Key takeaway}
+  $\bx$ dominates $\bx'$ $\Rightarrow$ $\bx$ is strictly better. \\
+  No dominance in either direction $\Rightarrow$ ambiguity region.
+\end{block}
+\end{frame}
+
+\begin{frame}{15.1.2 Pareto Frontier}
+\begin{columns}
+\column{0.52\textwidth}
+\begin{block}{Pareto Optimality}
+  $\bx\in\mathcal{X}$ is \textbf{Pareto-optimal} if no $\bx'\in\mathcal{X}$ dominates it.
+\end{block}
+\begin{block}{Pareto Frontier}
+  The set of all Pareto-optimal points. Every point on the frontier lies on the boundary of $\mathcal{Y}$.
+\end{block}
+\begin{block}{Weakly Pareto Optimal}
+  $\bx$ is \textbf{weakly Pareto-optimal} if $\nexists\, \bx'$ such that $\bff(\bx')<\bff(\bx)$ (all objectives strictly better).
+  Pareto-optimal $\Rightarrow$ weakly Pareto-optimal, but not vice versa.
+\end{block}
+\begin{block}{Utopia Point (Eq.\ 15.2)}
+  \[
+    y_i^{\mathrm{utopia}} = \min_{\bx\in\mathcal{X}} f_i(\bx)
+  \]
+  Component-wise optima; generally \emph{not} attainable simultaneously.
+\end{block}
+\column{0.45\textwidth}
+\includegraphics[width=\linewidth]{fig_pareto_frontier.pdf}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Example 15.1: Aircraft Collision Avoidance}
+\begin{columns}
+\column{0.52\textwidth}
+\begin{itemize}
+  \item Two competing objectives:
+  \begin{enumerate}
+    \item \textbf{Minimize} collision rate $f_1$.
+    \item \textbf{Minimize} alert rate $f_2$.
+  \end{enumerate}
+  \item More alerts $\to$ fewer collisions \emph{if} pilots comply. \\
+        Too many alerts $\to$ alert fatigue, reduced compliance.
+  \item Designers must carefully trade these off.
+  \item The Pareto frontier reveals all achievable trade-offs.
+\end{itemize}
+\begin{block}{What the Pareto frontier tells us}
+  Any design \emph{inside} the frontier (dominated) is strictly improvable. \\
+  Only the frontier points are of interest.
+\end{block}
+\column{0.45\textwidth}
+\includegraphics[width=\linewidth]{fig_collision_avoidance.pdf}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Naive Pareto Filter (Algorithm 15.2)}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{lstlisting}
+import numpy as np
+
+def dominates(y, y_prime):
+    return np.all(y <= y_prime) and np.any(y < y_prime)
+
+def naive_pareto(xs, ys):
+    """
+    xs: list of design points
+    ys: list of objective vectors
+    Returns (pareto_xs, pareto_ys) -- non-dominated points.
+    """
+    pareto_xs, pareto_ys = [], []
+    for x, y in zip(xs, ys):
+        # keep if no other y' dominates y
+        if not any(dominates(yp, y) for yp in ys):
+            pareto_xs.append(x)
+            pareto_ys.append(y)
+    return pareto_xs, pareto_ys
+
+# Example
+xs = np.random.rand(200, 2)
+ys = [np.array([np.linalg.norm(x),
+                np.linalg.norm(x - 1)]) for x in xs]
+px, py = naive_pareto(xs, ys)
+print(f"Pareto points: {len(py)} of {len(ys)}")
+\end{lstlisting}
+\column{0.42\textwidth}
+\begin{block}{Complexity}
+  \begin{itemize}
+    \item $n$ design points, $m$ objectives.
+    \item Naive check: $O(n^2 m)$.
+    \item Wasteful: needs many samples to approximate frontier well.
+    \item Does not guarantee smooth or complete frontier.
+  \end{itemize}
+\end{block}
+\begin{alertblock}{Limitation}
+  Random sampling is inefficient — most points will be dominated. Better methods use structured search.
+\end{alertblock}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\section{Constraint Methods}
+% =====================================================================
+
+\begin{frame}{15.2.1 Constraint Method ($\varepsilon$-Constraint)}
+\begin{columns}
+\column{0.52\textwidth}
+\begin{block}{Formulation (Eq.\ 15.3)}
+  Minimize $f_1$ subject to upper bounds on all other objectives:
+  \[
+    \begin{aligned}
+      \min_{\bx} &\quad f_1(\bx) \\
+      \text{s.t.} &\quad f_2(\bx) \le c_2 \\
+                  &\quad \vdots \\
+                  &\quad f_m(\bx) \le c_m \\
+                  &\quad \bx \in \mathcal{X}
+    \end{aligned}
+  \]
+\end{block}
+\begin{itemize}
+  \item Varying $\mathbf{c}$ traces the Pareto frontier.
+  \item \textbf{Advantage}: can find Pareto points in \emph{nonconvex} regions.
+  \item Each value of $\mathbf{c}$ gives one solve of a standard optimization.
+\end{itemize}
+\column{0.45\textwidth}
+\includegraphics[width=\linewidth]{fig_constraint_method.pdf}
+\vspace{0.4em}
+\small
+As $c_2$ decreases from large to small, the optimal point traces the Pareto frontier.
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Constraint Method in Python}
+\begin{lstlisting}
+import numpy as np
+from scipy.optimize import minimize
+
+def constraint_method_2d(f1, f2, c2_vals, x0=0.0):
+    """
+    Sweep c2 values to trace the Pareto frontier (2 objectives).
+    f1, f2: scalar functions of x
+    c2_vals: array of constraint bounds on f2
+    """
+    pareto_pts = []
+    for c2 in c2_vals:
+        result = minimize(
+            f1, x0,
+            constraints={'type': 'ineq', 'fun': lambda x: c2 - f2(x)},
+            method='SLSQP'
+        )
+        if result.success:
+            x_opt = result.x[0]
+            pareto_pts.append((f1(x_opt), f2(x_opt)))
+    return np.array(pareto_pts)
+
+# Exercise 15.7: minimize [x^2, (x-2)^2]
+f1 = lambda x: x**2
+f2 = lambda x: (x - 2)**2
+c2_vals = np.linspace(0.01, 4.0, 50)
+front = constraint_method_2d(f1, f2, c2_vals, x0=np.array([1.0]))
+\end{lstlisting}
+\begin{block}{Result}
+  \texttt{front} contains $(y_1, y_2)$ pairs tracing the Pareto curve from $(0, 4)$ to $(4, 0)$.
+\end{block}
+\end{frame}
+
+\begin{frame}{15.2.2 Lexicographic Method}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{Procedure}
+  Rank objectives in order of importance. Solve sequentially:
+  \begin{enumerate}
+    \item $\min_\bx f_1(\bx)$, $\bx\in\mathcal{X}$ $\Rightarrow$ $y_1^*$
+    \item $\min_\bx f_2(\bx)$ s.t.\ $f_1(\bx)\le y_1^*$, $\bx\in\mathcal{X}$ $\Rightarrow$ $y_2^*$
+    \item $\min_\bx f_3(\bx)$ s.t.\ $f_1\le y_1^*$, $f_2\le y_2^*$, $\bx\in\mathcal{X}$ $\Rightarrow$ $y_3^*$
+    \item $\vdots$
+  \end{enumerate}
+  Each step preserves the previous optimal.
+\end{block}
+\begin{itemize}
+  \item Always feasible: previous minimum is always feasible.
+  \item Produces a \textbf{single} Pareto-optimal point.
+  \item Sensitive to objective ordering.
+  \item Inequalities are preferred (robustness to suboptimal solvers).
+\end{itemize}
+\column{0.42\textwidth}
+\begin{alertblock}{Limitation}
+  Produces only \emph{one} design, not the full frontier. Different orderings give different results.
+\end{alertblock}
+\begin{exampleblock}{Use case}
+  When there is a clear priority ranking among objectives (e.g., safety first, then efficiency, then cost).
+\end{exampleblock}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\section{Weight Methods}
+% =====================================================================
+
+\begin{frame}{15.3.1 Weighted Sum Method}
+\begin{columns}
+\column{0.52\textwidth}
+\begin{block}{Weighted Sum Objective (Eq.\ 15.4)}
+  \[
+    f(\bx) = \bw^\top \bff(\bx) = \sum_{i=1}^{m} w_i f_i(\bx)
+  \]
+  where $\bw \ge \mathbf{0}$, $\sum_i w_i = 1$.
+\end{block}
+\begin{itemize}
+  \item Each $w_i$ = cost associated with objective $i$.
+  \item Sweep $\bw$ over the simplex to trace the frontier.
+  \item In 2D: vary $w_1 \in [0,1]$, $w_2 = 1 - w_1$.
+\end{itemize}
+\begin{alertblock}{Critical Limitation}
+  Cannot recover Pareto points in \textbf{nonconvex} regions of the frontier. Linear iso-contours miss concave sections.
+\end{alertblock}
+\column{0.45\textwidth}
+\includegraphics[width=\linewidth]{fig_weighted_sum.pdf}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Weighted Sum in Python}
+\begin{lstlisting}
+import numpy as np
+from scipy.optimize import minimize
+
+def weight_pareto(f1, f2, n_pts=50, x0=0.0):
+    """
+    Weighted sum method: sweep w1 from 0 to 1.
+    Returns list of (y1, y2) Pareto-optimal points.
+    """
+    results = []
+    for w1 in np.linspace(0, 1, n_pts):
+        w2 = 1.0 - w1
+        obj = lambda x: w1 * f1(x) + w2 * f2(x)
+        res = minimize(obj, x0, method='BFGS')
+        if res.success:
+            x_opt = res.x[0]
+            results.append((f1(x_opt), f2(x_opt)))
+    return np.array(results)
+
+# Example: f1(x) = x^2, f2(x) = (x-2)^2
+f1 = lambda x: float(x**2)
+f2 = lambda x: float((x - 2)**2)
+front = weight_pareto(f1, f2, n_pts=30, x0=np.array([1.0]))
+# Note: misses nonconvex portions!
+\end{lstlisting}
+\begin{exampleblock}{Numerical example (3 points)}
+  $w_1=0.1$: $x^*\approx 1.82$, $(y_1,y_2)\approx(3.31, 0.03)$ \\
+  $w_1=0.5$: $x^*= 1.0$, $(y_1,y_2)=(1.0, 1.0)$ \\
+  $w_1=0.9$: $x^*\approx 0.22$, $(y_1,y_2)\approx(0.05, 3.20)$
+\end{exampleblock}
+\end{frame}
+
+\begin{frame}{15.3.2 Goal Programming}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{$L_p$ Goal Programming (Eq.\ 15.5)}
+  Minimize the $L_p$ distance to a goal point $\by^{\mathrm{goal}}$:
+  \[
+    \min_{\bx\in\mathcal{X}}\; \|\bff(\bx) - \by^{\mathrm{goal}}\|_p
+  \]
+  Goal point is typically the \textbf{utopia point}.
+\end{block}
+\begin{block}{Weighted Exponential Sum (Eq.\ 15.6)}
+  \[
+    f(\bx) = \sum_{i=1}^{m} w_i \left|f_i(\bx) - y_i^{\mathrm{goal}}\right|^p
+  \]
+  $\bw\ge\mathbf{0}$, $\sum w_i=1$, $p\ge 1$.
+\end{block}
+\begin{itemize}
+  \item $p=1$: Manhattan distance (L1)
+  \item $p=2$: Euclidean distance
+  \item $p\to\infty$: Chebyshev (min-max)
+\end{itemize}
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{fig_goal_programming.pdf}
+\vspace{0.3em}
+\small Different $p$ values reach different Pareto-optimal points.
+\end{columns}
+\end{frame}
+
+\begin{frame}{15.3.3--15.3.5 Advanced Weight Methods}
+\begin{columns}
+\column{0.5\textwidth}
+\begin{block}{Weighted Min-Max / Tchebycheff (Eq.\ 15.7)}
+  \[
+    f(\bx) = \max_{i}\left[w_i\left(f_i(\bx) - y_i^{\mathrm{goal}}\right)\right]
+  \]
+  \begin{itemize}
+    \item Limit of weighted exponential sum as $p\to\infty$.
+    \item Contours are \emph{diamonds} — enter nonconvex regions.
+    \item Can find \textbf{complete} Pareto-optimal set by varying $\bw$.
+    \item May also produce \emph{weakly} Pareto-optimal points.
+  \end{itemize}
+\end{block}
+\begin{block}{Augmented Tchebycheff (Eq.\ 15.8)}
+  \[
+    f(\bx) = \max_i\!\left[w_i\!\left(f_i - y_i^{\mathrm{goal}}\right)\right] + \rho\,\bff(\bx)^\top\by^{\mathrm{goal}}
+  \]
+  $\rho \in (0.0001, 0.01)$: removes weakly optimal points.
+\end{block}
+\column{0.47\textwidth}
+\includegraphics[width=\linewidth]{fig_weighted_minmax.pdf}
+\vspace{0.2em}
+\begin{block}{Exponential Weighted Criterion (Eq.\ 15.9)}
+  \[
+    f(\bx) = \sum_{i=1}^{m}(e^{pw_i}-1)\,e^{p f_i(\bx)}
+  \]
+  Motivated by the failure of weighted sum on nonconvex frontiers. High $p$ can cause numerical overflow.
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Weighted Min-Max in Python}
+\begin{lstlisting}
+import numpy as np
+from scipy.optimize import minimize
+
+def weighted_minmax(f_list, w, y_goal, x0, rho=1e-3):
+    """
+    Augmented Tchebycheff (weighted min-max + small perturbation).
+    f_list: list of objective functions [f1, f2, ...]
+    w     : weight vector (sums to 1, all positive)
+    y_goal: goal/utopia point
+    rho   : small scalar (0.0001 to 0.01)
+    """
+    def objective(x):
+        ys = np.array([fi(x) for fi in f_list])
+        cheby = np.max(w * (ys - y_goal))
+        return cheby + rho * np.dot(ys, y_goal)
+
+    res = minimize(objective, x0, method='NELDER-MEAD')
+    return res
+
+# Example: 2 objectives on R^2
+f1 = lambda x: x[0]**2 + x[1]**2
+f2 = lambda x: (x[0]-2)**2 + (x[1]-1)**2
+w  = np.array([0.5, 0.5])
+yg = np.array([0.0, 0.0])   # utopia point (approx)
+res = weighted_minmax([f1, f2], w, yg, x0=np.array([1.0, 1.0]))
+print("Optimal x:", res.x)
+print("Objectives:", f1(res.x), f2(res.x))
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{Comparison of Weight Methods}
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Method} & \textbf{Convex frontier?} & \textbf{Nonconvex frontier?} & \textbf{Full coverage} & \textbf{Complexity} \\
+\midrule
+Weighted Sum         & \checkmark & $\times$   & Partial & $O(n_w \cdot T_{\text{opt}})$ \\
+Goal Programming     & \checkmark & Partial    & No      & $O(n_p \cdot T_{\text{opt}})$ \\
+Wtd.\ Exp.\ Sum     & \checkmark & \checkmark & Partial & $O(n_w \cdot T_{\text{opt}})$ \\
+Wtd.\ Min-Max        & \checkmark & \checkmark & Yes*    & $O(n_w \cdot T_{\text{opt}})$ \\
+Constraint Method    & \checkmark & \checkmark & Yes     & $O(n_c \cdot T_{\text{opt}})$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vspace{0.3em}
+\small *Augmented form avoids weakly Pareto-optimal points. \\
+$T_{\text{opt}}$ = cost of single optimization; $n_w, n_c$ = number of weight/constraint values swept.
+\end{frame}
+
+% =====================================================================
+\section{Multiobjective Population Methods}
+% =====================================================================
+
+\begin{frame}{15.4 Multiobjective Population Methods}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{Key Idea}
+  Population methods naturally explore multiple regions of the design space simultaneously. They can be extended to \textbf{cover the entire Pareto frontier} in a single run.
+\end{block}
+\begin{block}{Three Main Approaches}
+  \begin{enumerate}
+    \item \textbf{Subpopulations} (§15.4.1): partition population to optimize different objectives separately.
+    \item \textbf{Nondomination ranking} (§15.4.2): rank individuals by their Pareto level (NSGA-II).
+    \item \textbf{Pareto filters} (§15.4.3): maintain an elite archive of Pareto-optimal points.
+    \item \textbf{Niche techniques} (§15.4.4): encourage spread across the frontier.
+  \end{enumerate}
+\end{block}
+\column{0.42\textwidth}
+\begin{exampleblock}{Why population methods excel}
+  \begin{itemize}
+    \item Single run $\to$ many Pareto points.
+    \item No scalarization needed.
+    \item Handle nonconvex, discontinuous frontiers.
+    \item Naturally diverse.
+  \end{itemize}
+\end{exampleblock}
+\end{columns}
+\end{frame}
+
+\begin{frame}{15.4.1 Vector Evaluated Genetic Algorithm (Algorithm 15.4)}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{Algorithm: VEGA}
+  \begin{enumerate}
+    \item Evaluate population: $\by_i = \bff(\bx_i)$ for all $i$.
+    \item Split into $m$ \textbf{subpopulations} of equal size.
+    \item Each subpopulation $k$ selects parents by fitness on $f_k$ only.
+    \item Shuffle all parent pairs.
+    \item Apply crossover and mutation to form next generation.
+  \end{enumerate}
+\end{block}
+\begin{itemize}
+  \item Each subpopulation specializes in one objective.
+  \item Crossover between subpopulations maintains diversity.
+  \item Tends to converge to extreme points of the Pareto frontier.
+\end{itemize}
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{fig_nsga_evolution.pdf}
+\small Population evolves toward Pareto frontier over generations.
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{VEGA in Python}
+\begin{lstlisting}
+import numpy as np
+
+def tournament_select(fitness, n_select):
+    """Simple tournament selection."""
+    idx = np.random.choice(len(fitness), size=(n_select, 2))
+    winners = idx[range(n_select),
+                  np.argmin(fitness[idx], axis=1)]
+    return winners
+
+def vega_step(population, f_list):
+    """One generation of VEGA."""
+    m = len(f_list)
+    n_pop = len(population)
+    n_sub = n_pop // m
+    # Evaluate all
+    ys = np.array([[fi(x) for fi in f_list] for x in population])
+    # Select subpopulation parents
+    parents = []
+    for k in range(m):
+        fitness_k = ys[:, k]
+        sel = tournament_select(fitness_k, n_sub)
+        parents.extend(sel.tolist())
+    parents = np.random.permutation(parents)
+    # Crossover + mutation
+    new_pop = []
+    for i in range(0, n_pop, 2):
+        p1, p2 = population[parents[i]], population[parents[i+1]]
+        alpha = np.random.rand(*p1.shape)
+        child = alpha * p1 + (1 - alpha) * p2
+        child += 0.05 * np.random.randn(*child.shape)
+        new_pop.append(child)
+    return np.array(new_pop)
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{15.4.2 Nondomination Ranking (Algorithm 15.5)}
+\begin{columns}
+\column{0.52\textwidth}
+\begin{block}{NSGA-II Ranking Levels}
+  \begin{description}
+    \item[Level 1:] Non-dominated individuals in entire population.
+    \item[Level 2:] Non-dominated after removing Level 1.
+    \item[Level $k$:] Non-dominated after removing Levels $1, \ldots, k-1$.
+  \end{description}
+  Continue until all individuals are ranked.
+\end{block}
+\begin{block}{Selection Rule}
+  Lower level $=$ better. Level 1 is preferred over Level 2, etc.
+  Within the same level, use crowding distance.
+\end{block}
+\begin{itemize}
+  \item Reference: Deb et al., IEEE Trans.\ Evol.\ Comp., 2002 (NSGA-II).
+\end{itemize}
+\column{0.45\textwidth}
+\includegraphics[width=\linewidth]{fig_nondomination_levels.pdf}
+\small Darker = lower (better) level.
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Nondomination Ranking in Python}
+\begin{lstlisting}
+import numpy as np
+
+def dominates(y, y_prime):
+    return np.all(y <= y_prime) and np.any(y < y_prime)
+
+def nondomination_levels(ys):
+    """
+    Assign nondomination levels to objective vectors.
+    Level 1 = best (non-dominated in full set).
+    ys: (n, m) array of objective values.
+    Returns: levels array of shape (n,).
+    """
+    n = len(ys)
+    levels = np.zeros(n, dtype=int)
+    L = 0
+    while np.any(levels == 0):
+        L += 1
+        for i in range(n):
+            if levels[i] == 0:
+                dominated = False
+                for j in range(n):
+                    if j != i and (levels[j] == 0 or levels[j] == L):
+                        if dominates(ys[j], ys[i]):
+                            dominated = True
+                            break
+                if not dominated:
+                    levels[i] = L
+    return levels
+
+# Usage:
+ys = np.array([[1,3],[2,2],[3,1],[2,3],[1.5,2.5]])
+print(nondomination_levels(ys))
+# Level 1 = [1,3],[2,2],[3,1]; Level 2 = [2,3],[1.5,2.5]
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{15.4.3 Pareto Filters (Algorithm 15.7)}
+\begin{columns}
+\column{0.52\textwidth}
+\begin{block}{Pareto Filter: Elite Archive}
+  \begin{enumerate}
+    \item For each new individual $(x, y)$:
+    \begin{itemize}
+      \item If not dominated by any filter point, \textbf{add} it.
+    \end{itemize}
+    \item Remove all filter points dominated by new additions.
+    \item If filter exceeds capacity $C$:
+    \begin{itemize}
+      \item Find the closest pair in criterion space.
+      \item Remove one (Algorithm 15.6).
+    \end{itemize}
+  \end{enumerate}
+\end{block}
+\begin{block}{Closest-Pair Pruning (Alg.\ 15.6)}
+  \[
+    (i^*, j^*) = \argmin_{i < j} \|\by_i - \by_j\|
+  \]
+  Remove one of $i^*, j^*$ randomly.
+\end{block}
+\column{0.45\textwidth}
+\includegraphics[width=\linewidth]{fig_pareto_filter.pdf}
+\vspace{0.2em}
+\small Red dots: Pareto filter approximating the true frontier (blue).
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Pareto Filter in Python}
+\begin{lstlisting}
+import numpy as np
+
+def discard_closest_pair(xs, ys):
+    """Remove one point from the closest pair in criterion space."""
+    min_dist, idx = np.inf, 0
+    for i in range(len(ys)):
+        for j in range(i+1, len(ys)):
+            d = np.linalg.norm(ys[i] - ys[j])
+            if d < min_dist:
+                min_dist = d
+                idx = np.random.choice([i, j])
+    xs.pop(idx); ys.pop(idx)
+
+def update_pareto_filter(filter_xs, filter_ys, xs, ys,
+                         capacity=None):
+    """Add non-dominated points to filter; prune if over capacity."""
+    capacity = capacity or len(xs)
+    for x, y in zip(xs, ys):
+        if not any(dominates(fy, y) for fy in filter_ys):
+            filter_xs.append(x)
+            filter_ys.append(y)
+    # Keep only non-dominated in filter
+    fxs2, fys2 = [], []
+    for x, y in zip(filter_xs, filter_ys):
+        if not any(dominates(fy, y) for fy in filter_ys
+                   if not np.array_equal(fy, y)):
+            fxs2.append(x); fys2.append(y)
+    filter_xs[:], filter_ys[:] = fxs2, fys2
+    while len(filter_xs) > capacity:
+        discard_closest_pair(filter_xs, filter_ys)
+    return filter_xs, filter_ys
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{15.4.4 Niche Techniques}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{Problem: Niching}
+  Population methods may converge to a few \emph{niches} (clusters) in the criterion space, failing to cover the full Pareto frontier.
+\end{block}
+\begin{block}{Fitness Sharing}
+  Penalize individuals by the number of nearby points in criterion space:
+  \[
+    \tilde{f}_i(\bx) = f_i(\bx) \times (1 + \alpha \cdot |\mathcal{N}_\sigma(\bx)|)
+  \]
+  where $\mathcal{N}_\sigma(\bx) = \{\bx' : \|\bff(\bx') - \bff(\bx)\| < \sigma\}$.
+\end{block}
+\begin{block}{Equivalence Class Sharing}
+  When two individuals tie on nondomination rank, prefer the one with fewer nearby points $\Rightarrow$ spreads population.
+\end{block}
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{fig_fitness_sharing.pdf}
+\small Fitness sharing significantly improves Pareto coverage.
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\section{Preference Elicitation}
+% =====================================================================
+
+\begin{frame}{15.5 Preference Elicitation: Overview}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{Goal}
+  \emph{Infer} a scalar objective from expert preferences about trade-offs, rather than specifying weights directly.
+\end{block}
+\begin{block}{Model}
+  Use weighted-sum model: $f(\bx) = \bw^\top\bff(\bx)$.
+  \begin{itemize}
+    \item Ask expert: ``Do you prefer design $\ba$ or $\bb$?''
+    \item Each preference is a constraint on $\bw$.
+    \item Accumulate constraints $\Rightarrow$ narrow $\bw$.
+  \end{itemize}
+\end{block}
+\begin{itemize}
+  \item Expert queries present pairs of Pareto-optimal points in criterion space.
+  \item Binary preference minimizes cognitive burden on expert.
+\end{itemize}
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{fig_preference_elicitation.pdf}
+\small Queries reduce the polytope of feasible weights $\mathcal{W}$.
+\end{columns}
+\end{frame}
+
+\begin{frame}{15.5.1 Model Identification}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{Preference Constraints (Eq.\ 15.11--15.12)}
+  Given pairs $\{(\ba^{(i)}, \bb^{(i)})\}_{i=1}^n$ where $\ba^{(i)}$ is preferred to $\bb^{(i)}$:
+  \[
+    \bw^\top\ba^{(i)} < \bw^\top\bb^{(i)}
+    \;\Longrightarrow\;
+    (\ba^{(i)} - \bb^{(i)})^\top\bw < 0
+  \]
+  Consistent weight vector satisfies:
+  \[
+    \begin{cases}
+      (\ba^{(i)} - \bb^{(i)})^\top\bw < 0 & \forall i \\
+      \mathbf{1}^\top\bw = 1 \\
+      \bw \ge \mathbf{0}
+    \end{cases}
+  \]
+\end{block}
+\begin{block}{Optimal $\bw$ (Eq.\ 15.13)}
+  Choose $\bw$ that \textbf{best separates} preferred from non-preferred:
+  \[
+    \min_{\bw}\; \sum_{i=1}^n (\ba^{(i)}-\bb^{(i)})^\top\bw
+    \;\;\text{s.t.\ above constraints}
+  \]
+  Alternatively: $\min \|\bw - \bw^{(n)}\|_1$ to stay close to current estimate.
+\end{block}
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{fig_collision_avoidance.pdf}
+\small Each query adds a half-space constraint on $\bw$.
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Preference Elicitation in Python}
+\begin{lstlisting}
+import numpy as np
+from scipy.optimize import linprog
+
+def update_weights(prev_w, a_pts, b_pts):
+    """
+    Find w minimizing ||w - prev_w||_1 subject to:
+      (a_i - b_i)^T w < 0  for all i   (a preferred over b)
+      1^T w = 1,  w >= 0
+    Uses linprog (L1 objective via auxiliary variables).
+    """
+    n_pairs = len(a_pts)
+    m = len(prev_w)
+    # Inequality: (a_i - b_i)^T w <= -eps
+    eps = 1e-6
+    A_ub = np.array([a - b for a, b in zip(a_pts, b_pts)])
+    b_ub = -eps * np.ones(n_pairs)
+    # Equality: sum(w) = 1
+    A_eq = np.ones((1, m))
+    b_eq = np.array([1.0])
+    # Minimize sum(w) as proxy (simple version)
+    c = np.zeros(m)
+    bounds = [(0, 1)] * m
+    result = linprog(c, A_ub=A_ub, b_ub=b_ub,
+                     A_eq=A_eq, b_eq=b_eq,
+                     bounds=bounds, method='highs')
+    return result.x if result.success else prev_w
+
+# Example: 3 objectives, 2 preferences
+w0 = np.array([1/3, 1/3, 1/3])
+a1 = np.array([0.2, 0.8, 0.6])  # preferred
+b1 = np.array([0.9, 0.1, 0.2])
+w_new = update_weights(w0, [a1], [b1])
+print("Updated weights:", np.round(w_new, 3))
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{15.5.2 Paired Query Selection: Q-Eval}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{Q-Eval Algorithm}
+  Goal: select query $(a, b)$ that maximally reduces $|\mathcal{W}|$.
+  \begin{enumerate}
+    \item Compute \textbf{analytic center} $\mathbf{c}$ of $\mathcal{W}$:
+    \[
+      \mathbf{c} = \argmax_{\bw\in\mathcal{W}} \sum_{i=1}^n \ln\left[(\bb^{(i)}-\ba^{(i)})^\top\bw\right]
+    \]
+    \item For each candidate pair, compute normal distance from bisecting hyperplane to $\mathbf{c}$.
+    \item Sort pairs by distance; evaluate $k$ closest.
+    \item Choose pair with \textbf{volume ratio closest to 1} (most equal split).
+  \end{enumerate}
+\end{block}
+\column{0.42\textwidth}
+\begin{block}{Polyhedral Method}
+  Approximates $\mathcal{W}$ with a bounding \textbf{ellipsoid} centered at analytic center. Choose queries perpendicular to longest ellipsoid axis $\Rightarrow$ reduces uncertainty fastest.
+\end{block}
+\begin{exampleblock}{Stopping criteria}
+  \textbf{Minimax regret} (Eq.\ 15.16):
+  \[
+    x^* = \argmin_\bx \max_{\bw\in\mathcal{W}} \max_{\bx'\in\mathcal{X}} \bw^\top(\bff(\bx)-\bff(\bx'))
+  \]
+  Stop when minimax regret $< \theta$.
+\end{exampleblock}
+\end{columns}
+\end{frame}
+
+\begin{frame}{15.5.3 Design Selection}
+\begin{columns}
+\column{0.55\textwidth}
+\begin{block}{Decision Quality Improvement (Eq.\ 15.15)}
+  Commit to $x^*$ that minimizes worst-case objective:
+  \[
+    x^* = \argmin_{\bx\in\mathcal{X}} \max_{\bw\in\mathcal{W}} \bw^\top\bff(\bx)
+  \]
+  Provides an \textbf{upper bound} on objective value.
+\end{block}
+\begin{block}{Minimax Regret (Eq.\ 15.16)}
+  Minimize the \textbf{maximum regret} of choosing $x$ instead of $x'$:
+  \[
+    \text{Regret}(\bx, \bx', \bw) = \bw^\top\bff(\bx) - \bw^\top\bff(\bx')
+  \]
+  \[
+    x^* = \argmin_\bx \max_{\bw\in\mathcal{W}} \max_{\bx'\in\mathcal{X}} \text{Regret}(\bx, \bx', \bw)
+  \]
+\end{block}
+\column{0.42\textwidth}
+\begin{block}{Comparison}
+  \begin{itemize}
+    \item DQI: \emph{conservative} — protect against worst case.
+    \item Minimax Regret: accounts for \emph{uncertainty in utility}.
+    \item Both are robust to incorrect weight estimates.
+  \end{itemize}
+\end{block}
+\begin{alertblock}{Key use}
+  Minimax regret can also serve as a \textbf{stopping criterion}: terminate elicitation when regret $< \theta$.
+\end{alertblock}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\section{Summary \& Exercises}
+% =====================================================================
+
+\begin{frame}{Chapter 15 Summary}
+\begin{columns}
+\column{0.5\textwidth}
+\begin{block}{Core Concepts}
+  \begin{itemize}
+    \item \textbf{Dominance}: $\bx$ dominates $\bx'$ if better on all, strictly better on at least one objective.
+    \item \textbf{Pareto frontier}: set of non-dominated designs; boundary of criterion space $\mathcal{Y}$.
+    \item \textbf{Utopia point}: component-wise optima (usually unattainable).
+  \end{itemize}
+\end{block}
+\begin{block}{Scalarization Methods}
+  \begin{itemize}
+    \item Constraint / $\varepsilon$-constraint: handles nonconvex frontiers.
+    \item Lexicographic: priority ordering.
+    \item Weighted sum: simple but misses nonconvex regions.
+    \item Weighted min-max (Tchebycheff): complete coverage.
+  \end{itemize}
+\end{block}
+\column{0.47\textwidth}
+\begin{block}{Population Methods}
+  \begin{itemize}
+    \item VEGA: subpopulation specialization.
+    \item Nondomination ranking (NSGA-II): multi-level selection.
+    \item Pareto filter: elite archive.
+    \item Fitness sharing: niche techniques for spread.
+  \end{itemize}
+\end{block}
+\begin{block}{Preference Elicitation}
+  \begin{itemize}
+    \item Binary queries constrain weight polytope $\mathcal{W}$.
+    \item Q-Eval / Polyhedral: smart query selection.
+    \item Minimax regret: robust design selection \& stopping criterion.
+  \end{itemize}
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Exercises: Key Problems}
+\begin{block}{Exercise 15.1 — Weighted Sum Limitation}
+  \textbf{Q}: What is a disadvantage of the weighted sum method for computing the Pareto frontier?\\[0.3em]
+  \textbf{A}: It cannot find Pareto-optimal points in \emph{nonconvex} regions of the Pareto frontier. Linear contours cannot probe concave sections of $\mathcal{Y}$.
+\end{block}
+\begin{block}{Exercise 15.2 — Why Population Methods?}
+  \textbf{Q}: Why are population methods well-suited for multiobjective optimization?\\[0.3em]
+  \textbf{A}: Non-population methods find only a \emph{single} Pareto point. Population methods naturally spread across the frontier, providing a representative sample of trade-offs in a single run.
+\end{block}
+\begin{block}{Exercise 15.3 — Dominance Example}
+  Points $\{[1,2],[2,1],[2,2],[1,1]\}$. Which are Pareto optimal?\\[0.3em]
+  \textbf{A}: Only $[1,1]$ is strictly Pareto optimal. $[1,2]$ and $[2,1]$ are \emph{weakly} Pareto optimal. $[2,2]$ is dominated.
+\end{block}
+\end{frame}
+
+\begin{frame}{Exercise 15.7: Constraint Method Pareto Curve}
+\begin{columns}
+\column{0.52\textwidth}
+\begin{block}{Problem}
+  $\min_x [x^2, (x-2)^2]$. Use the constraint method to obtain the Pareto curve.
+\end{block}
+\begin{block}{Solution}
+  Fix $f_2 \le c$, minimize $f_1 = (x-2)^2$:
+  \[
+    x^* = \begin{cases} 2 & c \ge 4 \\ \sqrt{c} & c\in[0,4) \\ \text{infeasible} & c<0 \end{cases}
+  \]
+  Pareto curve parametrized by $c\in[0,4]$:
+  \begin{align*}
+    y_1 &= c = (x^*)^2 \\
+    y_2 &= (\sqrt{c} - 2)^2 \quad \text{for } c<4
+  \end{align*}
+  Curve goes from $(0, 4)$ to $(4, 0)$.
+\end{block}
+\column{0.45\textwidth}
+\includegraphics[width=\linewidth]{fig_exercise_pareto_curve.pdf}
+\vspace{0.2em}
+\small Pareto curve for $[x^2,\,(x-2)^2]$.
+\end{columns}
+\end{frame}
+
+\begin{frame}{Exercise 15.3 Visualization}
+\begin{columns}
+\column{0.5\textwidth}
+\begin{block}{Example: 4 Criterion Points}
+  Points: $\{[1,2],[2,1],[2,2],[1,1]\}$
+  \begin{itemize}
+    \item $[1,1]$: Pareto optimal (dominates $[1,2]$, $[2,1]$, $[2,2]$).
+    \item $[1,2]$: Weakly Pareto optimal (not dominated, but $[1,1]$ dominates it).
+    \item $[2,1]$: Weakly Pareto optimal.
+    \item $[2,2]$: Dominated by $[1,1]$.
+  \end{itemize}
+\end{block}
+\column{0.47\textwidth}
+\includegraphics[width=\linewidth]{fig_exercise_example.pdf}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Chapter 15: Key Takeaways}
+\begin{enumerate}
+  \item \textbf{Dominance} is the fundamental partial ordering for multiobjective problems.
+  \item The \textbf{Pareto frontier} — not a single point — is the solution to a multiobjective problem.
+  \item \textbf{Scalarization methods} (constraint, weighted sum, Tchebycheff) reduce the problem to single-objective optimization.
+        Tchebycheff/min-max is the most general.
+  \item \textbf{Population methods} naturally spread across the Pareto frontier.
+        NSGA-II (nondomination ranking + crowding distance) is the most widely used.
+  \item \textbf{Preference elicitation} infers a decision-maker's utility from pairwise comparisons, narrowing the weight polytope $\mathcal{W}$.
+  \item Design selection via \textbf{minimax regret} is robust to incomplete preference information.
+\end{enumerate}
+\vspace{0.5em}
+\begin{block}{Next Chapter}
+  \textbf{Chapter 16: Sampling Plans} — how to efficiently explore the design space when function evaluations are expensive (space-filling designs, LHS, quasi-random sequences).
+\end{block}
+\end{frame}
+
+\end{document}

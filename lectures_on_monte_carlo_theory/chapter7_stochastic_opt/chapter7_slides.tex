@@ -1,13 +1,15 @@
 % ============================================================
 %  Chapter 7 – Stochastic Optimization
-%  Lectures on Monte Carlo Theory – Leskelä & Vihola
+%  Lectures on Monte Carlo Theory – Lorek & Rolski
+%  Reader-friendly rewrite: complete sentences, worked examples,
+%  all symbols defined, allowframebreaks throughout.
 % ============================================================
 \documentclass[aspectratio=169,10pt]{beamer}
 \usetheme{Madrid}
 \usecolortheme{seahorse}
 \setbeamertemplate{footline}[frame number]
 
-% ── packages ────────────────────────────────────────────────
+% -- packages ------------------------------------------------
 \usepackage{amsmath,amssymb,mathtools}
 \usepackage{bm}
 \usepackage{graphicx}
@@ -17,10 +19,12 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{tikz}
+\usepackage{enumerate}
+\usepackage{array}
 
 \graphicspath{{figures/}}
 
-% ── listings style ──────────────────────────────────────────
+% -- listings style ------------------------------------------
 \lstdefinestyle{python}{
   language=Python,
   basicstyle=\ttfamily\scriptsize,
@@ -36,7 +40,7 @@
   tabsize=4,
 }
 
-% ── macros ──────────────────────────────────────────────────
+% -- macros --------------------------------------------------
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\Prob}{\mathbb{P}}
@@ -45,172 +49,530 @@
 \newcommand{\bw}{\mathbf{w}}
 \newcommand{\btheta}{\boldsymbol{\theta}}
 \newcommand{\calS}{\mathcal{S}}
+\newcommand{\calE}{\mathcal{E}}
+\newcommand{\calN}{\mathcal{N}}
 
 % ============================================================
 \title[Ch.7 Stochastic Optimization]{Chapter 7\\Stochastic Optimization}
 \subtitle{Lectures on Monte Carlo Theory}
-\author{Leskel\"{a} \& Vihola}
+\author{Lorek \& Rolski}
 \date{}
 % ============================================================
 
 \begin{document}
 
-% ── Title ───────────────────────────────────────────────────
+% -- Title ---------------------------------------------------
 \begin{frame}
   \titlepage
 \end{frame}
 
-% ── Outline ─────────────────────────────────────────────────
+% -- Outline -------------------------------------------------
 \begin{frame}{Chapter Outline}
   \tableofcontents
 \end{frame}
 
 % ============================================================
-\section{Introduction}
+\section{Introduction: The Stochastic Optimization Problem}
 % ============================================================
 
-\begin{frame}{The Stochastic Optimization Problem}
-  \textbf{Goal.}  Given a function $h : \calS \to \R$, find
+\begin{frame}[allowframebreaks]{Introduction: The Stochastic Optimization Problem}
 
-  \begin{block}{Optimization Objective}
-    \[
-      \gamma^{\mathrm{opt}} = \max_{x \in \calS} h(x),
-      \qquad
-      x^{\mathrm{opt}} = \arg\max_{x \in \calS} h(x).
-    \]
-    \begin{itemize}
-      \item $\calS$ -- state / solution space (may be combinatorial)
-      \item $h$ -- objective / performance function (to be \emph{maximized})
-      \item Equivalently minimize cost $H = -h$
-    \end{itemize}
-  \end{block}
+In this chapter we survey Monte Carlo methods for a fundamental class of
+problems: given a function $h : \calS \to \R$ defined on some set $\calS$,
+find both the maximum value and the argument that achieves it.
 
-  \medskip
-  \textbf{Core idea (Monte Carlo approach):} construct a Markov chain
-  whose stationary distribution $\pi$ puts high probability on good
-  solutions, then sample from it.
+\begin{block}{Optimization Objective}
+  \[
+    \gamma^{\mathrm{opt}} = \max_{x \in \calS} h(x),
+    \qquad
+    x^{\mathrm{opt}} = \arg\max_{x \in \calS} h(x).
+  \]
+  Here $\calS$ is the \textbf{state space} or \textbf{solution space}
+  (possibly combinatorial and enormous), $h$ is the \textbf{performance
+  function} whose maximum we seek, $\gamma^{\mathrm{opt}}$ (gamma superscript
+  opt) is the optimal value, and $x^{\mathrm{opt}}$ is the optimizer.
+\end{block}
 
-  \medskip
-  \textbf{Methods covered:}
-  \begin{enumerate}
-    \item Metropolis / Gibbs at fixed temperature
-    \item Simulated Annealing (decreasing temperature)
-    \item Locally Informed Proposals (gradient-aware)
-    \item Cross-Entropy (CE) method
-    \item Metropolis–CE hybrid
-  \end{enumerate}
-\end{frame}
+When we want to \emph{minimise} a cost function $H : \calS \to \R_+$ (where
+$\R_+$ denotes the non-negative reals), we simply set $h = -H$.  The
+minimiser of $H$ is the same as the maximiser of $-H$, so all the
+maximisation algorithms apply directly.  Many real-world problems---routing,
+scheduling, layout design, code-breaking---are naturally cast as cost
+minimisation.
 
-\begin{frame}{Running Examples Throughout the Chapter}
-  Two combinatorial problems are used as benchmarks:
-  \medskip
+\medskip
+\textbf{Why use Monte Carlo and stochastic methods?}
+For small $\calS$ one can simply evaluate $h$ at every point and return the
+maximum.  But for combinatorial spaces---such as all permutations of $n$
+cities (which has $n!$ elements) or all binary vectors of length $d$ (which
+has $2^d$ elements)---exhaustive enumeration is completely infeasible.  For
+example, the number of tours of $n = 20$ cities is $20! \approx
+2.4 \times 10^{18}$; even at $10^9$ evaluations per second this would take
+about 76 years.  The key insight of stochastic optimisation is to
+\emph{search intelligently} by constructing a random process that
+concentrates near the optimum.
 
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-    \begin{block}{Travelling Salesman Problem (TSP)}
-      \begin{itemize}
-        \item $n$ cities, symmetric distance matrix $\mathbf{M}$
-        \item Find permutation $\sigma^* \in S_n$ minimising total distance
-          \[l(\sigma) = \sum_{k=1}^{n-1}\mathbf{M}(\sigma(k),\sigma(k+1))
-            + \mathbf{M}(\sigma(n),\sigma(1))\]
-        \item NP-hard; optimal for $n=13$ is \textbf{7024} (Held-Karp)
-      \end{itemize}
-    \end{block}
+\medskip
+\textbf{The Monte Carlo bridge: Boltzmann distributions.}
+The Boltzmann (or Gibbs) distribution---named after the physicist Ludwig
+Boltzmann---provides the bridge between probability and optimisation.  For a
+cost function $H$ and a temperature parameter $T > 0$ (tau, a positive real
+number representing how much randomness to allow):
+\[
+  \pi^T_v \;\propto\; e^{-H(v)/T}, \qquad v \in V.
+\]
+The symbol $\propto$ (read ``proportional to'') means the right-hand side is
+divided by a normalising constant to make the probabilities sum to one.  As
+$T \to 0$ (temperature approaches zero), the ratio
+$e^{-H(v)/T}/e^{-H(v^*)/T} = e^{-(H(v)-H(v^*))/T}$ tends to zero for any
+suboptimal $v$ with $H(v) > H(v^*)$, so all probability mass concentrates on
+the minimiser(s) of $H$.  This means: if we can efficiently sample from
+$\pi^T$ for small $T$, we effectively locate the minimiser.
 
-    \column{0.48\textwidth}
-    \begin{block}{0-1 Knapsack Problem}
-      \begin{itemize}
-        \item $d$ items, weights $\bw$, values $\bv$, capacity $W$
-        \item Find $\bx \in \{0,1\}^d$ maximising $\bv \cdot \bx$
-          subject to $\bw \cdot \bx \le W$
-        \item Simulation: $d=100$, $w_i=i$, $v_i=i^{1.2}$, $W=3000$
-      \end{itemize}
-    \end{block}
-  \end{columns}
+\framebreak
+
+\textbf{Five methods covered in this chapter.}
+
+The five stochastic optimisation methods we study form a natural progression
+from the simplest local-search approach to the most sophisticated
+distributional learning approach.
+
+\begin{enumerate}
+  \item \textbf{Metropolis at fixed temperature.}  Construct a Markov chain
+    whose unique stationary distribution is the Boltzmann distribution
+    $\pi^T$ for a fixed $T > 0$.  The mode of $\pi^T$ is the minimiser of
+    $H$, so the chain's most-visited state is approximately optimal.  This
+    is the simplest approach; it works well at moderate temperature but can
+    be trapped in local minima.
+
+  \item \textbf{Simulated Annealing (SA).}  Gradually decrease
+    $T_k \searrow 0$ (T sub k decreases toward zero) while running the
+    Metropolis chain.  At high temperatures the chain explores freely and
+    escapes local minima; as $T_k \to 0$ it settles near the global
+    minimum.  With a sufficiently slow \emph{cooling schedule} $\{T_k\}$,
+    convergence to the global optimum is guaranteed---this is the celebrated
+    Haj\'ek theorem.
+
+  \item \textbf{Locally Informed Proposals (LIP).}  Improve each Metropolis
+    step by evaluating the Boltzmann weights of \emph{multiple} candidate
+    neighbours before choosing one.  The proposal is biased toward better
+    solutions.  The chain still targets $\pi^T$ exactly (because a
+    Metropolis--Hastings correction is applied), but moves toward better
+    solutions far more often.
+
+  \item \textbf{Cross-Entropy (CE) method.}  Instead of maintaining a
+    single current solution, maintain a \emph{parametric distribution}
+    $p_{\btheta}$ (p sub theta) over all of $\calS$.  Iteratively update
+    the parameter $\btheta$ (theta) so that $p_{\btheta}$ concentrates on
+    the best-performing solutions---the \emph{elite set}.  CE is borrowed
+    from the rare-event estimation framework of Chapter~5.
+
+  \item \textbf{Metropolis--CE hybrid.}  Combine the local Markov-chain
+    walk of Metropolis with the distributional parameter learning of CE.
+    At each step, generate $M$ neighbours of the current solution and use
+    the elite ones to update the \emph{proposal distribution} so future
+    steps propose better moves.  This hybrid inherits the local focus of
+    Metropolis and the adaptive quality of CE.
+\end{enumerate}
+
+\framebreak
+
+\textbf{Two running benchmark problems.}
+
+Throughout the chapter all five methods are compared on two canonical
+combinatorial optimisation problems that together stress-test every algorithm.
+
+\begin{block}{Travelling Salesman Problem (TSP)}
+  Given $n$ cities with symmetric distance matrix $\mathbf{M}$
+  (entry $M(i,j) = M(j,i)$ = distance from city $i$ to city $j$), find the
+  permutation $\sigma^* \in \mathcal{S}_n$ (sigma, an ordering of cities,
+  i.e., a complete tour visiting all cities exactly once) that minimises the
+  total tour length:
+  \[
+    l(\sigma) = \sum_{k=1}^{n-1}\mathbf{M}(\sigma(k),\sigma(k+1))
+      + \mathbf{M}(\sigma(n),\sigma(1)).
+  \]
+  Here $\mathcal{S}_n$ is the set of all permutations of $\{1,\ldots,n\}$,
+  which has $n!$ elements.  For $n=13$: $13! \approx 6.2 \times 10^9$ tours.
+  The problem is NP-hard (no polynomial-time algorithm is known).  The
+  optimal tour length for our 13-city USA benchmark is \textbf{7024}, found
+  by the Held--Karp dynamic-programming algorithm in 0.068\,s.  A uniformly
+  random tour has expected length $\approx 15938$---more than twice as long.
+\end{block}
+
+\begin{block}{0-1 Knapsack Problem}
+  Given $d$ items with weights $\bw = (w_1,\ldots,w_d)$ and values
+  $\bv = (v_1,\ldots,v_d)$ (all non-negative) and a capacity $W$, choose a
+  binary vector $\bx \in \{0,1\}^d$ to
+  \[
+    \text{maximise} \quad f(\bx) = \bv\cdot\bx = \sum_{i=1}^d v_i x_i
+    \quad \text{subject to} \quad \bw\cdot\bx = \sum_{i=1}^d w_i x_i \le W.
+  \]
+  Here $x_i = 1$ means item $i$ is included; $x_i = 0$ means it is
+  excluded.  The state space is $\calS = \{0,1\}^d$ with $2^d$ elements;
+  for $d=100$, $2^{100} \approx 10^{30}$.  In our simulations: $d=100$,
+  $w_i=i$, $v_i=i^{1.2}$, $W=3000$.
+\end{block}
+
+\begin{alertblock}{Key Insight}
+  All five methods build a probability distribution that is higher on better
+  solutions, then use Monte Carlo techniques to locate the distribution's
+  mode.  The methods differ in \emph{how} they do the sampling efficiently.
+\end{alertblock}
+
 \end{frame}
 
 % ============================================================
 \section{7.1 Metropolis and Gibbs Based Methods}
 % ============================================================
 
-\begin{frame}{7.1 Metropolis and Gibbs Based Methods}
-  \textbf{Setting.}  Graph $G=(V,E)$, cost $H:V\to\R_+$.
-  Want to find $\arg\min_v H(v)$.
+\begin{frame}[allowframebreaks]{7.1 Metropolis and Gibbs Based Methods: Setup}
 
-  \begin{block}{Boltzmann Distribution (Eq.~7.1.1)}
-    \[
-      \pi^T_v = \frac{e^{-H(v)/T}}{\displaystyle\sum_{v' \in V} e^{-H(v')/T}},
-      \qquad v \in V, \quad T > 0.
-    \]
-    \begin{itemize}
-      \item $T$ -- \emph{temperature} parameter
-      \item As $T \to 0$: mass concentrates on minimisers of $H$
-      \item As $T \to \infty$: approaches uniform distribution
-      \item Key identity: $\arg\min_v H(v) = \arg\max_v \pi^T_v$
-    \end{itemize}
-  \end{block}
+We work with a graph $G = (V, E)$ where $V$ is the set of candidate
+solutions and each edge connects two \emph{neighbouring} solutions (solutions
+reachable in one local move).  We are given a cost function
+$H : V \to \R_+$ and want to find $v^* = \arg\min_{v \in V} H(v)$.
 
-  \medskip
-  To maximise $f: V \to \R_+$, set $H(v) = -f(v)$.
+\textbf{The Boltzmann distribution.}
+The core idea is to construct a probability distribution on $V$ that assigns
+higher probability to states with lower cost.  The \emph{Boltzmann
+distribution} (named after physicist Ludwig Boltzmann, 1844--1906) at
+temperature $T > 0$ does exactly this:
+
+\begin{block}{Boltzmann Distribution (Eq.~7.1.1)}
+  \[
+    \pi^T_v = \frac{e^{-H(v)/T}}{\displaystyle\sum_{v' \in V} e^{-H(v')/T}},
+    \qquad v \in V, \quad T > 0.
+  \]
+  Here $T > 0$ is the \textbf{temperature} parameter (higher $T$ means more
+  randomness and flatter distribution), $H(v) \ge 0$ is the \textbf{cost}
+  of solution $v$, $e^{-H(v)/T}$ (e to the minus H of v divided by T) is
+  the \textbf{Boltzmann weight} of $v$, and the denominator is the
+  \emph{partition function}---the normalising constant.
+\end{block}
+
+\begin{alertblock}{How to Read This Formula}
+  When $H(v)$ is small (low cost, good solution), the exponent $-H(v)/T$
+  is close to zero, so $e^{-H(v)/T} \approx 1$---large weight.  When
+  $H(v)$ is large (high cost, bad solution), the exponent is very negative,
+  so $e^{-H(v)/T} \approx 0$---small weight.  Thus $\pi^T_v$ is
+  automatically larger for good solutions.  As $T \to 0$, the difference
+  between good and bad solutions is magnified: only the best solutions keep
+  non-zero probability.  At $T \to \infty$, all solutions are equally
+  likely.
+\end{alertblock}
+
+The key observation is that the Boltzmann distribution's mode is exactly the
+minimiser of $H$:
+\[
+  \arg\min_{v \in V} H(v) \;=\; \arg\max_{v \in V} \pi^T_v \quad
+  \text{for any } T > 0.
+\]
+Therefore, if we can sample from $\pi^T$ and identify the most frequently
+visited state, we have found the optimum.
+
+\medskip
+When we want to \emph{maximise} a function $f : V \to \R_+$, we set
+$H(v) = -f(v)$, giving $\pi^T_v \propto e^{f(v)/T}$, which concentrates
+on the maximiser of $f$ as $T \to 0$.
+
+\framebreak
+
+\textbf{The Metropolis--Hastings algorithm for $\pi^T$.}
+To sample from $\pi^T$ via MCMC, we apply Metropolis--Hastings with the
+simple random walk on $G$ as proposal: from state $v$, propose a uniformly
+random neighbour $v'$ (so $q_{vv'} = 1/\deg(v)$ for $v' \in \calN(v)$,
+where $\deg(v)$ is the number of neighbours of $v$).  The
+Metropolis--Hastings acceptance probability is:
+
+\begin{block}{Acceptance Probability (Algorithm 61)}
+  \[
+    \alpha^T_{vv'} = \min\!\left(1,\;
+      \frac{\pi^T_{v'} q_{v'v}}{\pi^T_v q_{vv'}}
+    \right)
+    = \min\!\left(1,\;
+      \frac{\deg(v)}{\deg(v')}\cdot
+      e^{(H(v)-H(v'))/T}
+    \right),
+    \quad v,v' \in V.
+  \]
+  The resulting transition probability from $v$ to neighbour $v'$ is:
+  \[
+    p^T_{vv'} = \frac{1}{\deg(v)}\min\!\left(1,\;
+      \frac{\deg(v)}{\deg(v')}\cdot
+      e^{(H(v)-H(v'))/T}
+    \right), \qquad v' \in \calN(v).
+  \]
+\end{block}
+
+Here $\deg(v)$ (degree of $v$) is the number of neighbours of $v$ in $G$.
+When the graph is \emph{regular} (all degrees equal), the ratio
+$\deg(v)/\deg(v') = 1$ and the acceptance probability simplifies to
+$\min(1, e^{(H(v)-H(v'))/T})$.
+
+The interpretation is beautifully intuitive.  A move to a \emph{better}
+solution ($H(v') < H(v)$, i.e., lower cost) makes $H(v) - H(v') > 0$, so
+$e^{(H(v)-H(v'))/T} > 1$ and the move is \emph{always} accepted (the min
+with 1 kicks in).  A move to a \emph{worse} solution ($H(v') > H(v)$) makes
+the exponent negative, so the acceptance probability is
+$e^{(H(v)-H(v'))/T} \in (0,1)$---we accept the worse move with some
+probability.  This occasional acceptance of worse moves is what prevents the
+chain from being permanently trapped in a local minimum.
+
+\begin{exampleblock}{Worked Example: Two-State Space}
+  Suppose $V = \{A, B\}$ with $H(A) = 2$, $H(B) = 5$, $T = 1$, and the
+  graph has edge $A$--$B$ only.  Starting from $A$:\\
+  To move to $B$ (worse): $\alpha = e^{(2-5)/1} = e^{-3} \approx 0.05$.
+  So 95\% of the time the chain stays at $A$.\\
+  Starting from $B$, to move to $A$ (better): $\alpha = \min(1, e^{(5-2)/1})
+  = \min(1, e^3) = 1$.  The move is always accepted.\\
+  The stationary distribution is $\pi^T_A = e^{-2}/(e^{-2}+e^{-5}) \approx
+  0.95$, $\pi^T_B \approx 0.05$, confirming the chain spends far more time
+  at the better solution $A$.
+\end{exampleblock}
+
+\framebreak
+
+\begin{center}
+  \includegraphics[width=0.78\textwidth]{fig_boltzmann}
+\end{center}
+{\small \textbf{Figure: Boltzmann distribution for different temperatures.}
+At high temperature $T$, all states receive nearly equal probability
+(flat distribution) and the chain explores freely.  As $T$ decreases,
+the distribution sharpens around the state with the smallest cost $H(v)$.
+In the limit $T \to 0$, the Boltzmann distribution becomes a point mass on
+the global minimiser.  Fixed-temperature Metropolis samples from $\pi^T$ for
+one chosen $T$, trading off exploration (high $T$) and exploitation (low $T$).}
+
 \end{frame}
 
-\begin{frame}{Boltzmann Distribution at Different Temperatures}
-  \begin{center}
-    \includegraphics[width=0.88\textwidth]{fig_boltzmann}
-  \end{center}
+\begin{frame}[allowframebreaks]{Application: Decrypting a Substitution Cipher}
+
+A \textbf{substitution cipher} replaces each letter in the original message
+(plaintext) with a different letter according to a fixed permutation
+$\sigma : \Sigma \to \Sigma$, where $\Sigma = \{a, b, \ldots, z\}$ is the
+26-letter alphabet.  The ciphertext $c_1 c_2 \cdots c_L$ is produced by
+applying $\sigma$ letter by letter: $c_i = \sigma^{-1}(\text{plaintext}_i)$.
+To decrypt, we need to recover $\sigma$.
+
+The state space is $\calS = \mathcal{S}_{26}$ (all permutations of 26
+letters), with $26! \approx 4 \times 10^{26}$ elements---completely
+infeasible for exhaustive search.
+
+\medskip
+\textbf{The score function: bigram log-likelihood.}
+English text has characteristic bigram (two-letter) frequencies: for example,
+``th'' and ``he'' are very common, while ``xz'' is not.  Let $\mathbf{M}(a,b)$
+be the frequency with which letter $b$ follows letter $a$ in a reference
+English corpus (here: Tolstoy's \emph{War and Peace}).  For a candidate
+decryption key $\sigma$, the log-likelihood that the decrypted text is
+English is:
+
+\begin{block}{Log-Likelihood Score (Eq.~7.1.2)}
+  \[
+    l(\sigma) = \sum_{i=1}^{L-1} \log \mathbf{M}(\sigma(c_i),\,\sigma(c_{i+1})).
+  \]
+  Here $c_i$ is the $i$-th ciphertext letter; $\sigma(c_i)$ is the candidate
+  plaintext letter under key $\sigma$; $\mathbf{M}(\sigma(c_i),
+  \sigma(c_{i+1}))$ is the reference bigram frequency; and $\log$ is the
+  natural logarithm.  A larger $l(\sigma)$ means the decrypted message looks
+  more like English.  We define the target distribution
+  $\pi_\sigma \propto e^{l(\sigma)}$.
+\end{block}
+
+\textbf{Why log-likelihood?}  Taking the logarithm converts a product of
+probabilities (one per bigram) into a sum, which is numerically stable and
+easier to compute.  The maximiser of $l(\sigma)$ equals the maximiser of
+$\prod_i \mathbf{M}(\sigma(c_i), \sigma(c_{i+1}))$, which is the most
+likely key under the bigram model.
+
+\medskip
+\textbf{Proposal distribution.}
+From permutation $\sigma$, propose $\sigma'$ by \emph{swapping} two
+uniformly chosen letters $a, b \in \{1,\ldots,26\}$ (a transposition).
+There are $\binom{26}{2} = 325$ possible transpositions, each proposed with
+probability $q_{\sigma\sigma'} = 1/325$.  Since the proposal is symmetric
+($q_{\sigma\sigma'} = q_{\sigma'\sigma}$) and the graph is regular
+($\deg(\sigma) = 325$ for all $\sigma$), the acceptance ratio simplifies to:
+\[
+  \alpha = \min\!\left(1,\; \frac{\pi_{\sigma'}}{\pi_\sigma}\right)
+  = \min\!\left(1,\; e^{l(\sigma')-l(\sigma)}\right).
+\]
+Crucially, this ratio can be computed \emph{without} knowing the intractable
+partition function $z = \sum_{\sigma} e^{l(\sigma)}$.  Only the \emph{change}
+in log-likelihood due to the transposition matters, which can be computed
+in $O(L)$ time.
+
+\framebreak
+
+\textbf{Simulation results for the substitution cipher.}
+The algorithm was run for 3000 steps starting from a random permutation.
+The ciphertext was a paragraph from Tolstoy's \emph{Anna Karenina},
+encrypted with a randomly chosen permutation.
+
+\begin{columns}
+  \column{0.56\textwidth}
+  \includegraphics[width=\textwidth]{fig_cipher_loglik}
+  \column{0.42\textwidth}
   \small
-  As $T$ decreases, the Boltzmann distribution concentrates mass on the
-  minimiser of $H$ (the state with smallest cost).
+  \textbf{Table 7.1:} Evolution of decrypted message.\\[4pt]
+  \begin{tabular}{r|r}
+    \toprule
+    Step & Log-likelihood\\
+    \midrule
+    1    & $-4274.98$\\
+    1000 & $-896.09$\\
+    2000 & $-826.07$\\
+    3000 & $-815.71$\\
+    \bottomrule
+  \end{tabular}\\[6pt]
+  \small
+  The log-likelihood improves by \textbf{3459} units in just 3000 steps.
+  After step 3000 the message reads as recognisable English with only a
+  few letters incorrect.
+\end{columns}
+
+\medskip
+The log-likelihood curve shows a rapid climb in the first few hundred steps
+(the chain finds the rough structure of the key quickly) followed by a slow
+refinement phase (fine-tuning individual letters).  This two-phase behaviour
+is typical of MCMC-based optimisation.
+
+\textbf{Why it works.}  The Metropolis algorithm naturally concentrates
+its random walk on permutations that make the decrypted text look like
+English.  The key advantage over brute force: the algorithm needs only the
+ratio $\pi_{\sigma'}/\pi_\sigma = e^{l(\sigma')-l(\sigma)}$, which is
+computed efficiently.
+
+\begin{alertblock}{Key Insight}
+  Metropolis on the substitution cipher works because the target
+  distribution's ratio $\pi_{\sigma'}/\pi_\sigma$ can be computed cheaply
+  without evaluating the intractable normalising constant $z$.  This is a
+  recurring theme in MCMC-based optimisation: we never need to know $z$,
+  only the \emph{ratio} of probabilities at two neighbouring states.
+\end{alertblock}
+
 \end{frame}
 
-\begin{frame}{Acceptance Probability for Metropolis on Graph}
-  Use the \textbf{random walk} on $G$ as proposal matrix $\mathbf{Q}$.
-  The Metropolis acceptance probability is:
+\begin{frame}[allowframebreaks]{The 0-1 Knapsack Problem: Gibbs and Metropolis}
 
-  \begin{block}{Acceptance Probability (Algorithm 61)}
-    \[
-      \alpha^T_{vv'} = \min\!\left(1,\;
-        \frac{\deg(v)}{\deg(v')}\,
-        e^{(H(v)-H(v'))/T}
-      \right),
-      \qquad v,v' \in V.
-    \]
-    \[
-      p^T_{vv'} = \frac{1}{\deg(v)}\min\!\left(1,\;
-        \frac{\deg(v)}{\deg(v')}\,
-        e^{(H(v)-H(v'))/T}
-      \right), \quad q_{vv'}>0.
-    \]
-  \end{block}
-  \begin{itemize}
-    \item $\deg(v)$ -- degree of vertex $v$ in $G$
-    \item Moves to a \emph{worse} solution ($H(v')>H(v)$) with positive prob
-    \item This allows escape from local minima
-  \end{itemize}
+We want to find $\bx \in \{0,1\}^d$ that maximises $f(\bx) = \bv \cdot \bx$
+subject to $\bw \cdot \bx \le W$.  We model this as sampling from a
+Boltzmann distribution that assigns zero probability to infeasible solutions.
+
+\begin{block}{Boltzmann Distribution for the Knapsack}
+  \[
+    \pi_{\bx} = \begin{cases}
+      \dfrac{\exp(\bv\cdot\bx / T)}{z_T} & \text{if } \bw\cdot\bx \le W,\\[8pt]
+      0 & \text{if } \bw\cdot\bx > W.
+    \end{cases}
+  \]
+  Here $T > 0$ is the temperature, $z_T$ is the normalising constant, and
+  $\bv \cdot \bx = \sum_i v_i x_i$ is the total value of selected items.
+  States that violate the weight constraint have zero probability and are
+  never visited by the chain.  As $T \to 0$, all mass concentrates on the
+  highest-value feasible solution.
+\end{block}
+
+\medskip
+\textbf{Gibbs sampler (Algorithm 63).}
+In the Gibbs sampler we pick a random coordinate $i \in \{1,\ldots,d\}$
+and resample $x_i$ from its conditional distribution given all other
+coordinates $\bx_{-i} = (x_1,\ldots,x_{i-1},x_{i+1},\ldots,x_d)$.
+
+The ratio of Boltzmann weights for $x_i = 1$ vs $x_i = 0$ is $e^{v_i/T}$
+(since only the $i$-th term $v_i x_i$ differs).  Therefore the conditional
+probability of including item $i$ takes the familiar \emph{logistic} form:
+\[
+  \Prob(Z(i)=1 \mid Z_{-i}=\bx_{-i})
+  = \frac{e^{v_i/T}}{1 + e^{v_i/T}}
+  = \frac{1}{1 + e^{-v_i/T}},
+\]
+provided adding item $i$ is feasible (i.e., $\bw\cdot\bx_{-i} + w_i \le W$).
+If adding item $i$ would exceed capacity, we are forced to set $x_i = 0$.
+
+This conditional is a logistic (sigmoid) function of $v_i/T$: high-value
+items have large $v_i/T$ making $e^{-v_i/T} \approx 0$, so $\Prob(x_i=1)
+\approx 1$---the chain naturally includes them.
+
+\begin{exampleblock}{Worked Example: Gibbs Conditional}
+  Suppose $v_i = 10$, $T = 1$.  Then $\Prob(x_i=1) = 1/(1+e^{-10})
+  \approx 0.99995$.  Item $i$ is almost certainly included (if feasible).\\
+  With $v_i = 2$, $T = 1$: $\Prob(x_i=1) = 1/(1+e^{-2}) \approx 0.88$.
+  With $v_i = 0.5$, $T = 1$: $\Prob(x_i=1) = 1/(1+e^{-0.5}) \approx 0.62$.
+  Low-value items are included with near-50\% probability.
+\end{exampleblock}
+
+\framebreak
+
+\textbf{Metropolis algorithm for Knapsack (Algorithm 64).}
+Define neighbours of $\bx$ as all binary vectors that differ in exactly one
+coordinate (bit-flips).  Propose $\bx'$ by flipping a uniformly random bit
+$i$.  The ratio $\pi_{\bx'}/\pi_{\bx}$ is then:
+\[
+  \frac{\pi_{\bx'}}{\pi_{\bx}} = \exp\!\left(\frac{(1 - 2x_i)v_i}{T}\right)
+    \cdot \mathbf{1}(\bw\cdot\bx' \le W),
+\]
+since only the $i$-th coordinate changes: $x'_j - x_j = (1-2x_i)\delta_{ij}$.
+This gives acceptance probability:
+\[
+  \alpha = \min\!\left(1,\, \exp\!\left(\tfrac{1-2x_i}{T}v_i\right)\right)
+  \text{ if } \bw\cdot\bx' \le W, \quad \alpha = 0 \text{ otherwise.}
+\]
+When $x_i = 0$ (adding item $i$): the exponent is $v_i/T \ge 0$, so
+$\alpha = 1$ (adding an item is always accepted if feasible).  When $x_i = 1$
+(removing item $i$): the acceptance probability is $e^{-v_i/T} < 1$---the
+chain resists removing valuable items.
+
+\medskip
+\textbf{Simulation results} for $d=100$, $w_i = i$, $v_i = i^{1.2}$,
+$W = 3000$, $T = 1$, running for 150 steps:
+
+\begin{columns}
+  \column{0.54\textwidth}
+  \includegraphics[width=\textwidth]{fig_knapsack_metropolis}
+  \column{0.44\textwidth}
+  \small
+  The blue curve tracks total weight $X_k \cdot \bw$ and the red curve
+  tracks total value $X_k \cdot \bv$.  Both rise rapidly as the knapsack
+  fills, then level off as the algorithm refines the selection.\\[4pt]
+  After 150 steps: total weight $\approx 2977$ (just below $W=3000$),
+  total value $\approx 6745$.
+\end{columns}
+
+\begin{alertblock}{Key Insight}
+  Both Gibbs and Metropolis naturally respect the capacity constraint by
+  assigning zero probability to infeasible states---no penalty term is
+  needed.  The logistic conditional in Gibbs makes high-value items
+  preferentially included, giving the chain a built-in greedy tendency.
+\end{alertblock}
+
 \end{frame}
-
-
 
 \begin{frame}[fragile]{Algorithm 61: Metropolis for Boltzmann Distribution}
   \begin{lstlisting}[style=python]
 import numpy as np
 
 def metropolis_boltzmann_step(v, neighbors, H, T, rng):
-    """One step of Metropolis-Hastings for Boltzmann distribution."""
+    """One Metropolis-Hastings step targeting Boltzmann pi^T (Alg. 61).
+    v         : current state
+    neighbors : dict mapping state -> list of neighbour states
+    H         : cost function dict (H[v] = cost of state v)
+    T         : temperature (float > 0)
+    rng       : numpy RandomState
+    """
     deg_v  = len(neighbors[v])
-    v_prop = rng.choice(neighbors[v])             # propose neighbor uniformly
+    v_prop = rng.choice(neighbors[v])          # propose a uniformly random neighbour
     deg_vp = len(neighbors[v_prop])
-    # Acceptance probability
-    alpha = min(1.0,
-                (deg_v / deg_vp) * np.exp((H[v] - H[v_prop]) / T))
-    U = rng.uniform()
-    return v_prop if U <= alpha else v
+    # Acceptance: min(1, deg(v)/deg(v') * exp((H(v)-H(v'))/T))
+    alpha = min(1.0, (deg_v / deg_vp) * np.exp((H[v] - H[v_prop]) / T))
+    return v_prop if rng.uniform() <= alpha else v
 
-# Run for n_steps
 def run_metropolis(v0, neighbors, H, T, n_steps, seed=0):
+    """Run Metropolis-Boltzmann for n_steps; return trajectory."""
     rng   = np.random.RandomState(seed)
-    chain = [v0]
     v     = v0
+    chain = [v]
     for _ in range(n_steps):
         v = metropolis_boltzmann_step(v, neighbors, H, T, rng)
         chain.append(v)
@@ -218,850 +580,1162 @@ def run_metropolis(v0, neighbors, H, T, n_steps, seed=0):
   \end{lstlisting}
 \end{frame}
 
-\begin{frame}{Application: Decrypting a Substitution Cipher}
-  \textbf{Setup.} A substitution cipher permutes the alphabet:
-  $\sigma: \Sigma \to \Sigma$, $|\Sigma|=26$.
-  State space $\calS = S_{26}$ ($26! \approx 4 \times 10^{26}$ permutations).
-
-  \begin{block}{Log-Likelihood Score Function}
-    \[
-      l(\sigma) = \sum_{i=1}^{L-1} \log \mathbf{M}(\sigma(c_i),\,\sigma(c_{i+1})),
-    \]
-    where $\mathbf{M}(a,b)$ is the bigram frequency in English text
-    (\emph{War and Peace}), and $c_1,\ldots,c_L$ is the ciphertext.
-  \end{block}
-
-  \textbf{Boltzmann distribution:}
-  $\pi_\sigma = \frac{1}{z} l(\sigma)$ (proportional to likelihood).
-
-  \textbf{Proposal:} swap two uniformly chosen symbols (transposition).
-
-  \medskip
-  \textbf{Result:} After 3000 steps the message is essentially decrypted
-  (log-likelihood improves from $-4274$ to $-815$).
-\end{frame}
-
-\begin{frame}{Metropolis Cipher Decryption: Log-Likelihood Trace}
-  \begin{columns}
-    \column{0.58\textwidth}
-    \includegraphics[width=\textwidth]{fig_cipher_loglik}
-    \column{0.40\textwidth}
-    \small
-    \textbf{Table 7.1} (selected steps):\\[4pt]
-    \begin{tabular}{r|l|r}
-      \toprule
-      Step & Decrypted (start) & Log-lik\\
-      \midrule
-      1    & yckqzchskqhaqyc\ldots & $-4274$\\
-      1000 & the whole of that\ldots & $-896$\\
-      2000 & \ldots anna skent\ldots  & $-826$\\
-      3000 & \ldots anna spent\ldots  & $-815$\\
-      \bottomrule
-    \end{tabular}\\[6pt]
-    Rapid improvement in first 500 steps, then gradual refinement.
-  \end{columns}
-\end{frame}
-
-\begin{frame}{The 0-1 Knapsack Problem}
-  \textbf{Setup.}
-  $d$ items, weights $\bw=(w_1,\ldots,w_d)$, values $\bv=(v_1,\ldots,v_d)$.
-  Find $\bx \in \{0,1\}^d$ maximising total value subject to capacity $W$.
-
-  \begin{block}{Boltzmann Distribution for Knapsack}
-    \[
-      \pi_{\bx} =
-      \begin{cases}
-        \dfrac{\exp(\bv\cdot\bx/T)}{z_T} & \text{if } \bw\cdot\bx \le W,\\[6pt]
-        0 & \text{otherwise}.
-      \end{cases}
-    \]
-    States violating the weight constraint have zero probability.
-  \end{block}
-
-  \textbf{Gibbs conditional (Algorithm 63):}
-  \[
-    \Prob(Z(i)=1 \mid Z_{-i}=\bx_{-i})
-    = \frac{1}{1+\exp\!\left(-\tfrac{1}{T}v_i x_i\right)}.
-  \]
-\end{frame}
-
 \begin{frame}[fragile]{Algorithms 63 \& 64: Gibbs and Metropolis for Knapsack}
   \begin{lstlisting}[style=python]
 import numpy as np
 
 def gibbs_knapsack_step(x, w, v, W, T, rng):
-    """Gibbs sampler step for 0-1 knapsack (Algorithm 63)."""
-    d = len(x);  i = rng.randint(0, d)
-    x_new = x.copy();  x_new[i] = 1
-    if np.dot(w, x_new) > W:
-        x_new[i] = 0          # forced: adding item exceeds capacity
+    """One Gibbs sampler step for 0-1 knapsack (Algorithm 63).
+    x: current binary vector (length d), w,v: weight/value, W: capacity
+    """
+    d = len(x)
+    i = rng.randint(0, d)                      # pick a random item
+    weight_without_i = np.dot(w, x) - w[i] * x[i]
+    if weight_without_i + w[i] > W:
+        x[i] = 0                               # forced to exclude: capacity exceeded
     else:
+        # Conditional P(x_i=1) = 1/(1 + exp(-v_i/T)) -- logistic function
         prob1 = 1.0 / (1.0 + np.exp(-v[i] / T))
-        x_new[i] = 1 if rng.rand() <= prob1 else 0
-    x[i] = x_new[i];  return x
+        x[i] = 1 if rng.rand() <= prob1 else 0
+    return x
 
 def metropolis_knapsack_step(x, w, v, W, T, rng):
-    """Metropolis step for 0-1 knapsack (Algorithm 64)."""
-    d = len(x);  i = rng.randint(0, d)
-    x_new = x.copy();  x_new[i] = 1 - x_new[i]   # flip bit i
-    if np.dot(w, x_new) <= W:
-        alpha = min(1.0, np.exp((1/T) * (1 - 2*x[i]) * v[i]))
-    else:
-        alpha = 0.0
-    if rng.rand() < alpha:
-        x[:] = x_new
+    """One Metropolis step for 0-1 knapsack (Algorithm 64)."""
+    d = len(x)
+    i = rng.randint(0, d)
+    x_new = x.copy()
+    x_new[i] = 1 - x_new[i]                   # flip bit i
+    if np.dot(w, x_new) <= W:                  # check feasibility
+        # alpha=1 if adding item (x[i]=0), else exp(-v_i/T) if removing
+        alpha = min(1.0, np.exp((1.0 / T) * (1 - 2 * x[i]) * v[i]))
+        if rng.rand() < alpha:
+            x[:] = x_new
     return x
   \end{lstlisting}
-\end{frame}
-
-\begin{frame}{Knapsack Simulation Results}
-  \begin{columns}
-    \column{0.58\textwidth}
-    \includegraphics[width=\textwidth]{fig_knapsack_metropolis}
-    \column{0.40\textwidth}
-    \small
-    \textbf{Parameters:}\\
-    $d=100$, $W=3000$\\
-    $w_i=i$, $v_i=i^{1.2}$, $T=1$\\[6pt]
-    After 150 steps:\\
-    \begin{itemize}
-      \item Total weight $X_{150}\cdot\bw \approx 2977$
-      \item Total value $X_{150}\cdot\bv \approx 6745$
-    \end{itemize}
-    \vspace{4pt}
-    The weight stays near capacity $W=3000$ while value climbs steadily.\\[4pt]
-    \emph{Remark:} results improve by tuning $T$.
-  \end{columns}
 \end{frame}
 
 % ============================================================
 \section{7.2 Simulated Annealing}
 % ============================================================
 
-\begin{frame}{7.2 Simulated Annealing -- Motivation}
-  \textbf{Problem with fixed temperature:}
+\begin{frame}[allowframebreaks]{7.2 Simulated Annealing: Motivation and Setup}
+
+\textbf{The dilemma of fixed temperature.}
+In the Metropolis algorithm at a fixed temperature $T$, there is a
+fundamental trade-off between exploration and exploitation:
+\begin{itemize}
+  \item At \textbf{high} $T$: the Boltzmann distribution $\pi^T$ is nearly
+    uniform, so the chain explores freely and escapes local minima easily.
+    However, all states have nearly equal probability, so $\pi^T$ puts
+    little mass on the global minimum---we cannot easily identify the
+    optimum from the chain's trajectory.
+  \item At \textbf{low} $T$: $\pi^T$ is sharply concentrated near the
+    global minimum, which is exactly what we want.  However, the chain
+    mixes very slowly: it gets trapped in local minima because any move to
+    a higher-cost state is accepted with probability $\approx e^{-\Delta H
+    / T}$, which is tiny for small $T$ and large energy barriers $\Delta H$.
+\end{itemize}
+
+Neither extreme works.  We need both exploration (to escape local minima)
+\emph{and} exploitation (to converge to the global minimum).
+
+\textbf{The Simulated Annealing (SA) solution.}
+SA resolves this dilemma by starting at a high temperature $T_0$ and
+gradually decreasing it according to a \textbf{cooling schedule}
+$T_0 \ge T_1 \ge T_2 \ge \cdots \searrow 0$.  The name comes from
+metallurgy, where slowly cooling a heated metal (annealing) allows atoms
+to settle into a low-energy crystalline structure.  Rapid cooling
+(quenching) produces a disordered, higher-energy glass-like structure;
+slow cooling produces a near-optimal crystal.
+
+At each step $k$, the chain uses the Metropolis transition probabilities
+corresponding to temperature $T_k$.  This defines a \emph{non-homogeneous}
+Markov chain: the transition matrix changes at every step.
+
+\begin{block}{Modified Boltzmann Distribution at Step $k$ (Eq.~7.2.1)}
+  \[
+    \pi^{T_k}_v = \frac{\deg(v)\exp(-H(v)/T_k)}{z_{T_k}}, \qquad v \in V,
+  \]
+  where $\deg(v)$ (degree of $v$) is the number of neighbours of $v$ and
+  $z_{T_k} = \sum_{v'} \deg(v')\exp(-H(v')/T_k)$ is the normalising
+  constant at step $k$.  The transition probability is:
+  \[
+    p_{vv'}(k) = \frac{1}{\deg(v)}\min\!\left(1,\,
+      \exp\!\left(-\frac{H(v')-H(v)}{T_k}\right)\right), \quad v' \in \calN(v).
+  \]
+\end{block}
+
+The acceptance probability for moving from $v$ to neighbour $v'$ at step
+$k$ is $\alpha_k(v,v') = \min(1, e^{-(H(v')-H(v))/T_k})$: a better move
+($H(v') < H(v)$) is always accepted; a worse move is accepted with
+probability $e^{(H(v)-H(v'))/T_k}$, which decreases as $T_k$ decreases.
+
+\framebreak
+
+\textbf{Proposition 7.2.2: Convergence at fixed temperature.}
+The following shows that taking $T \to 0$ concentrates mass on the global
+optimum.  Let $D^* = \{v \in V : H(v) = \min_{v'} H(v')\}$ be the set of
+\emph{optimal solutions}.
+
+\begin{block}{Proposition 7.2.2}
+  For a non-homogeneous Markov chain with transition matrix (7.2.2):
+  \[
+    \lim_{T \searrow 0} \lim_{\substack{k\to\infty \\ T_k = T}}
+    \Prob(X_k \in D^*) = 1.
+  \]
+  In words: for any fixed temperature $T$, the chain eventually visits
+  optimal solutions with probability approaching 1 as $T \to 0$.
+\end{block}
+
+\textbf{Proof sketch.}
+Since the chain with fixed $T_k \equiv T$ is ergodic, its stationary
+distribution is $\pi^{T_k}$.  Thus:
+\[
+  \lim_{\substack{k\to\infty\\T_k=T}}\Prob(X_k \in D^*)
+  = \sum_{v \in D^*} \pi^T_v
+  = \frac{\sum_{v \in D^*}\deg(v)\exp(-H(v)/T)}
+    {\sum_{u}\deg(u)\exp(-H(u)/T)}.
+\]
+Dividing numerator and denominator by $\deg(v^*)\exp(-H(v^*)/T)$ and
+taking $T \to 0$: each term with $H(u) > H(v^*)$ vanishes since
+$e^{-(H(u)-H(v^*))/T} \to 0$, while terms with $H(u) = H(v^*)$ remain.
+Hence the limit equals 1. \hfill$\square$
+
+SA attempts to achieve this double limit by decreasing $T_k \to 0$
+\emph{simultaneously} with $k \to \infty$.
+
+\framebreak
+
+\textbf{How slow must the cooling be? Haj\'ek's condition.}
+Suppose $v$ is a local minimum (not a global one).  Let
+$c = \min_{v' \in \calN(v)} (H(v') - H(v)) > 0$ be the \emph{energy
+barrier}---the minimum cost increase needed to escape from $v$.  The
+probability of the chain staying in $v$ for one step satisfies:
+\[
+  p_{vv}(k) = 1 - \sum_{v' \in \calN(v)} p_{vv'}(k) \ge 1 - e^{-c/T_k}.
+\]
+If the chain visits $v$ at step $k$, the probability it stays trapped in
+$v$ forever is $\prod_{j=0}^{\infty} p_{vv}(k+j)$.  The infinite product
+$\prod_{j=0}^{\infty}(1-a_j) > 0$ if and only if $\sum_j a_j < \infty$
+(a standard result from real analysis).  Therefore:
+
+\begin{block}{Cooling Schedule Requirement (Haj\'ek's Condition)}
+  To guarantee the chain eventually escapes every local minimum, the
+  cooling schedule must satisfy:
+  \[
+    \sum_{k=0}^{\infty} e^{-c/T_k} = \infty.
+  \]
+  If this sum converges, the chain can get permanently trapped in local
+  minima.  If it diverges, the chain will eventually escape.
+\end{block}
+
+The \textbf{logarithmic cooling schedule} $T_k = d / \log(k+2)$ satisfies
+Haj\'ek's condition (since $e^{-c/T_k} = (k+2)^{-c/d}$ and
+$\sum_k (k+2)^{-c/d} = \infty$ for $c \le d$) and provides a theoretical
+guarantee of convergence to the global optimum.
+
+\textbf{Geometric cooling} $T_k = \beta^k T_0$ (with $0 < \beta < 1$,
+$\beta$ pronounced ``beta'') gives $e^{-c/T_k} = \exp(-c/(\beta^k T_0))$
+which decreases super-exponentially fast, so $\sum_k e^{-c/T_k} < \infty$
+and \emph{no} global convergence guarantee exists.  However, geometric
+cooling is much faster in practice.
+
+\framebreak
+
+\begin{columns}
+  \column{0.54\textwidth}
+  \includegraphics[width=\textwidth]{fig_cooling_schedule}
+  \column{0.44\textwidth}
+  \small
+  \textbf{Common cooling schedules:}\\[4pt]
   \begin{itemize}
-    \item $T$ large $\Rightarrow$ moves freely, but stationary distribution
-      nearly uniform (poor optimiser).
-    \item $T$ small $\Rightarrow$ stationary distribution near optimal, but
-      chain mixes slowly (gets trapped in local minima).
+    \item \textbf{Constant} $T_k = T$: plain Metropolis, no cooling,
+      no convergence guarantee
+    \item \textbf{Logarithmic} $T_k = d/\log(k+2)$:\\ theoretically
+      valid; guarantees global optimum; very slow in practice
+    \item \textbf{Geometric} $T_k = \beta^k T_0$:\\ popular in practice;
+      fast; no global guarantee
+    \item \textbf{Linear} $T_k = T_0(1-k/K)$:\\ decreases too fast;
+      usually fails
   \end{itemize}
+  \vspace{4pt}
+  The fundamental requirement is $T_k \searrow 0$ slowly enough that
+  $\sum_k e^{-c/T_k} = \infty$.
+\end{columns}
 
-  \textbf{Key idea (Simulated Annealing):}
-  Start with a high temperature $T_0$ and \emph{decrease} it according to
-  a \textbf{cooling schedule} $T_0 \ge T_1 \ge \cdots \searrow 0$.
-
-  \begin{block}{Modified Boltzmann (per step $k$)}
-    \[
-      \pi^{T_k}_v = \frac{\deg(v)\exp(-H(v)/T_k)}{z_{T_k}}, \qquad v \in V.
-    \]
-    The transition matrix at step $k$ is
-    \[
-      p_{vv'}(k) = \frac{1}{\deg(v)}\min\!\left(1,\,
-        \exp\!\left(-\tfrac{1}{T_k}(H(v')-H(v))\right)\right).
-    \]
-  \end{block}
-\end{frame}
-
-\begin{frame}{Convergence of Simulated Annealing}
-  \begin{block}{Proposition 7.2.2 (Convergence at Fixed $T$)}
-    For fixed $T_k \equiv T$ the non-homogeneous MC satisfies
-    \[
-      \lim_{T \searrow 0}\; \lim_{\substack{k\to\infty \\ T_k=T}}
-      \Prob(X_k \in D^*) = 1,
-    \]
-    where $D^* = \{v \in V : H(v) = \min_{v'} H(v')\}$ is the optimal set.
-  \end{block}
-
-  \textbf{Cooling schedule constraint:} Let $c = \min_{v' \in \mathcal{N}(v)}(H(v')-H(v))$
-  for a local minimum $v$. If
+\medskip
+\begin{exampleblock}{Checking Haj\'ek's Condition for Logarithmic Cooling}
+  With $T_k = 1/\log(k+2)$ (setting $d=1$) and energy barrier $c=1$:
   \[
-    \sum_j e^{-c/T_j} < \infty
+    e^{-c/T_k} = e^{-\log(k+2)} = \frac{1}{k+2}.
   \]
-  then the chain can \emph{remain} in the local minimum -- cooling is too fast.
+  Since $\sum_{k=0}^\infty 1/(k+2) = \infty$ (harmonic series), the
+  condition is satisfied and SA is guaranteed to find the global optimum.
+  With geometric cooling $T_k = 0.99^k$: $e^{-1/T_k} = e^{-1/0.99^k}
+  \to 0$ super-exponentially fast, so the sum converges and no guarantee.
+\end{exampleblock}
 
-  \medskip
-  \textbf{Practical guidance:}
-  Use $T_k = d\log(k)$ for some $d > 0$ (``logarithmic cooling'').
-  This is slow but theoretically justified.
 \end{frame}
 
-\begin{frame}{Cooling Schedules}
-  \begin{columns}
-    \column{0.58\textwidth}
-    \includegraphics[width=\textwidth]{fig_cooling_schedule}
-    \column{0.40\textwidth}
-    \small
-    Common cooling schedules:\\[6pt]
-    \begin{itemize}
-      \item \textbf{Constant}: $T_k = T$ (plain Metropolis)
-      \item \textbf{Logarithmic}: $T_k = 1/\log(k)$\\
-            Theoretically valid, but slow
-      \item \textbf{Linear}: $T_k = 1/k$\\
-            Too fast -- can trap
-      \item \textbf{Geometric}: $T_k = \beta^k$, $\beta < 1$\\
-            Popular in practice
-    \end{itemize}
-    \vspace{4pt}
-    Convergence requires $T_k \searrow 0$ \emph{slowly enough}.
-  \end{columns}
-\end{frame}
+\begin{frame}[allowframebreaks]{Non-Homogeneous Markov Chains and SA}
 
-\begin{frame}{Non-Homogeneous Markov Chains}
-  \textbf{Definition.} A sequence $(Y_n)$ is a
-  \textbf{time non-homogeneous Markov chain} on $\calS=\{s_1,\ldots,s_m\}$
-  if for any $s_{i_0},\ldots,s_{i_k} \in \calS$:
+Because the transition matrix of SA changes at every step, it is not a
+standard (time-homogeneous) Markov chain.  We need the theory of
+\textbf{non-homogeneous Markov chains}.
+
+\begin{block}{Definition: Time Non-Homogeneous Markov Chain}
+  A sequence $(Y_n)$ is a \textbf{time non-homogeneous Markov chain}
+  on a finite state space $\calS = \{s_1,\ldots,s_m\}$ if for any
+  $s_{i_0}, \ldots, s_{i_k} \in \calS$:
   \[
-    \Prob(Y_0=s_{i_0}, Y_1=s_{i_1},\ldots, Y_k=s_{i_k})
-    = \mu_{s_{i_0}} p_{s_{i_0}s_{i_1}}(1) \cdots p_{s_{i_{k-1}}s_{i_k}}(k).
+    \Prob(Y_0=s_{i_0}, Y_1=s_{i_1}, \ldots, Y_k=s_{i_k})
+    = \mu_{s_{i_0}}\, p_{s_{i_0}s_{i_1}}(1)\,
+      p_{s_{i_1}s_{i_2}}(2)\cdots p_{s_{i_{k-1}}s_{i_k}}(k),
   \]
-  The transition probability at step $k$ is $p_{s_is_j}(k) = \Prob(Y_{k+1}=s_j \mid Y_k=s_i)$.
+  where $\mu$ is the initial distribution and
+  $p_{s_is_j}(k) = \Prob(Y_k = s_j \mid Y_{k-1} = s_i)$ is the
+  \textbf{time-dependent} transition probability at step $k$.
+\end{block}
 
-  \begin{block}{Distribution of $Y_l$ (Eq.~7.2.3)}
-    \[
-      (\Prob(X_l=s_1), \ldots, \Prob(X_l=s_m)) = \bm{\mu}\,\mathbf{P}(0,l),
-    \]
-    where $\mathbf{P}(k,l) = \mathbf{P}(k)\mathbf{P}(k+1)\cdots\mathbf{P}(l)$.
-  \end{block}
+The distribution at time $l$ is computed via matrix products:
+\begin{block}{Distribution at Time $l$ (Eq.~7.2.3)}
+  \[
+    \bigl(\Prob(X_l=s_1), \ldots, \Prob(X_l=s_m)\bigr) = \bm{\mu}\,\mathbf{P}(0,l),
+  \]
+  where $\mathbf{P}(k,l) = \mathbf{P}(k)\mathbf{P}(k+1)\cdots\mathbf{P}(l)$
+  is the product of transition matrices from step $k$ to $l$.  Note that
+  $\mathbf{P}(k)$ here is the matrix whose $(i,j)$ entry is $p_{s_is_j}(k)$.
+\end{block}
 
-  \textbf{Remark 7.2.3.} SA (Algorithm 65) is a non-homogeneous MC with
-  $p_{vv'}(k) = q_{vv'}\,\alpha_k$.
+\textbf{Remark 7.2.3.}
+Simulated Annealing (Algorithm 65) is exactly a non-homogeneous Markov chain
+with transition probabilities $p_{vv'}(k) = q_{vv'}\alpha_k(v,v')$, where
+$q_{vv'}$ is the proposal probability and $\alpha_k$ is the
+Metropolis acceptance probability at temperature $T_k$.
+
+\begin{columns}
+  \column{0.54\textwidth}
+  \includegraphics[width=\textwidth]{fig_nonhomogeneous_mc}
+  \column{0.44\textwidth}
+  \small
+  As the temperature decreases along the cooling schedule, probability mass
+  flows from high-cost states toward the optimal state(s).  With logarithmic
+  cooling, $\Prob(X_k \in D^*) \to 1$ as $k \to \infty$.  The figure shows
+  how the marginal distribution of the SA chain evolves over time as $T_k$
+  decreases.
+\end{columns}
+
 \end{frame}
 
-\begin{frame}{Mass Concentration as $T \searrow 0$}
-  \begin{columns}
-    \column{0.58\textwidth}
-    \includegraphics[width=\textwidth]{fig_nonhomogeneous_mc}
-    \column{0.40\textwidth}
-    \small
-    As temperature decreases:\\[6pt]
-    \begin{itemize}
-      \item All probability mass concentrates on the \textbf{optimal state}
-        $v^* = \arg\min H$
-      \item States with higher cost $H$ lose mass exponentially fast
-      \item Proof: denominator in $\pi^T_v$ dominated by optimal terms
-    \end{itemize}
-    \vspace{6pt}
-    \textbf{This justifies SA}: run at decreasing temperatures to track
-    the mass toward the global optimum.
-  \end{columns}
-\end{frame}
-
-\begin{frame}[fragile]{Algorithm 65: Simulated Annealing (One Step)}
+\begin{frame}[fragile]{Algorithm 65: Simulated Annealing}
   \begin{lstlisting}[style=python]
+import numpy as np
+
 def sa_step(v, neighbors, H, T_k, rng):
-    """One SA step with temperature T_k (Algorithm 65)."""
-    v_prop = rng.choice(neighbors[v])
-    alpha_k = min(1.0, np.exp(-(H[v_prop] - H[v]) / T_k))
-    U = rng.uniform()
-    return v_prop if U <= alpha_k else v
+    """One SA step at temperature T_k (Algorithm 65).
+    v         : current state
+    neighbors : adjacency dict, neighbors[v] = list of neighbours
+    H         : cost function dict
+    T_k       : current temperature (decreases over time)
+    """
+    v_prop  = rng.choice(neighbors[v])
+    delta_H = H[v_prop] - H[v]
+    # Accept better moves always; worse moves with exp(-delta_H/T_k)
+    alpha_k = min(1.0, np.exp(-delta_H / T_k))
+    return v_prop if rng.uniform() <= alpha_k else v
 
-def simulated_annealing(v0, neighbors, H, cooling, n_steps, seed=0):
-    """Run SA with a given cooling schedule."""
-    rng = np.random.RandomState(seed)
-    v   = v0
-    traj = [v]
+def simulated_annealing(v0, neighbors, H, cooling_schedule, n_steps, seed=0):
+    """Run SA with a given cooling schedule. Returns trajectory + best.
+    cooling_schedule: list [T_0, T_1, ...] or callable k -> T_k
+    """
+    rng    = np.random.RandomState(seed)
+    v      = v0
+    traj   = [v]
+    best_v = v
     for k in range(n_steps):
-        T_k = cooling(k + 1)         # temperature at step k+1
-        v   = sa_step(v, neighbors, H, T_k, rng)
+        T_k = (cooling_schedule[k]
+               if hasattr(cooling_schedule, '__getitem__')
+               else cooling_schedule(k + 1))
+        v = sa_step(v, neighbors, H, T_k, rng)
         traj.append(v)
-    return traj
+        if H[v] < H[best_v]:
+            best_v = v
+    return traj, best_v
 
-# Logarithmic cooling
-def log_cooling(k, d=1.0):
-    return d / np.log(k + 1)
+# Two standard cooling schedules:
+def log_cooling(d=1.0):
+    return lambda k: d / np.log(k + 2)        # T_k = d / log(k+2)
+
+def geometric_cooling(T0=10.0, beta=0.99):
+    return lambda k: T0 * beta**k              # T_k = T0 * beta^k
   \end{lstlisting}
 \end{frame}
 
-\begin{frame}{SA for the Travelling Salesman Problem}
-  \textbf{Proposal:} pick two distinct indices $i,j \in \{1,\ldots,n\}$
-  uniformly at random; swap $\sigma(i)$ and $\sigma(j)$
-  (transposition).
+\begin{frame}[allowframebreaks]{7.2 SA for the Travelling Salesman Problem}
 
-  \begin{block}{Algorithm 67: SA for TSP}
-    \[
-      p_{\sigma\sigma'}(k)
-      = \frac{2}{n(n-1)}\min\!\left(1,\, e^{(l(\sigma)-l(\sigma'))/T_k}\right)
-    \]
-    where $\sigma'$ differs from $\sigma$ by one transposition.
-  \end{block}
+In the TSP, the state space is $\calS = \mathcal{S}_n$ (all tours of $n$
+cities).  We minimise the tour length $l(\sigma)$, which we cast as a
+Boltzmann optimisation with $H(\sigma) = l(\sigma)$ and
+$\pi^T_\sigma \propto e^{-l(\sigma)/T}$.
 
-  \textbf{2-opt variant (Remark 7.2.4):} reverse a sub-tour
-  $\sigma(i), \sigma(i-1), \ldots, \sigma(j)$ -- often faster in practice.
+\medskip
+\textbf{Proposal distribution: transpositions.}
+Two tours $\sigma$ and $\sigma'$ are \emph{neighbours} if $\sigma'$ is
+obtained from $\sigma$ by swapping exactly two city positions $i$ and $j$:
+\[
+  q_{\sigma\sigma'} = \frac{2}{n(n-1)} \quad \text{for each of the }
+  \tbinom{n}{2} \text{ transpositions.}
+\]
+Since the graph is regular (each tour has $\binom{n}{2}$ neighbours), the
+acceptance probability for moving from $\sigma$ to $\sigma'$ at step $k$ is:
+\[
+  \alpha_k(\sigma,\sigma') = \min\!\left(1,\,e^{(l(\sigma)-l(\sigma'))/T_k}\right).
+\]
+If the proposed tour $\sigma'$ is shorter ($l(\sigma') < l(\sigma)$), the
+exponent is positive and $\alpha_k = 1$: the shorter tour is always
+accepted.  If the proposed tour is longer, the exponent is negative and
+$\alpha_k = e^{(l(\sigma)-l(\sigma'))/T_k} \in (0,1)$.
 
-  \medskip
-  \textbf{Cooling:} $T_k = 1/\log(k)$ for 100 steps.
+\begin{block}{SA for TSP: Transition Probability (Algorithm 67)}
+  \[
+    p_{\sigma\sigma'}(k) = \frac{2}{n(n-1)}\min\!\left(1,\,
+      e^{(l(\sigma)-l(\sigma'))/T_k}\right), \quad \text{where }
+    \sigma' \text{ differs from } \sigma \text{ by one transposition.}
+  \]
+\end{block}
 
-  \medskip
-  SA finds better solutions faster than plain Metropolis (60\% of 10-step
-  runs with SA beat plain Metropolis).
+\textbf{2-opt variant (Remark 7.2.4).}
+An often more effective proposal reverses a sub-segment of the tour.
+Choose indices $i < j$ uniformly at random and reverse the segment
+$\sigma(i), \sigma(i+1), \ldots, \sigma(j)$:
+\[
+  \sigma' = (\sigma(1),\ldots,\sigma(i-1),\,
+            \underbrace{\sigma(j),\sigma(j-1),\ldots,\sigma(i)}_{\text{reversed}},\,
+            \sigma(j+1),\ldots,\sigma(n)).
+\]
+This is the \textbf{2-opt move}.  Two edges $(u,v)$ and $(u',v')$ that cross
+in the Euclidean plane are always replaced by non-crossing edges in the
+2-opt step, typically reducing tour length.  2-opt often finds much shorter
+tours than transpositions because it can undo ``crossed'' edges directly.
+
+\framebreak
+
+\textbf{The 13-city USA benchmark distance matrix.}
+
+The 13 USA cities have pairwise distances (in miles) given by the matrix
+below, taken from the Google Operations Research routing benchmark.
+
+\begin{center}
+  \includegraphics[width=0.70\textwidth]{fig_distance_matrix}
+\end{center}
+
+{\small The optimal tour of length \textbf{7024} was found by the Held--Karp
+algorithm (dynamic programming, $O(n^2 2^n)$ time) in 0.068 seconds.  A
+uniformly random tour has average length $\approx 15938$ (standard deviation
+$\approx 1789$), which is $2.27 \times$ the optimal.}
+
+\framebreak
+
+\textbf{Benchmark results: Metropolis vs SA on 13-city TSP.}
+
+Both algorithms were run for 100 steps with cooling $T_k = 1/\log(k)$ for SA.
+
+\begin{center}
+  \includegraphics[width=0.68\textwidth]{fig_tsp_comparison}
+\end{center}
+
+{\small The dashed line at 7024 is the proven optimal.  Running both
+algorithms 100 times, each for just 10 steps, SA found better solutions in
+approximately \textbf{60\%} of replications.  SA is advantageous early in
+the run (when temperature is high) because it freely accepts worse moves,
+escaping local minima.  As the temperature drops, SA becomes increasingly
+selective, converging like Metropolis at low $T$.  The figure shows a
+representative single run of all five algorithms covered in this chapter.}
+
+\begin{alertblock}{Key Takeaway: Simulated Annealing}
+  SA improves on fixed-temperature Metropolis by combining free exploration
+  (high $T$) with concentrated exploitation (low $T$).  With logarithmic
+  cooling $T_k = d/\log(k)$, SA provably converges to the global optimum
+  (Haj\'ek's theorem).  Geometric cooling ($T_k = \beta^k T_0$) is faster
+  in practice but without this guarantee.
+\end{alertblock}
+
 \end{frame}
 
 % ============================================================
 \section{7.3 Locally Informed Proposals}
 % ============================================================
 
-\begin{frame}{7.3 Locally Informed Proposals (LIP)}
-  \textbf{Limitation of uninformed Metropolis:}
-  Proposals are chosen \emph{uniformly} among all neighbors -- ignores
-  information about which direction improves $h$.
+\begin{frame}[allowframebreaks]{7.3 Locally Informed Proposals (LIP)}
 
-  \medskip
-  \textbf{Idea:} let the target distribution $\pi$ \emph{guide} the proposal.
+\textbf{The limitation of uninformed Metropolis.}
+In the standard Metropolis algorithm, the proposal distribution $\mathbf{Q}$
+is chosen independently of the target $\pi$: we propose a uniformly random
+neighbour.  This is wasteful when many neighbours are clearly worse than the
+current state.  For example, in the knapsack problem at a good solution,
+most bit-flips that remove valuable items will be rejected.  We waste
+proposal evaluations on moves we will not accept.
 
-  \begin{block}{Locally Informed Proposal Distribution}
-    Given current state $s$, sample a candidate $s^{(m)}$ from neighbors
-    with probability proportional to the target:
-    \[
-      \mathbf{q}^{\mathrm{LIP}}_s
-      \propto
-      \left(
-        g\!\left(\frac{\pi_{s^{(1)}}}{\pi_s}\right) q_{s s^{(1)}},\;
-        \ldots,\;
-        g\!\left(\frac{\pi_{s^{(M)}}}{\pi_s}\right) q_{s s^{(M)}}
-      \right),
-    \]
-    for a \emph{balancing function} $g(\cdot)$ (e.g.\ $g(r) = \sqrt{r}$).
-  \end{block}
+\medskip
+\textbf{The locally informed proposal (LIP) idea.}
+We can do better by letting $\pi$ \emph{guide} the proposal.  Rather than
+choosing among all neighbours uniformly, we evaluate the Boltzmann weight of
+each candidate neighbour and propose with probability proportional to
+$g(\pi_{s'}/\pi_s)$, where $g : (0,\infty) \to (0,\infty)$ is a
+\emph{balancing function}.  This concentrates proposals on directions where
+the target probability is higher.
 
-  The acceptance ratio then corrects for the biased proposal via
+Let $\calN(s) = \{s^{(1)},\ldots,s^{(M)}\}$ be a set of $M$ candidate
+neighbours of the current state $s$ (sub-sampled from all neighbours).  The
+\textbf{locally informed proposal distribution} is:
+
+\begin{block}{LIP Distribution (Algorithm 68)}
   \[
-    \alpha = \min\!\left(1,\;
-      \frac{\pi_X\, q^{\mathrm{LIP}}_{Xs}}{\pi_s\, q^{\mathrm{LIP}}_{sX}}
-    \right).
+    q^{\mathrm{LIP}}_{s s^{(j)}}
+    = \frac{1}{Z_g}\,g\!\left(\frac{\pi_{s^{(j)}}}{\pi_s}\right) q_{s s^{(j)}},
+    \qquad j = 1,\ldots,M,
   \]
-\end{frame}
+  where $Z_g = \sum_{j=1}^{M} g\!\left(\frac{\pi_{s^{(j)}}}{\pi_s}\right)
+  q_{s s^{(j)}}$ is the normalising constant ensuring the distribution sums
+  to 1, $q_{ss^{(j)}}$ is the original (uninformed) proposal probability,
+  and $g(\cdot)$ is the \textbf{balancing function}.
+\end{block}
 
-\begin{frame}[fragile]{Algorithm 68: Locally Informed Metropolis-Hastings}
-  \begin{lstlisting}[style=python]
-def lip_step(s, pi, Q_neighbors, M_frac, g, rng):
-    """
-    One step of LIP (Algorithm 68).
-    s: current state
-    pi: stationary distribution (dict or array)
-    Q_neighbors: {s: [(s', q_ss')] ...}
-    M_frac: fraction of neighbors to subsample (beta)
-    g: balancing function, e.g. lambda r: np.sqrt(r)
-    """
-    nbrs = Q_neighbors[s]
-    # Subsample M candidates
-    M = max(1, int(M_frac * len(nbrs)))
-    idx = rng.choice(len(nbrs), M, replace=False)
-    cands = [nbrs[i] for i in idx]
+The most common choice is $g(r) = \sqrt{r}$ (square root), which satisfies
+the \emph{balancedness condition} $g(r) = r \cdot g(1/r)$ (i.e.,
+$\sqrt{r} = r \cdot \sqrt{1/r}$).  This condition ensures the
+Metropolis--Hastings acceptance ratio takes a simple form.
 
-    # LIP weights
-    weights = np.array([g(pi[sp] / pi[s]) * qss for sp, qss in cands])
-    Z_g = weights.sum()
-    probs = weights / Z_g
-    # Draw candidate
-    j = rng.choice(M, p=probs)
-    X, q_sX = cands[j]
-    # LIP probability of X -> s
-    nbrs_X = Q_neighbors[X]
-    wts_Xs = [g(pi[sp2] / pi[X]) * q for sp2, q in nbrs_X]
-    q_LIP_Xs = g(pi[s] / pi[X]) * (sum(w for s2,_ in nbrs_X
-                                  for w in [1]) / sum(wts_Xs))
-    alpha = min(1.0, (pi[X] * q_LIP_Xs) / (pi[s] * probs[j]))
-    return X if rng.rand() < alpha else s
-  \end{lstlisting}
-\end{frame}
+\framebreak
 
-\begin{frame}{LIP: Efficiency Improvements}
-  \textbf{Key efficiency observation:}
-  \begin{itemize}
-    \item Standard Metropolis: evaluate ratio $\pi_{s'}/\pi_s$ for
-      \emph{one} randomly chosen neighbor $s'$.
-    \item Full LIP: evaluate $g(\pi_{s'}/\pi_s) q_{ss'}$ for \textbf{all}
-      $\binom{n}{2}$ neighbors -- expensive!
-  \end{itemize}
+\textbf{Metropolis--Hastings correction.}
+Once a candidate $X$ is proposed from $q^{\mathrm{LIP}}_s$, the
+Metropolis--Hastings acceptance probability corrects for the bias:
+\[
+  \alpha = \min\!\left(1,\;
+    \frac{\pi_X\, q^{\mathrm{LIP}}_{Xs}}{\pi_s\, q^{\mathrm{LIP}}_{sX}}
+  \right).
+\]
+When the balancing function satisfies $g(r) = r \cdot g(1/r)$, this
+simplifies to:
+\[
+  \alpha = \min\!\left(1,\;
+    \frac{Z_g(s)}{Z_g(X)}
+  \right),
+\]
+where $Z_g(s)$ and $Z_g(X)$ are the normalising constants at the current
+and proposed states respectively.  The correction ensures $\pi$ remains the
+exact stationary distribution: LIP is a valid MCMC algorithm.
 
-  \begin{block}{Partial LIP (Fraction $\beta \in (0,1]$)}
-    Sample $M = \lceil \beta\,\mathfrak{n} \rceil$ candidate neighbors
-    (where $\mathfrak{n}$ is the total neighbor count), then
-    \[
-      q^{\mathrm{LIP}}_{ss^{(j)}} = \frac{1}{Z_g}
-        g\!\left(\frac{\pi_{s^{(j)}}}{\pi_s}\right) q_{ss^{(j)}}.
-    \]
-    For $\beta=1$: full LIP.  For small $\beta$: fast approximation.
-  \end{block}
+\textbf{Why $g(r) = \sqrt{r}$ works intuitively.}
+If a neighbour $s'$ has $\pi_{s'} \gg \pi_s$ (much better than current
+state), the weight $g(\pi_{s'}/\pi_s) = \sqrt{\pi_{s'}/\pi_s}$ is large,
+so $s'$ is proposed more often.  The square root is a compromise: it
+strongly prefers better neighbours but does not completely ignore worse
+ones, preventing degeneracy.
 
-  \textbf{Trade-off:} $\beta=1$ gives best solution quality; smaller $\beta$
-  gives faster runtime (practically similar results).
-\end{frame}
+\medskip
+\textbf{Partial LIP for computational efficiency.}
+Computing $q^{\mathrm{LIP}}_{ss'}$ for \emph{all} neighbours requires
+evaluating $g(\pi_{s'}/\pi_s)$ for every neighbour $s'$.  For TSP, each
+tour has $\binom{n}{2} = 78$ neighbours for $n=13$; for the knapsack, $d =
+100$.  Let $\mathfrak{n}$ denote the total number of neighbours.  Set
+$M = \lceil \beta \mathfrak{n} \rceil$ for some fraction $\beta \in (0,1]$
+and randomly subsample $M$ candidate neighbours.  For $\beta = 1$: full
+LIP; for $\beta < 1$: faster approximation.
 
-\begin{frame}{LIP Applied to Knapsack and TSP}
-  \begin{columns}
-    \column{0.50\textwidth}
-    \includegraphics[width=\textwidth]{fig_lip_knapsack}
-    \column{0.48\textwidth}
-    \small
-    \textbf{Knapsack ($d=100$, $M=100$ candidates):}\\
-    LIP outperforms plain Metropolis -- informed proposals jump to
-    higher-value neighbors.\\[6pt]
+\framebreak
 
-    \textbf{TSP (13 cities):}
-    \begin{itemize}
-      \item LIP ($M=100$): evaluates 100 of $\binom{13}{2}=78$ swaps
-      \item Substantially faster convergence than plain Metropolis
-      \item Winner in 9.66/100 runs vs.\ 0.33 for plain Metropolis
-    \end{itemize}
-    \vspace{4pt}
-    \emph{Cost:} $\sim 100\times$ more expensive per step than Metropolis.
-  \end{columns}
-\end{frame}
+\textbf{Comparison on knapsack and TSP.}
 
-% ============================================================
-\section{7.4 Cross-Entropy Method}
-% ============================================================
-
-\begin{frame}{7.4 The Cross-Entropy Method -- Overview}
-  \textbf{Different paradigm:}
-  Instead of walking on the state space, \emph{update a family of
-  distributions} $\{p_{\btheta}\}$ so that it concentrates near the optimum.
-
-  \begin{block}{CE Optimization Setup (Eq.~7.4.1--7.4.2)}
-    \begin{align*}
-      s^{\mathrm{opt}} &= \arg\max_{s\in\calS} \pi_s = \arg\max_{s\in\calS} h(s),\\
-      \gamma^{\mathrm{opt}} &= \max_{s\in\calS} h(s) \in \R.
-    \end{align*}
-    \begin{itemize}
-      \item $h: \calS \to \R$ -- \textbf{performance function}
-      \item $\{p_\theta : \theta \in \Theta\}$ -- parametric family (our choice)
-      \item $\theta_0$ -- initial parameter (e.g.\ uniform)
-    \end{itemize}
-  \end{block}
-
-  \textbf{Core idea:} relate the rare event
-  $I(\gamma) = \Prob_{\theta_0}(h(\mathbf{X}) \ge \gamma)$
-  (probability of being near-optimal) to the estimation problem, then
-  update $\theta$ to make this event less rare.
-\end{frame}
-
-\begin{frame}{CE: Parametric Estimation Connection}
-  Estimation problem:
-  \[
-    I(\gamma) = \Prob_{\theta_0}(h(\mathbf{X}) \ge \gamma)
-    = \sum_{s \in \calS} \mathbf{1}(h(s) \ge \gamma)\, p_{\theta_0}(s)
-    = \E_{\theta_0}\bigl[\mathbf{1}(h(\mathbf{X}) \ge \gamma)\bigr].
-  \]
-  If $\gamma = \gamma^{\mathrm{opt}}$ and $p_{\theta_0}$ is uniform:
-  \[
-    I(\gamma^{\mathrm{opt}}) = \frac{\#\{s : h(s) = \gamma^{\mathrm{opt}}\}}{|\calS|}
-    \approx \frac{1}{|\calS|} \quad \text{(very small!)}.
-  \]
-
-  \textbf{CE strategy:} use IS-like parameter update to shift $\theta$ so
-  that high-performance solutions are sampled more often.
-
-  \medskip
-  \begin{block}{CE Parameter Update (Eq.~7.4.5)}
-    \[
-      \theta' = \arg\max_\theta \frac{1}{M}
-        \sum_{i:\, \mathbf{X}_i \in \mathcal{E}_t}
-        \log p_\theta(\mathbf{X}_i),
-    \]
-    where \textbf{elite set} $\mathcal{E}_t = \{\mathbf{X}_i : h(\mathbf{X}_i) \ge \gamma_t\}$.
-  \end{block}
-\end{frame}
-
-\begin{frame}{CE Method: Schematic}
-  \begin{center}
-    \includegraphics[width=0.90\textwidth]{fig_ce_schematic}
-  \end{center}
+\begin{columns}
+  \column{0.50\textwidth}
+  \includegraphics[width=\textwidth]{fig_lip_knapsack}
+  \column{0.48\textwidth}
   \small
-  \textbf{Interpretation:} At each iteration, samples are drawn from
-  current $p_\theta$. The top $(1-\rho)$ fraction (``elite'') are used
-  to fit a new $\theta'$, shifting the distribution toward high-performance
-  regions.
+  \textbf{Knapsack ($d=100$, $M=100$ candidates):}\\
+  LIP outperforms plain Metropolis because it preferentially proposes
+  bit-flips that increase total value.  The chain moves much more often
+  in productive directions.\\[6pt]
+  \textbf{TSP (13 cities, $M=100$):}\\
+  In 100 replications, LIP won \textbf{9.66} times vs \textbf{0.33} for
+  plain Metropolis.  LIP finds shorter tours more reliably.\\[4pt]
+  \emph{Cost:} LIP requires evaluating $\pi$-ratios for $M$ neighbours per
+  step, vs 1 for plain Metropolis.  The quality improvement usually
+  justifies this.
+\end{columns}
+
+\medskip
+\begin{alertblock}{Key Insight: LIP}
+  LIP improves upon uninformed Metropolis by spending its ``proposal
+  budget'' on the most promising directions.  The balancing function
+  $g(\sqrt{\cdot})$ ensures the algorithm is a valid Metropolis--Hastings
+  step with the correct stationary distribution.  LIP is a discrete
+  analogue of the Metropolis-Adjusted Langevin Algorithm (MALA), which uses
+  the gradient to guide proposals in continuous spaces.
+\end{alertblock}
+
 \end{frame}
 
-\begin{frame}[allowframebreaks]{Algorithm 69: Cross-Entropy Method for Optimization}
-  \textbf{Inputs:} family $\{p_\theta\}$, $\theta_0$, performance $h(\cdot)$,
-  sample size $M$, elite fraction $\rho \in (0,1)$,
-  smoothing $\alpha \in (0,1)$, stopping depth $d$ (default 5).
+% ============================================================
+\section{7.4 The Cross-Entropy Method}
+% ============================================================
 
-  \medskip
-  \textbf{Repeat:} $t = 1, 2, \ldots$
-  \begin{enumerate}
-    \item \textbf{Update level $\gamma_t$:}
-      Generate $\mathbf{X}_1,\ldots,\mathbf{X}_M \sim p_{\theta'_{t-1}}$.
-      Sort performances $\eta_{(1)} \le \cdots \le \eta_{(M)}$.
-      \[
-        \gamma_t = \eta_{(\lceil(1-\rho)M\rceil)}.
-      \]
-    \item \textbf{Update parameter $\theta'_t$:} from the \emph{same} samples,
-      let $\mathcal{E}_t = \{\mathbf{X}_i : h(\mathbf{X}_i) \ge \gamma_t\}$,
-      \[
-        \theta' = \arg\max_\theta \frac{1}{M} \sum_{i=1}^M \mathbf{1}(h(\mathbf{X}_i)\ge\gamma_t)
-        \log p_\theta(\mathbf{X}_i).
-      \]
-      Apply \textbf{smoothed update:}
-      \[
-        \theta'_t = \alpha\,\theta' + (1-\alpha)\,\theta'_{t-1}.  \quad\text{(Eq.~7.4.6)}
-      \]
-  \end{enumerate}
-  \textbf{Stop} when $\gamma_t = \gamma_{t-1} = \cdots = \gamma_{t-d}$.
-  \textbf{Return} elite set $\mathcal{E}$.
+\begin{frame}[allowframebreaks]{7.4 The Cross-Entropy Method: Overview and Setup}
 
-  \framebreak
-  \textbf{Differences from CE for estimation:}
-  \begin{itemize}
-    \item In estimation, $\theta_0$ is \emph{given}; in optimization,
-      $\theta_0$ is our choice (e.g.\ uniform).
-    \item No likelihood ratio / IS weights needed (Eq.~7.4.5 uses $W\equiv 1$).
-    \item The level $\gamma_t$ \emph{increases} over iterations until it
-      converges to $\gamma^{\mathrm{opt}}$.
-    \item Output is the best \emph{solution} found, not an estimate.
-  \end{itemize}
-\end{frame}
+The Metropolis/SA/LIP methods are all \textbf{state-based}: they maintain a
+single current solution and make small local moves.  The
+\textbf{Cross-Entropy (CE) method} takes a fundamentally different approach:
+it maintains a \emph{distribution over the entire solution space} and
+iteratively shifts that distribution toward better solutions.
 
-\begin{frame}{CE for the 0-1 Knapsack Problem}
-  \textbf{Parametric family:} independent Bernoulli coordinates,
-  $\theta = (\theta_1,\ldots,\theta_d)$, $\theta_i \in [0,1]$.
-  \[
-    p_\theta(\bx) = \prod_{j=1}^d \theta_j^{x_j}(1-\theta_j)^{1-x_j}.
-  \]
-  Start with $\theta_0 = (1/2,\ldots,1/2)$ (uniform).
+\medskip
+\textbf{Setup.}
+Let $h : \calS \to \R$ be the performance function we want to maximise.
+Choose a parametric family of distributions $\{p_{\btheta} : \btheta \in \Theta\}$
+on $\calS$.  Here $\btheta$ (theta) is the parameter vector describing the
+distribution.  For example:
+\begin{itemize}
+  \item \textbf{Knapsack:} independent Bernoulli coordinates,
+    $p_{\btheta}(\bx) = \prod_{j=1}^d \theta_j^{x_j}(1-\theta_j)^{1-x_j}$,
+    $\btheta = (\theta_1,\ldots,\theta_d) \in [0,1]^d$.
+    Here $\theta_j \in [0,1]$ is the probability of including item $j$.
+  \item \textbf{TSP:} a stochastic $n \times n$ matrix
+    $\btheta = (\theta_{ij})$ with $\theta_{ii}=0$ and
+    $\sum_j \theta_{ij} = 1$.  Here $\theta_{ij}$ is the probability of
+    visiting city $j$ immediately after city $i$ in a sampled tour.
+\end{itemize}
 
-  \begin{block}{CE Update for Knapsack (Eq.~7.4.7)}
+We start with $\btheta_0$ (e.g., uniform: $\theta_j = 1/2$ for knapsack,
+$\theta_{ij} = 1/(n-1)$ for TSP) and iteratively update $\btheta$ so that
+$p_{\btheta}$ concentrates on the region where $h$ is large.
+
+\medskip
+\textbf{Connection to rare-event estimation (Chapter 5).}
+The CE method for optimisation is analogous to the CE method for rare-event
+estimation studied in Chapter~5.  In \textbf{estimation}: $\btheta_0$ is
+given; the goal is to estimate $\Prob_{\btheta_0}(h(\mathbf{X}) \ge \gamma)$
+for a fixed $\gamma$.  In \textbf{optimisation}: $\btheta_0$ is our
+\emph{choice}; we start from it and update toward $\gamma^{\mathrm{opt}}$.
+No likelihood ratio weights are needed in optimisation ($W \equiv 1$) since
+we are not correcting for a change of measure.
+
+\framebreak
+
+\textbf{Algorithm 69: The CE method for optimisation.}
+
+The CE algorithm repeats the following two-step cycle until convergence:
+
+\begin{enumerate}
+  \item \textbf{Update the elite threshold $\gamma_t$ (gamma sub t).}
+    Generate $M$ samples $X_1,\ldots,X_M \sim p_{\btheta'_{t-1}}$.
+    Compute their performances $\eta_i = h(X_i)$ and sort them:
+    $\eta_{(1)} \le \eta_{(2)} \le \cdots \le \eta_{(M)}$.
+    Set the elite threshold as the $(1-\rho)$-quantile:
     \[
-      \theta'_k
-      = \frac{\displaystyle\sum_{i=1}^M \mathbf{1}(h(\mathbf{X}_i)\ge\gamma_t)\,\mathbf{X}_i}
-             {\displaystyle\sum_{i=1}^M \mathbf{1}(h(\mathbf{X}_i)\ge\gamma_t)}.
+      \gamma_t = \eta_{(\lceil(1-\rho)M\rceil)}.
     \]
-    i.e.\ the \textbf{sample mean of elite solutions} -- a simple average!
-  \end{block}
+    Here $\rho \in (0,1)$ (rho) is the \emph{elite fraction} (e.g.,
+    $\rho=0.1$ means the top 10\% are elite).  The notation
+    $\lceil(1-\rho)M\rceil$ means round up to the nearest integer.
 
-  The $k$-th coordinate of $\theta'$ is the fraction of elite samples
-  that include item $k$.
+  \item \textbf{Update the parameter $\btheta'_t$.}
+    From the same $M$ samples, identify the elite set
+    $\calE_t = \{X_i : h(X_i) \ge \gamma_t\}$ (all samples with
+    performance at or above the elite threshold) and solve the
+    maximum-likelihood problem:
+    \[
+      \btheta' = \arg\max_{\btheta} \frac{1}{M}
+        \sum_{i=1}^M \mathbf{1}(h(X_i)\ge\gamma_t)\log p_{\btheta}(X_i).
+    \]
+    Apply a \textbf{smoothed update} to prevent premature convergence:
+    \[
+      \btheta'_t = \alpha\,\btheta' + (1-\alpha)\,\btheta'_{t-1}.
+    \]
+    Here $\alpha \in (0,1)$ (alpha) is the smoothing parameter (typically
+    $\alpha = 0.7$): a larger $\alpha$ adapts faster; a smaller $\alpha$
+    is more stable and avoids collapsing to a degenerate distribution too
+    quickly.
+\end{enumerate}
+
+\textbf{Stopping criterion:} terminate when
+$\gamma_t = \gamma_{t-1} = \cdots = \gamma_{t-d}$ for some depth $d$
+(default $d=5$), i.e., the elite threshold has not improved for $d$
+consecutive iterations.
+
+\textbf{Output:} the best solutions found in the final elite set $\calE$.
+
+\begin{center}
+  \includegraphics[width=0.80\textwidth]{fig_ce_schematic}
+\end{center}
+{\small At each iteration $t$, the distribution $p_{\btheta'_{t-1}}$ is
+sampled, the top $\rho$-fraction by performance forms the elite set
+(shaded), and the new parameter $\btheta'_t$ is fitted to the elites.  The
+distribution shifts toward the high-performance region with each iteration.}
+
 \end{frame}
 
-\begin{frame}[fragile]{CE Knapsack: Python Implementation}
+\begin{frame}[allowframebreaks]{CE for the Knapsack: Closed-Form Update Derivation}
+
+For the knapsack, the parametric family is independent Bernoullis:
+$p_{\btheta}(\bx) = \prod_{j=1}^d \theta_j^{x_j}(1-\theta_j)^{1-x_j}$.
+Taking the logarithm:
+\[
+  \log p_{\btheta}(\bx) = \sum_{j=1}^d
+  \bigl[x_j \log\theta_j + (1-x_j)\log(1-\theta_j)\bigr].
+\]
+
+To find $\btheta'$, we differentiate the CE objective with respect to
+$\theta_k$ (theta sub k) and set to zero:
+\begin{align*}
+  0 &= \frac{\partial}{\partial\theta_k}
+    \frac{1}{M}\sum_{i=1}^M \mathbf{1}(h(X_i)\ge\gamma_t)\log p_{\btheta}(X_i)\\
+  &= \frac{1}{M\theta_k(1-\theta_k)}\sum_{i=1}^M
+    \mathbf{1}(h(X_i)\ge\gamma_t)(X_i(k) - \theta_k).
+\end{align*}
+Setting this to zero and solving for $\theta_k$:
+
+\begin{block}{CE Update for Knapsack (Eq.~7.4.7)}
+  \[
+    \theta'_k = \frac{\displaystyle\sum_{i=1}^M
+      \mathbf{1}(h(X_i)\ge\gamma_t)\,X_i(k)}
+             {\displaystyle\sum_{i=1}^M \mathbf{1}(h(X_i)\ge\gamma_t)}
+    = \text{fraction of elite samples that include item } k.
+  \]
+  Here $X_i(k) \in \{0,1\}$ is the $k$-th coordinate of sample $X_i$,
+  $\mathbf{1}(h(X_i)\ge\gamma_t)$ is 1 if sample $i$ is elite and 0
+  otherwise, and the formula computes the fraction of elite samples that
+  have item $k$ selected.
+\end{block}
+
+This is simply the \textbf{sample mean} of the elite samples' $k$-th
+coordinates.  Item $k$ gets a higher $\theta'_k$ if it appears frequently
+in the best solutions found so far.  Over iterations: $\theta_k \to 1$ for
+items always in elite solutions; $\theta_k \to 0$ for items never in elite
+solutions.
+
+\begin{exampleblock}{Worked Example: 3-Item Knapsack CE Update}
+  Suppose $d = 3$, $M = 5$ samples, elite threshold is top 40\% (2 samples).
+  The 2 elite solutions are: $\bx^{(1)} = (1,1,0)$ (items 1 and 2 selected)
+  and $\bx^{(2)} = (1,0,1)$ (items 1 and 3 selected).  Then:
+  \[
+    \theta'_1 = \frac{1+1}{2} = 1.0, \quad
+    \theta'_2 = \frac{1+0}{2} = 0.5, \quad
+    \theta'_3 = \frac{0+1}{2} = 0.5.
+  \]
+  Item 1 appears in \emph{both} elite solutions: $\theta'_1 = 1$ (always
+  include it).  Items 2 and 3 each appear in exactly one: uncertain with
+  50\% probability.  After smoothing with $\alpha=0.7$ and prior
+  $\btheta = (0.5, 0.5, 0.5)$:
+  \[
+    \btheta'_t = 0.7 \cdot (1, 0.5, 0.5) + 0.3 \cdot (0.5, 0.5, 0.5)
+    = (0.85, 0.5, 0.5).
+  \]
+  Without smoothing, $\theta'_1$ would jump straight to 1 and stay there
+  forever---which is correct here but could be premature in general if
+  only a few elite samples were available.
+\end{exampleblock}
+
+\framebreak
+
+\textbf{Convergence of the CE method for the knapsack.}
+
+\begin{center}
+  \includegraphics[width=0.76\textwidth]{fig_ce_convergence}
+\end{center}
+{\small \textbf{Left panel:} the elite quantile $\gamma_t$ increases
+monotonically over CE iterations, tracking the improvement in solution
+quality.  \textbf{Right panel:} the best value found in each batch
+improves rapidly and then plateaus.  CE typically converges in
+$\approx 30$ iterations for $d=100$.  Each iteration uses $M=200$ samples.}
+
+\framebreak
+
+\begin{columns}
+  \column{0.50\textwidth}
+  \includegraphics[width=\textwidth]{fig_ce_theta}
+  \column{0.48\textwidth}
+  \small
+  \textbf{Evolution of $\theta_k$ parameters over CE iterations.}\\[4pt]
+  Each curve represents one coordinate $\theta_k$ (the probability of
+  including item $k$).  Over iterations:
+  \begin{itemize}
+    \item $\theta_k \to 1$: item $k$ appears in every elite solution
+      (the algorithm decides to always include it)
+    \item $\theta_k \to 0$: item $k$ never appears in elite solutions
+      (the algorithm decides to never include it)
+  \end{itemize}
+  Items with the highest value-to-weight ratio $v_i/w_i$ converge to
+  $\theta_k = 1$ first.\\[4pt]
+  Smoothing (with $\alpha=0.7$) prevents premature convergence: without
+  it, parameters would snap to 0 or 1 after just 1 iteration, permanently
+  locking out potentially useful items.
+\end{columns}
+
+\end{frame}
+
+\begin{frame}[fragile]{CE for the Knapsack: Python Implementation}
   \begin{lstlisting}[style=python]
 import numpy as np
 
 def ce_knapsack(d, w, v, W, theta0, M=200, rho=0.1, alpha=0.7,
                 d_stop=5, max_iter=50):
+    """Cross-Entropy method for 0-1 Knapsack (Algorithm 69).
+    d: num items;  w,v: weight/value;  W: capacity
+    theta0: initial Bernoulli param (shape d, e.g. all 0.5)
+    M: sample size;  rho: elite fraction;  alpha: smoothing param
+    """
     theta = theta0.copy()
-    gammas, best_vals = [], []
-    gamma_history = []
+    best_val, gamma_history = [], []
     for t in range(max_iter):
-        # Step 1: sample and compute performance
+        # Step 1: sample M binary vectors from independent Bernoulli(theta)
         X = (np.random.rand(M, d) < theta).astype(float)
-        h = np.array([x @ v if x @ w <= W else 0.0 for x in X])
-        # Step 2: compute elite level
-        gamma_t = np.quantile(h, 1 - rho)
-        gammas.append(gamma_t)
-        # Step 3: elite update
-        elite = h >= gamma_t
-        if elite.sum() > 0:
-            theta_new = X[elite].mean(axis=0)
-            theta = alpha * theta_new + (1 - alpha) * theta
-        best_vals.append(h.max())
+        # Compute performances (0 for infeasible solutions)
+        h_vals = np.array([x @ v if x @ w <= W else 0.0 for x in X])
+        # Step 2: compute (1-rho)-quantile = elite threshold gamma_t
+        gamma_t = np.quantile(h_vals, 1 - rho)
         gamma_history.append(gamma_t)
-        # Stopping criterion
+        # Step 3: theta' = mean over elite samples (Eq. 7.4.7)
+        elite_mask = h_vals >= gamma_t
+        if elite_mask.sum() > 0:
+            theta_new = X[elite_mask].mean(axis=0)  # fraction of elites with x_k=1
+            theta = alpha * theta_new + (1 - alpha) * theta  # smoothed update
+        best_val.append(h_vals.max())
+        # Stop if elite level unchanged for d_stop consecutive iterations
         if (len(gamma_history) > d_stop and
-                len(set(gamma_history[-d_stop:])) == 1):
+                len(set(round(g, 6) for g in gamma_history[-d_stop:])) == 1):
             break
-    return theta, best_vals, gammas
+    return theta, best_val, gamma_history
   \end{lstlisting}
 \end{frame}
 
-\begin{frame}{CE Convergence: Knapsack Results}
-  \begin{center}
-    \includegraphics[width=0.82\textwidth]{fig_ce_convergence}
-  \end{center}
-  \small
-  \textbf{Left:} the quantile level $\gamma_t$ increases monotonically,
-  converging to $\gamma^{\mathrm{opt}}$.
-  \textbf{Right:} best value found improves rapidly and plateaus.
-  CE converges in $\sim 30$ iterations even for $d=100$.
+\begin{frame}[allowframebreaks]{CE for the TSP: Stochastic-Matrix Parametrisation}
+
+For the TSP, we need a parametric family over permutations of $n$ cities.
+The natural choice is a stochastic $n \times n$ matrix
+$\btheta = (\theta_{ij})$ with $\theta_{ii} = 0$ and $\sum_j \theta_{ij} = 1$
+for all $i$.
+
+\textbf{Interpretation:} $\theta_{ij}$ is the probability that city $j$
+is visited immediately after city $i$ in a tour sampled from $p_{\btheta}$.
+Over iterations, as CE learns from elite tours, $\theta_{ij} \to 1$ for
+edges $(i \to j)$ that appear in the best tours and $\theta_{ij} \to 0$
+for edges that never appear.
+
+\begin{block}{Algorithm 70: Sampling a Tour from $\btheta$}
+  Fix the starting city as $\sigma_1 = 1$.  For $k = 1, \ldots, n-1$:
+  \begin{enumerate}
+    \item Take row $\sigma_k$ of $\btheta$: $\mathbf{r}^{k+1} = \btheta(\sigma_k, \cdot)$.
+    \item Zero out entries for already-visited cities:
+      $r^{k+1}_j = 0$ for $j \in \{\sigma_1,\ldots,\sigma_k\}$.
+    \item Normalise: $q^{k+1}_j = r^{k+1}_j / \sum_i r^{k+1}_i$.
+    \item Sample $\sigma_{k+1} \sim \mathbf{q}^{k+1}$.
+  \end{enumerate}
+  This greedy sequential sampling produces a valid tour (no repeated cities)
+  because we zero out visited cities before sampling.
+\end{block}
+
+\textbf{CE update for TSP (derivation).}
+The log-probability of a tour $\sigma^{(i)} = (\sigma_1^{(i)}, \ldots,
+\sigma_n^{(i)})$ under $p_{\btheta}$ is (Eq.~7.4.8):
+\[
+  \log p_{\btheta}(X_i) = \sum_{k=1}^{n-1}
+    \log\frac{\theta(\sigma_k^{(i)}, \sigma_{k+1}^{(i)})}{c(\sigma^{(i)}, k)},
+\]
+where $c(\sigma^{(i)}, k) = \sum_{r \notin \{\sigma_1^{(i)},\ldots,
+\sigma_k^{(i)}\}} \theta(\sigma_k^{(i)}, r)$ is the normalising constant
+at step $k$ (sum of remaining row entries after zeroing visited cities).
+
+Using Lagrange multipliers (maximising subject to row-sum constraints
+$\sum_j \theta_{ij} = 1$ for all $i$), the optimal $\theta'_{ab}$ is:
+
+\begin{block}{CE Update for TSP (Eq.~7.4.9)}
+  \[
+    \theta'_{ab}
+    = \frac{\displaystyle\sum_{i=1}^M \mathbf{1}(h(X_i)\ge\gamma_t)
+             \sum_{k=1}^{n-1}\mathbf{1}(\sigma_k^{(i)}=a,\,\sigma_{k+1}^{(i)}=b)}
+           {\displaystyle\sum_{b'=1}^n \sum_{i=1}^M \mathbf{1}(h(X_i)\ge\gamma_t)
+             \sum_{k=1}^{n-1}\mathbf{1}(\sigma_k^{(i)}=a,\,\sigma_{k+1}^{(i)}=b')}.
+  \]
+  In words: $\theta'_{ab}$ is the fraction of times that the directed edge
+  $a \to b$ appears in elite tours, among all edges leaving city $a$ in
+  elite tours.  This row-normalised count ensures each row of $\btheta'$
+  sums to 1.
+\end{block}
+
+\textbf{Intuition:} if city $j$ frequently follows city $i$ in the best
+tours found so far, the next round of sampling will also tend to visit $j$
+after $i$.  Over iterations, the matrix $\btheta$ converges to
+(approximately) the permutation matrix of the optimal tour.
+
 \end{frame}
 
-\begin{frame}{CE Parameter Evolution}
-  \begin{columns}
-    \column{0.55\textwidth}
-    \includegraphics[width=\textwidth]{fig_ce_theta}
-    \column{0.43\textwidth}
-    \small
-    Each $\theta_k$ converges to 0 or 1:\\[4pt]
-    \begin{itemize}
-      \item $\theta_k \to 1$: item $k$ is always in elite solutions
-        (include it)
-      \item $\theta_k \to 0$: item $k$ is never in elite solutions
-        (exclude it)
-    \end{itemize}
-    \vspace{4pt}
-    Items with high value-to-weight ratio converge to $\theta_k=1$ faster.\\[4pt]
-    Smoothing parameter $\alpha$ prevents premature convergence.
-  \end{columns}
-\end{frame}
-
-\begin{frame}{CE for the TSP: Parametric Family}
-  \textbf{Parametric family for permutations:}
-  $\theta = (\theta_{ij})$ -- a stochastic $n\times n$ matrix with
-  $\theta_{ii} = 0$, $\theta_{ij} \ge 0$, $\sum_j \theta_{ij} = 1$.
-
-  \begin{block}{Algorithm 70: Sample Permutation from $\theta$}
-    \begin{enumerate}
-      \item Set $\sigma_1 = 1$ (start city).
-      \item For $k=1,\ldots,n-1$:
-        \begin{itemize}
-          \item Take row $k$ of $\theta$; zero out already-visited cities.
-          \item Normalize remaining entries to get probability vector $\mathbf{q}^{k+1}$.
-          \item Sample $\sigma_{k+1}$ from $\mathbf{q}^{k+1}$.
-        \end{itemize}
-    \end{enumerate}
-  \end{block}
-
-  \begin{block}{CE Update for TSP (Eq.~7.4.9)}
-    \[
-      \theta'_{ab}
-      = \frac{\displaystyle\sum_{i=1}^M \mathbf{1}(h(\mathbf{X}_i)\ge\gamma_t)
-               \sum_{k=1}^{n-1}\mathbf{1}(\sigma_k^{(i)}=a,\,\sigma_{k+1}^{(i)}=b)}
-             {\displaystyle\lambda_a},
-    \]
-    where $\lambda_a$ is a normalising constant ensuring row sums equal 1.
-  \end{block}
-\end{frame}
-
-\begin{frame}[fragile]{CE for TSP: Python Skeleton}
+\begin{frame}[fragile]{CE for TSP: Python Implementation}
   \begin{lstlisting}[style=python]
 import numpy as np
 
-def sample_permutation(theta, n, rng):
+def sample_tour(theta, n, rng):
     """Algorithm 70: sample a tour from stochastic matrix theta."""
-    sigma = [0]   # start at city 0
+    sigma = [0]          # always start at city 0 (0-indexed)
     for k in range(n - 1):
         row = theta[sigma[-1]].copy()
         for already in sigma:
-            row[already] = 0.0          # exclude visited
-        row /= row.sum()                # normalise
+            row[already] = 0.0         # exclude already-visited cities
+        row /= row.sum()               # normalise remaining probabilities
         next_city = rng.choice(n, p=row)
         sigma.append(next_city)
     return sigma
 
-def ce_tsp_update(elite_tours, n):
-    """Compute theta' from elite tours (Eq. 7.4.9)."""
+def tour_length(sigma, M_dist):
+    """Total tour length for permutation sigma and distance matrix."""
+    n = len(sigma)
+    return (sum(M_dist[sigma[k], sigma[k+1]] for k in range(n-1))
+            + M_dist[sigma[-1], sigma[0]])
+
+def ce_tsp_update(elite_tours, n, alpha=0.7, theta_prev=None):
+    """Compute theta' from elite tours via Eq. 7.4.9, with smoothing."""
     counts = np.zeros((n, n))
     for tour in elite_tours:
         for k in range(len(tour) - 1):
-            counts[tour[k], tour[k+1]] += 1
-    # Normalise each row
+            counts[tour[k], tour[k + 1]] += 1  # count edge a->b occurrences
     row_sums = counts.sum(axis=1, keepdims=True)
-    row_sums[row_sums == 0] = 1
-    return counts / row_sums
+    row_sums[row_sums == 0] = 1.0     # avoid division by zero for empty rows
+    theta_new = counts / row_sums     # row-normalise: each row sums to 1
+    if theta_prev is not None:
+        theta_new = alpha * theta_new + (1 - alpha) * theta_prev
+    return theta_new
   \end{lstlisting}
 \end{frame}
 
 % ============================================================
-\section{7.5 Metropolis Cross-Entropy: A Hybrid Approach}
+\section{7.5 The Metropolis Cross-Entropy Hybrid}
 % ============================================================
 
-\begin{frame}{7.5 Metropolis--CE: A Hybrid Approach}
-  \textbf{Metropolis:} random walk, state = current solution.\\
-  \textbf{CE:} state = distribution $p_\theta$; $M$ solutions sampled each step.
+\begin{frame}[allowframebreaks]{7.5 The Metropolis Cross-Entropy: A Hybrid Approach}
 
-  \medskip
-  \textbf{Hybrid idea (Algorithm 72):} at each iteration,
-  \begin{itemize}
-    \item Generate $M$ \emph{neighbors} of $\mathbf{X}^{(t-1)}$ from the
-      transition distribution $\mathbf{Q}_{\theta'_{t-1}}(\mathbf{X}^{(t-1)}, \cdot)$.
-    \item Update $\theta$ as in CE using elite samples.
-    \item Set next state $\mathbf{X}^{(t)}$ = best sample.
-  \end{itemize}
+\textbf{Comparing the two paradigms.}
 
-  \begin{block}{Metropolis-CE Parameter Update (Eq.~7.5.1)}
-    \[
-      \theta' = \arg\max_\theta \frac{1}{M}
-        \sum_{i=1}^M \mathbf{1}(h(\mathbf{X}_i) \ge \gamma_t)
-        \log \mathbf{Q}_\theta(\mathbf{X}^{(t-1)}, \mathbf{X}_i).
-    \]
-    Smoothed: $\theta'_t = \alpha\,\theta' + (1-\alpha)\,\theta'_{t-1}$.
-  \end{block}
+Metropolis-based algorithms (Sections 7.1--7.3) maintain a \emph{single
+current solution} $X^{(t)}$ and make small local moves guided by the target
+distribution.  At each step, one new solution is evaluated.
+
+The CE method (Section 7.4) maintains a \emph{distribution parameter}
+$\btheta'_{t-1}$ over the \emph{entire} solution space and generates $M$
+independent samples at each step.  The state is a parameter, not a solution.
+
+\medskip
+\textbf{The Metropolis-CE hybrid idea (Algorithm 72).}
+The Metropolis-CE algorithm combines both paradigms.  The state at time $t$
+is simultaneously:
+\begin{itemize}
+  \item A current solution $X^{(t)}$ (the Metropolis perspective), and
+  \item A distribution parameter $\btheta'_{t-1}$ for the
+    \emph{neighbour proposal} distribution (the CE perspective).
+\end{itemize}
+
+At each step $t$, the algorithm:
+\begin{enumerate}
+  \item Generates $M$ \emph{neighbours} of $X^{(t-1)}$ by sampling from
+    the transition distribution $Q_{\btheta'_{t-1}}(X^{(t-1)}, \cdot)$.
+  \item Computes the elite threshold $\gamma_t$ and identifies elite neighbours.
+  \item Updates $\btheta'_t$ using the CE maximum-likelihood update on the
+    elite neighbours (maximising log-probability of elite neighbours under
+    $Q_\btheta$).
+  \item Sets $X^{(t)}$ to the best-performing sample among all $M$
+    neighbours.
+\end{enumerate}
+
+\begin{block}{Metropolis-CE Parameter Update (Eq.~7.5.1)}
+  \[
+    \btheta' = \arg\max_{\btheta} \frac{1}{M}
+      \sum_{i=1}^M \mathbf{1}(h(X_i) \ge \gamma_t)
+      \log Q_{\btheta}(X^{(t-1)}, X_i).
+  \]
+  Key difference from CE: the likelihood $Q_{\btheta}(X^{(t-1)}, X_i)$
+  is the \emph{transition probability from the current state} $X^{(t-1)}$
+  to $X_i$, not a global distribution over $\calS$.  This focuses learning
+  on which \emph{moves from the current position} are most productive.
+\end{block}
+
+\framebreak
+
+\textbf{Metropolis-CE for the Knapsack: derivation.}
+
+Define the transition distribution: from the current state $\bx = X^{(t-1)}$,
+flip coordinate $k$ with probability $\theta_k \ge 0$, where
+$\sum_k \theta_k = 1$ (i.e., $\btheta$ is a probability vector over the
+$d$ possible bit-flips).  A neighbour $X_i$ produced by flipping coordinate
+$a_i$ contributes $\log Q_\btheta(X^{(t-1)}, X_i) = \log \theta_{a_i}$.
+
+The CE objective with constraint $\sum_k \theta_k = 1$ is maximised via the
+Lagrangian:
+\[
+  \mathcal{L}(\btheta, \lambda) = \frac{1}{M}\sum_{i=1}^M
+  \mathbf{1}(h(X_i) \ge \gamma_t)\log \theta_{a_i}
+  + \lambda\!\left(1 - \sum_{k=1}^d \theta_k\right).
+\]
+Setting $\partial\mathcal{L}/\partial\theta_k = C_k/\theta_k - \lambda = 0$
+gives $\theta_k = C_k/\lambda$.  From $\sum_k \theta_k = 1$ we get
+$\lambda = \sum_j C_j$, so:
+
+\begin{block}{CE Update for Knapsack Transitions}
+  \[
+    \theta'_k = \frac{C_k}{\sum_{j=1}^d C_j},
+    \qquad
+    C_k = \sum_{i=1}^M \mathbf{1}(h(X_i) \ge \gamma_t)
+    \cdot \mathbf{1}(\text{coordinate }k\text{ was flipped in }X_i).
+  \]
+  Here $C_k$ counts how often flipping bit $k$ produced an elite neighbour.
+  Intuitively: $\theta'_k$ is large if bit-flip $k$ frequently leads to
+  elite neighbours from the current state.  The algorithm learns which bits
+  are most profitable to flip \emph{from where we are right now}.
+\end{block}
+
+The smoothed update is $\btheta'_t = \alpha\btheta' + (1-\alpha)\btheta'_{t-1}$.
+Running with $\rho=0.3$, $M=30$, $\alpha=0.001$ for 100 steps:
+Metropolis-CE won \textbf{100 out of 100} replications on the knapsack.
+
+\framebreak
+
+\textbf{Metropolis-CE for the TSP.}
+
+For TSP, neighbours of the current tour $\sigma = X^{(t-1)}$ are obtained
+by swapping positions $i < j$ with probability $\theta(i,j)$.  The
+parameter $\btheta = (\theta(i,j))_{i<j}$ is a probability vector over all
+$\binom{n}{2}$ possible swaps with $\sum_{i<j}\theta(i,j) = 1$.
+
+The CE update is derived by the same Lagrangian argument.  A neighbour $X_l$
+produced by swapping positions $(a_l, b_l)$ contributes
+$\log Q_\btheta(\sigma, X_l) = \log \theta(a_l, b_l)$.
+
+\begin{block}{CE Update for TSP Swaps (Eq.~7.5.2)}
+  \[
+    \theta'(a,b)
+    = \frac{C_{(a,b)}}{\displaystyle\sum_{i<j} C_{(i,j)}},
+    \quad
+    C_{(a,b)} = \sum_{l=1}^M \mathbf{1}(h(X_l)\ge\gamma_t)\,
+      \mathbf{1}(\text{swap }(a,b)\text{ was applied in }X_l).
+  \]
+\end{block}
+
+Intuitively: $\theta'(a,b)$ becomes large if swapping positions $a$ and $b$
+frequently produces elite solutions.  Future proposals will preferentially
+try swaps that have historically been productive from the current tour.
+
+\begin{center}
+  \includegraphics[width=0.43\textwidth]{fig_mce_vs_ce}
+\end{center}
+{\small \textbf{TSP results} ($M=100$, $\rho=0.35$, $\alpha=0.7$, 100 steps,
+100 replications): CE won \textbf{61} times, Metropolis-CE won \textbf{29}
+times, LIP won \textbf{9.66} times, plain Metropolis won \textbf{0.33} times.
+Metropolis-CE achieves comparable quality to CE at roughly $23\times$ lower
+computational cost.}
+
 \end{frame}
 
-\begin{frame}{Metropolis-CE for Knapsack}
-  \textbf{Distribution family:} $\theta = (\theta_1,\ldots,\theta_d)$,
-  where $\sum_k \theta_k = 1$, $\theta_k \ge 0$.
-  Neighbor $\mathbf{X}'$ is formed by picking coordinate $k$ to flip
-  with probability $\theta_k$.
-
-  \begin{block}{CE Update for Knapsack Neighbors (Eq.~7.5 detail)}
-    \[
-      \theta'_k = \frac{C_k}{\sum_{j=1}^d C_j}, \qquad
-      C_k = \sum_{i=1}^M \mathbf{1}(h(\mathbf{X}_i) \ge \gamma_t).
-    \]
-    $C_k$ counts how often coordinate $k$ was flipped in elite samples.
-  \end{block}
-
-  \textbf{Result (100 runs):} Metropolis-CE \emph{always} wins among
-  competing algorithms with $\rho=0.3$, $M=30$, $\alpha=0.001$,
-  $T=100$ steps.
-\end{frame}
-
-\begin{frame}{Metropolis-CE for TSP}
-  \textbf{Distribution family for swaps:}
-  $\theta = (\theta(i,j))_{i<j}$, where $\theta(i,j)$ is the probability
-  of swapping positions $i$ and $j$.
-
-  \begin{block}{CE Update for TSP Swaps (Eq.~7.5.2)}
-    \[
-      \theta'(a,b)
-      = \frac{C_{(a,b)}}{\displaystyle\sum_{i<j} C_{(i,j)}},
-      \qquad
-      C_{(a,b)} = \sum_{i=1}^M \mathbf{1}(h(\mathbf{X}_i)\ge\gamma_t)\,
-        \mathbf{1}((a,b)\text{ swapped in }\mathbf{X}_i).
-    \]
-  \end{block}
-
-  \textbf{Simulation ($M=100$, $\rho=0.35$, $\alpha=0.7$):}
-  In 61 out of 100 runs the CE method (Alg.~71) won; in 29/100 runs
-  Metropolis-CE won; LIP won 9.66/100 times.
-
-  \begin{center}
-    \includegraphics[width=0.50\textwidth]{fig_mce_vs_ce}
-  \end{center}
-\end{frame}
-
-\begin{frame}[fragile]{Algorithm 72: Metropolis-CE (Python Sketch)}
+\begin{frame}[fragile]{Algorithm 72: Metropolis-CE Hybrid (Python)}
   \begin{lstlisting}[style=python]
-def metropolis_ce(x0, h, sample_neighbors, update_theta,
-                  theta0, T=100, M=30, rho=0.3, alpha=0.001):
-    """Metropolis-CE hybrid (Algorithm 72)."""
-    theta = theta0.copy()
-    X_cur = x0.copy()
-    best = X_cur.copy()
+import numpy as np
+
+def metropolis_ce_knapsack(x0, w, v, W, T=100, M=30, rho=0.3, alpha=0.001):
+    """Metropolis-CE hybrid for 0-1 knapsack (Algorithm 72).
+    x0: initial binary vector (length d)
+    theta: probability vector over d bit-flips (which bit to flip)
+    """
+    d = len(x0)
+    x_cur  = x0.copy()
+    theta  = np.ones(d) / d          # initially uniform over all bit-flips
+    best_x = x_cur.copy()
+    best_h = x_cur @ v if x_cur @ w <= W else 0.0
+
     for t in range(1, T + 1):
-        # Generate M neighbors of X_cur using distribution Q_theta
-        Xs = [sample_neighbors(X_cur, theta) for _ in range(M)]
-        perfs = np.array([h(X) for X in Xs])
-        # Compute elite level
-        gamma_t = np.quantile(perfs, 1 - rho)
+        # Step 1: generate M neighbours by flipping bits according to theta
+        flip_bits = np.random.choice(d, size=M, p=theta)
+        neighbors = []
+        for k_flip in flip_bits:
+            nb = x_cur.copy()
+            nb[k_flip] = 1 - nb[k_flip]   # flip bit k_flip
+            neighbors.append((k_flip, nb))
+        perfs = np.array([nb @ v if nb @ w <= W else 0.0 for (_, nb) in neighbors])
+        # Step 2: compute elite threshold (top rho fraction)
+        gamma_t    = np.quantile(perfs, 1 - rho)
         elite_mask = perfs >= gamma_t
-        # Update theta from elite neighbors
-        theta_new = update_theta(Xs, elite_mask, theta)
-        theta = alpha * theta_new + (1 - alpha) * theta
-        # Move to best sample
-        best_idx = np.argmax(perfs)
-        X_cur = Xs[best_idx]
-        if h(X_cur) > h(best):
-            best = X_cur.copy()
-    return best
+        # Step 3: CE update -- count how often each bit-flip is elite
+        if elite_mask.sum() > 0:
+            C = np.zeros(d)
+            for idx in np.where(elite_mask)[0]:
+                C[neighbors[idx][0]] += 1
+            if C.sum() > 0:
+                theta_new = C / C.sum()
+                theta = alpha * theta_new + (1 - alpha) * theta
+        # Step 4: move to best-performing neighbour
+        best_idx = int(np.argmax(perfs))
+        x_cur = neighbors[best_idx][1].copy()
+        if perfs[best_idx] > best_h and x_cur @ w <= W:
+            best_x = x_cur.copy()
+            best_h = perfs[best_idx]
+    return best_x, best_h
   \end{lstlisting}
 \end{frame}
 
 % ============================================================
-\section{7.6 Summary: TSP and Knapsack Results}
+\section{7.6 Summary of Simulation Results}
 % ============================================================
 
-\begin{frame}{7.6 Summary of Simulation Results}
-  \textbf{All algorithms run 100 times, each for a fixed number of steps.}
+\begin{frame}[allowframebreaks]{7.6 Summary of Simulation Results}
 
-  \begin{block}{7.6.1 Travelling Salesman Problem (13 cities)}
-    \begin{itemize}
-      \item Optimal solution: \textbf{7024} (Held-Karp, $O(n^2 2^n)$ time)
-      \item All experiments use distance matrix $\mathbf{M}$ from Fig.~7.3
-    \end{itemize}
-  \end{block}
+\textbf{Experimental setup.}
+All five algorithms were run on \textbf{100 replications} of each benchmark.
+For each replication, the algorithm ran for a fixed number of steps and we
+recorded the best solution found.  A ``win'' means the algorithm found the
+strictly best solution among all five algorithms run with the same random
+seed.  Win fractions sum to 100 (ties split equally).
 
-  \begin{center}
-    \small
-    \begin{tabular}{lrrrr}
-      \toprule
-      Algorithm & Win score & Best (median) & Time (s) \\
-      \midrule
-      Metropolis ($T=1$)    & 0.33 & $\sim 8200$ & $<1$  \\
-      SA ($T_k=1/\log k$)  & 0.00 & $\sim 7800$ & $<1$  \\
-      LIP ($M=100$)         & 9.66 & $\sim 7500$ & $\sim 10$ \\
-      Cross-Entropy         & 61.0 & $\sim 7300$ & $\sim 230$ \\
-      Metropolis-CE         & 29.0 & $\sim 7050$ & $\sim 10$ \\
-      \bottomrule
-    \end{tabular}
-  \end{center}
+\textbf{7.6.1 Travelling Salesman Problem (13 cities)}
+
+The 13-city USA instance has optimal tour length \textbf{7024}
+(Held--Karp, 0.068 s).  The TSP is NP-hard: for $n \ge 20$, brute force
+is infeasible.  A uniformly random tour has average length
+$\approx 15938$---more than twice the optimal.
+
+\begin{center}
   \small
-  CE wins most often on TSP; Metropolis-CE is a faster alternative.
-\end{frame}
+  \begin{tabular}{lrrl}
+    \toprule
+    Algorithm & Win score & Approx.\ best (median) & Runtime (100 steps)\\
+    \midrule
+    Metropolis ($T=1$, constant)         & 0.33  & $\sim 9000$  & $< 1$\,s\\
+    Simulated Annealing ($T_k=1/\log k$) & 0.00  & $\sim 8000$  & $< 1$\,s\\
+    LIP ($M=100$ candidates)             & 9.66  & $\sim 7500$  & $\sim 10$\,s\\
+    Cross-Entropy (Alg.~71)              & 61.0  & $\sim 7300$  & $\sim 230$\,s\\
+    Metropolis-CE (Alg.~72)              & 29.0  & $\sim 7050$  & $\sim 10$\,s\\
+    \midrule
+    Held--Karp (exact)                   & ---   & \textbf{7024} & 0.068\,s\\
+    \bottomrule
+  \end{tabular}
+\end{center}
 
-\begin{frame}{TSP Results: Visual Comparison}
-  \begin{columns}
-    \column{0.58\textwidth}
-    \includegraphics[width=\textwidth]{fig_tsp_comparison}
-    \column{0.40\textwidth}
-    \small
-    \textbf{Key observations:}\\[4pt]
-    \begin{itemize}
-      \item Plain Metropolis ($T=1$) gets trapped at high tour lengths
-      \item SA improves more quickly early on
-      \item CE and Metropolis-CE converge fastest to near-optimal
-      \item LIP provides good improvement at moderate cost
-    \end{itemize}
-    \vspace{4pt}
-    Dashed line: optimal = 7024.
-  \end{columns}
-\end{frame}
+\small
+Win scores are averages over 100 replications; they do not sum to exactly
+100 because of fractional tie-splitting.  The Held--Karp algorithm is
+exact but exponential in $n$; for $n=13$ it runs in 0.068 s.
 
-\begin{frame}{Algorithm Comparison: Win Scores}
-  \begin{center}
-    \includegraphics[width=0.82\textwidth]{fig_tsp_results_bar}
-  \end{center}
+\framebreak
+
+\begin{center}
+  \includegraphics[width=0.64\textwidth]{fig_tsp_comparison}
+\end{center}
+\small
+\textbf{A single representative run} of each algorithm over 100 steps
+(same random seed).  The $y$-axis is the tour length; the dashed line at
+7024 is the known optimum.  Plain Metropolis (blue) gets trapped early.
+SA (magenta) makes rapid early progress by accepting bad moves.  LIP
+(brown) converges faster due to informed proposals.  CE (red) and
+Metropolis-CE (green) both converge very close to the optimum.
+
+\begin{center}
+  \includegraphics[width=0.48\textwidth]{fig_tsp_results_bar}
+\end{center}
+\small
+\textbf{Win scores across 100 replications.}  CE-based methods dominate.
+CE wins most often (61/100) but requires $\approx 230$\,s.  Metropolis-CE
+wins 29 times with only $\sim 10$\,s---a $23\times$ speed-up with
+comparable quality.  LIP provides a useful middle ground (10\,s, 9.66 wins).
+
+\framebreak
+
+\textbf{7.6.2 The Knapsack Problem ($d=100$)}
+
+For the knapsack ($d=100$, $w_i=i$, $v_i=i^{1.2}$, $W=3000$), all five
+algorithms were run 100 times for 100 steps each.  The true optimal value
+is unknown analytically (NP-hard), but CE-based methods consistently
+achieve much higher values than uninformed methods.
+
+\begin{center}
   \small
-  \textbf{Win score} = fraction of 100 replications where an algorithm
-  found the best tour length.  CE-based methods dominate for TSP.
-\end{frame}
+  \begin{tabular}{lrr}
+    \toprule
+    Algorithm & Best value found (typical) & Win score\\
+    \midrule
+    Metropolis ($T=1$)         & $\sim 6800$ & very low\\
+    Gibbs sampler ($T=1$)      & $\sim 6800$ & very low\\
+    LIP ($M=100$)              & $\sim 7100$ & moderate\\
+    Cross-Entropy              & $\sim 7200$ & high\\
+    Metropolis-CE              & $\sim 7400$ & \textbf{100/100}\\
+    \bottomrule
+  \end{tabular}
+\end{center}
 
-\begin{frame}{7.6.2 Knapsack Problem Results}
-  \textbf{Setup:} $d=100$, $w_i=i$, $v_i=i^{1.2}$, $W=3000$.
+For the knapsack, Metropolis-CE won \textbf{every single replication}
+(100/100).  The reason: the adaptive transition distribution $\btheta$
+learns which specific bit-flips improve the current solution from the
+current state.  Each step is highly targeted.  By contrast, uninformed
+Metropolis and Gibbs stall at $\sim 6800$ because they waste most steps on
+unprofitable moves---random bit-flips from a good solution mostly remove
+valuable items or add items that exceed the capacity.
 
-  \begin{block}{Summary Table 7.3 (100 replications)}
-    \small
-    \begin{tabular}{lrr}
-      \toprule
-      Algorithm & Best value (median) & Win score \\
-      \midrule
-      Metropolis ($T=1$)       & $\sim 6800$ & low \\
-      Gibbs sampler ($T=1$)    & $\sim 6800$ & low \\
-      Metropolis LIP           & $\sim 7100$ & moderate \\
-      Cross-Entropy            & $\sim 7200$ & high \\
-      Metropolis-CE            & $\sim 7400$ & \textbf{highest} \\
-      \bottomrule
-    \end{tabular}
-  \end{block}
+\begin{alertblock}{Key Takeaways from the Comparison}
+  CE and Metropolis-CE outperform all Metropolis-based methods on both
+  benchmarks.  Metropolis-CE is $\approx 23\times$ faster than CE on TSP
+  with comparable or better solution quality.  LIP offers a useful middle
+  ground.  For practical applications: start with Metropolis to verify
+  correctness, then try SA or LIP for better quality, and use CE or
+  Metropolis-CE for the highest-quality solutions.
+\end{alertblock}
 
-  \medskip
-  \textbf{Observations:}
-  \begin{itemize}
-    \item Metropolis-CE always wins for knapsack in 100-step experiments
-    \item CE and LIP both superior to uninformed Metropolis
-    \item For knapsack the optimal value is not known (NP-hard), but
-      CE-based methods reliably reach $\bv\cdot\bx \approx 7400$
-  \end{itemize}
 \end{frame}
 
 % ============================================================
 \section{7.7 Bibliographical Notes}
 % ============================================================
 
-\begin{frame}{7.7 Bibliographical Notes}
-  \begin{itemize}
-    \item \textbf{Metropolis for decryption:}
-      Diaconis [24] -- early application of MCMC to code-breaking.
-    \item \textbf{Simulated Annealing:}
-      Hajek [76] proved convergence under logarithmic cooling.
-      Kirk\-patrick, Gelatt, Vecchi (1983) introduced SA for combinatorial
-      optimisation.
-    \item \textbf{Locally Informed Proposals:}
-      Grathwohl et al.\ [71] ``Oops I took a gradient: Scalable sampling
-      for discrete distributions'' -- gradient-based approximations to LIP.
-    \item \textbf{Cross-Entropy method:}
-      Rubinstein \& Kroese [31] -- comprehensive reference.
-      FACE algorithm = fully automated cross-entropy [31, Alg.~4.1].
-    \item \textbf{TSP:}
-      Held-Karp algorithm [82] optimal solution in $O(n^2 2^n)$.
-      Optimal for 13-city instance found in 0.068 s.
-    \item Convergence theory of non-homogeneous Markov chains follows from
-      Proposition 6.3.2 (MH stationarity).
-  \end{itemize}
+\begin{frame}[allowframebreaks]{7.7 Bibliographical Notes}
+
+The field of stochastic optimisation draws on ideas from statistical
+mechanics, combinatorial optimisation, and information theory.
+
+\medskip
+\textbf{Metropolis algorithm.}
+The Metropolis algorithm was introduced by Metropolis et al.\ (1953) in the
+context of statistical mechanics and generalised by Hastings (1970) to
+Metropolis--Hastings.  The application to combinatorial optimisation via the
+Boltzmann distribution is classical.  The application to \textbf{decryption
+of substitution ciphers} using bigram frequencies is described in Diaconis
+[24], which provides an accessible account of code-breaking via MCMC.
+
+\medskip
+\textbf{Simulated Annealing.}
+SA was introduced independently by Kirkpatrick, Gelatt \& Vecchi (1983) and
+Cerny (1985).  The theoretical convergence result under logarithmic
+cooling---the condition $\sum_k e^{-c/T_k} = \infty$---is due to
+\textbf{Haj\'ek [76]}, who proved that SA converges to the global optimum
+if and only if this condition holds.  Algorithm 65 in this chapter is the
+one-step SA transition.
+
+\medskip
+\textbf{Locally Informed Proposals.}
+LIP is inspired by Zanella (2020) on ``informed proposals for discrete
+spaces'' and by MALA (Metropolis-Adjusted Langevin Algorithm) for continuous
+distributions.  The specific gradient-based approximation used here is from
+\textbf{Grathwohl et al.\ [71]}, titled \emph{``Oops I Took a Gradient:
+Scalable Sampling for Discrete Distributions''}.
+
+\medskip
+\textbf{Cross-Entropy method.}
+The CE method for optimisation was developed by \textbf{Rubinstein [31]} and
+is comprehensively described in Rubinstein \& Kroese, \emph{The
+Cross-Entropy Method} (Springer, 2004).  Algorithm 69 follows Algorithm~2.3
+of that reference.  The \textbf{FACE} algorithm (\emph{Fully Automated
+Cross-Entropy}, Algorithm~4.1 in [31]) is a refined version where the sample
+size $M$ adapts automatically.
+
+\medskip
+\textbf{TSP and the Held--Karp algorithm.}
+The TSP is one of the most-studied NP-hard combinatorial problems.  The
+Held--Karp dynamic-programming algorithm [82] (Held \& Karp, 1962) runs in
+$O(n^2 2^n)$ time.  The distance matrix (Fig.~7.3) was obtained from
+\texttt{https://developers.google.com/optimization/routing/tsp}.
+
 \end{frame}
 
 % ============================================================
@@ -1069,105 +1743,182 @@ def metropolis_ce(x0, h, sample_neighbors, update_theta,
 % ============================================================
 
 \begin{frame}[allowframebreaks]{7.8 Selected Exercises}
-  \begin{block}{Exercise 7.L.1 (Substitution Cipher)}
-    Implement the Metropolis-based decryption algorithm.
-    There are several helper files:
-    \texttt{ch7\_cipher\_*}.
-    Run for 3000 steps starting from a random permutation.
-    Report the evolution of log-likelihood and the final decrypted message.
-  \end{block}
 
-  \begin{block}{Exercise 7.L.2 (Permutation Distribution)}
-    Consider $\pi_\sigma = \frac{1}{z}\lambda^{d(\sigma,\sigma_{\mathrm{id}})}$,
-    $\lambda > 0$, where $d(\sigma,\sigma') = \frac{1}{n}\sum_i |\sigma(i)-\sigma'(i)|$.
-    \begin{enumerate}[(a)]
-      \item Implement the Metropolis algorithm for this distribution using
-        the TSP proposal (Algorithm 66). For which $\lambda$ is it applicable?
-      \item Repeat with the Kendall $\tau$ distance.
-      \item Use the 2-opt proposal (Remark 7.2.4) and compare.
-    \end{enumerate}
-  \end{block}
+\begin{block}{Exercise 7.L.1 (Substitution Cipher Decryption)}
+  Implement the Metropolis-based decryption algorithm for a substitution
+  cipher.  Helper files: \texttt{ch7\_cipher\_decrypt\_metropolis.py},
+  \texttt{ch7\_cipher\_encrypt.py}, \texttt{ch7\_cipher\_initial\_permutation.py},
+  and Tolstoy's \emph{War and Peace} for building the bigram matrix $\mathbf{M}$.
 
-  \framebreak
+  Run for 3000 steps from a random permutation.  Report:
+  \begin{enumerate}[(a)]
+    \item The evolution of log-likelihood $l(\sigma_k)$ over steps.
+    \item The decrypted messages at steps 1000, 2000, 3000.
+  \end{enumerate}
+\end{block}
 
-  \begin{block}{Exercise 7.L.4 (Knapsack, Smaller Capacities)}
-    Re-implement the Gibbs sampler for knapsack with $W \in \{50, 500, 1000, 3000\}$.
-    Compare with random sampling.
-  \end{block}
+\begin{block}{Exercise 7.L.2 (Metropolis for Permutation Distributions)}
+  Consider the probability distribution on $\mathcal{S}_n$:
+  \[
+    \pi_\sigma = \frac{1}{z}\lambda^{d(\sigma,\sigma_{\mathrm{id}})},
+    \quad \lambda > 0,
+    \quad d(\sigma,\sigma') = \frac{1}{n}\sum_{i=1}^n |\sigma(i)-\sigma'(i)|,
+  \]
+  where $\sigma_{\mathrm{id}} = (1,2,\ldots,n)$ is the identity permutation
+  and $d(\sigma,\sigma')$ is the normalised $\ell_1$-distance between two
+  permutations.
+  \begin{enumerate}[(a)]
+    \item Implement the Metropolis algorithm using the TSP proposal
+      (Algorithm~66) for $\lambda = 0.75$, $n = 52$.  For which values of
+      $\lambda$ is the algorithm applicable?
+    \item Repeat using the Kendall $\tau$ distance instead of $d(\sigma,\sigma')$.
+    \item Use the 2-opt proposal (Remark~7.2.4) and compare convergence.
+  \end{enumerate}
+\end{block}
 
-  \begin{block}{Exercise 7.L.5 (SA for Knapsack)}
-    Construct a simulated annealing version of the knapsack Gibbs sampler
-    with $\pi^{T_k}_{\bx} = \exp(\bv\cdot\bx/T_k)/z_{T_k}$ for $\bw\cdot\bx \le W$.
-    Compare:
-    \begin{itemize}
-      \item Fixed $T_k=1$ (no annealing)
-      \item Logarithmic $T_k = 1/\log(k)$
-    \end{itemize}
-    for $W=3000$ and $W=50$.
-  \end{block}
+\framebreak
 
-  \begin{block}{Exercise 7.L.6 (CE for TSP, Alternative Parametrisation)}
-    Implement CE for TSP with a vector $\theta = (\theta_1,\ldots,\theta_n)$
-    over cities (instead of a stochastic matrix).
-    Compare convergence speed and solution quality with the matrix
-    parametrisation.
-  \end{block}
+\begin{block}{Exercise 7.L.3 (Fixed-Point Distribution on Permutations)}
+  Consider $\pi_\sigma = \lambda^{\mathrm{FP}(\sigma)} / z$, where
+  $\mathrm{FP}(\sigma) = \#\{i : \sigma(i) = i\}$ is the number of fixed
+  points and $\lambda > 0$.  For $n = 52$ and $\lambda \in \{0.1, 0.75, 2\}$:
+  implement the Metropolis algorithm and compare with the acceptance-rejection
+  method from Exercise~3.L.6.
+\end{block}
+
+\begin{block}{Exercise 7.L.4 (Knapsack: Varying Capacity)}
+  Re-implement the Gibbs sampler for the knapsack (Algorithm~63) with
+  $d=100$, $w_i=i$, $v_i=i^{1.2}$ and capacities $W \in \{50, 500, 1000, 3000\}$.
+  \begin{enumerate}[(a)]
+    \item For each $W$, estimate the proportion of random binary vectors
+      that are feasible.  Compare the best values found by Gibbs vs random
+      sampling.
+    \item Implement Metropolis for the same problem and compare.
+  \end{enumerate}
+\end{block}
+
+\begin{block}{Exercise 7.L.5 (Simulated Annealing for Knapsack)}
+  Construct an SA version of the knapsack Gibbs sampler:
+  \[
+    \pi^{T_k}_{\bx} = \frac{\exp(\bv\cdot\bx/T_k)}{z_{T_k}},
+    \quad \bw\cdot\bx \le W.
+  \]
+  Compare for $W \in \{3000, 50\}$: fixed temperature $T_k = 1$ vs
+  logarithmic cooling $T_k = 1/\log(k)$.  Note: by Remark~7.2.1, adding
+  $\deg(\bx)$ to the Boltzmann weight gives the modified distribution that
+  is stationary for the Gibbs chain.
+\end{block}
+
+\framebreak
+
+\begin{block}{Exercise 7.L.6 (CE for TSP: Alternative Parametrisation)}
+  In Sect.~7.4 the TSP used a stochastic matrix $\btheta = (\theta_{ij})$
+  ($n \times n$).  Consider instead a \emph{vector} parametrisation
+  $\btheta = (\theta_1,\ldots,\theta_n)$ (a probability distribution over
+  cities).
+  \begin{enumerate}[(a)]
+    \item Describe formally how to sample a tour from this vector: at each
+      step, given that cities $c_1,\ldots,c_k$ have been visited, zero out
+      their probabilities, renormalise, and sample the next city.
+    \item Implement the full CE method using both parametrisations for
+      $n=13$ and the distance matrix $\mathbf{M}$ from Fig.~7.3.
+    \item Compare convergence speed and solution quality.  Does the matrix
+      parametrisation capture more structure of the TSP than the vector
+      parametrisation?
+  \end{enumerate}
+\end{block}
+
 \end{frame}
 
 % ============================================================
-\section{Summary}
+\section{Chapter Summary}
 % ============================================================
 
-\begin{frame}{Chapter 7 Summary}
-  \begin{block}{Five Stochastic Optimization Methods}
-    \small
-    \begin{tabular}{llll}
-      \toprule
-      Method & State & Key idea & Tuning \\
-      \midrule
-      Metropolis ($T$ fixed) & solution & Boltzmann dist.\ & $T$, graph \\
-      Simulated Annealing & solution & decrease $T_k$ & cooling schedule \\
-      Locally Informed & solution & informed proposal & $\beta$, $g(\cdot)$ \\
-      Cross-Entropy & distribution $\theta$ & update elite & $M$, $\rho$, $\alpha$ \\
-      Metropolis-CE & sol.\ + dist.\ & hybrid walk & all of above \\
-      \bottomrule
-    \end{tabular}
-  \end{block}
+\begin{frame}[allowframebreaks]{Chapter 7 Summary}
 
-  \medskip
-  \textbf{Key takeaways:}
-  \begin{itemize}
-    \item All methods use the Boltzmann distribution as a bridge between
-      probability and optimisation.
-    \item Simulated annealing converges to the global optimum if cooling
-      is slow enough ($\sum e^{-c/T_j} = \infty$).
-    \item CE-based methods often outperform Metropolis-based ones on
-      combinatorial problems (TSP, knapsack).
-    \item Metropolis-CE combines best of both: cheap per-step cost with
-      CE-quality guidance.
-    \item Choice of method depends on problem size, computational budget,
-      and available gradient/structure information.
-  \end{itemize}
-\end{frame}
+This chapter covered five Monte Carlo methods for stochastic optimisation
+of combinatorial problems.  Each method builds on the Boltzmann distribution
+as the bridge between probability and optimisation, but differs in how
+sampling is performed.
 
-\begin{frame}{Comparison: All Algorithms on TSP}
-  \begin{center}
-    \includegraphics[width=0.60\textwidth]{fig_tsp_comparison}
-  \end{center}
+\begin{block}{Five Stochastic Optimization Methods: Side-by-Side Comparison}
   \small
-  \begin{center}
-    \begin{tabular}{lc}
-      \toprule
-      Method & Character \\
-      \midrule
-      Metropolis (const.\ $T$) & Random walk, can get trapped \\
-      Simulated Annealing & Escapes traps via high-$T$ phase \\
-      LIP & Informed walk, moderate cost \\
-      Cross-Entropy & Distribution-level learning \\
-      Metropolis-CE & Hybrid: best of both worlds \\
-      \bottomrule
-    \end{tabular}
-  \end{center}
+  \begin{tabular}{p{2.3cm}p{1.8cm}p{4.4cm}p{2.6cm}}
+    \toprule
+    Method & State & Core mechanism & Key parameters\\
+    \midrule
+    Metropolis (fixed $T$)
+      & single solution
+      & Boltzmann stationary dist.\ at fixed $T$
+      & $T$, graph $G$\\[4pt]
+    Simulated Annealing
+      & single solution
+      & decrease $T_k \searrow 0$; non-homogeneous MC
+      & cooling schedule $\{T_k\}$\\[4pt]
+    LIP
+      & single solution
+      & proposal weighted by $\pi$-ratio; balancing fn $g$
+      & $\beta$, $g(\cdot)$, $M$\\[4pt]
+    Cross-Entropy
+      & distribution $\btheta$
+      & MLE update over elite samples; $\gamma_t \nearrow$
+      & $M$, $\rho$, $\alpha$\\[4pt]
+    Metropolis-CE
+      & solution + distribution
+      & CE update of the transition distribution
+      & all of the above\\
+    \bottomrule
+  \end{tabular}
+\end{block}
+
+\framebreak
+
+\textbf{Theoretical guarantees.}
+
+\begin{itemize}
+  \item \textbf{Metropolis at fixed $T$:} the chain has stationary
+    distribution $\pi^T$ (the Boltzmann distribution).  The mode of $\pi^T$
+    is the minimiser of $H$.  No convergence guarantee for finite runs;
+    the chain may remain trapped in local minima.
+
+  \item \textbf{Simulated Annealing:} converges to the global optimum $D^*$
+    with probability 1 if and only if the cooling satisfies
+    $\sum_k e^{-c/T_k} = \infty$ (Haj\'ek's condition).  Logarithmic
+    cooling $T_k = d/\log(k)$ satisfies this; geometric cooling does not.
+
+  \item \textbf{LIP:} has the same stationary distribution as Metropolis
+    (the Boltzmann $\pi^T$), but explores more efficiently by using local
+    gradient information.  No additional convergence guarantees beyond
+    standard Metropolis.
+
+  \item \textbf{CE and Metropolis-CE:} heuristic algorithms with no general
+    convergence guarantees, but empirically the most effective on both
+    benchmarks studied here.
+\end{itemize}
+
+\medskip
+\textbf{Practical recommendations for a new problem.}
+\begin{enumerate}
+  \item Start with plain Metropolis to verify implementation correctness
+    and understand the landscape.
+  \item If Metropolis gets trapped: try SA with geometric cooling
+    $T_k = 0.99^k T_0$.
+  \item For better quality with moderate budget: try LIP (better solutions,
+    $\sim M \times$ more expensive per step).
+  \item For best solution quality with larger budget: use CE or
+    Metropolis-CE.  CE provides the richest distributional model but is
+    slowest; Metropolis-CE is $\approx 20\times$ faster with comparable
+    quality.
+\end{enumerate}
+
+\begin{alertblock}{Unifying Theme: Probability as a Search Tool}
+  All five methods use the Boltzmann distribution as a bridge between
+  probability and optimisation.  The core principle: assign higher
+  probability to better solutions, then \emph{sample} efficiently from that
+  distribution.  The methods differ only in how they implement this sampling,
+  trading off computational cost per step against the quality of exploration.
+\end{alertblock}
+
 \end{frame}
 
 \end{document}

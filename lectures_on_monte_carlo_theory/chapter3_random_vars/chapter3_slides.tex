@@ -18,6 +18,7 @@
 \usepackage{xcolor}
 \usepackage{multicol}
 \usepackage{tikz}
+\usepackage{enumerate}
 
 \graphicspath{{figures/}}
 
@@ -69,7 +70,7 @@
     \column{0.5\textwidth}
     \tableofcontents[sections={1-5}]
     \column{0.5\textwidth}
-    \tableofcontents[sections={6-12}]
+    \tableofcontents[sections={6-11}]
   \end{columns}
 \end{frame}
 
@@ -83,325 +84,511 @@
 \section{3.1 Inverse Transform Method (ITM)}
 % ============================================================
 
-\begin{frame}{3.1 Inverse Transform Method --- Motivation}
-  \textbf{Goal:} Generate $X$ with a given c.d.f.\ $F(x)=\PP(X\le x)$.
+\begin{frame}[allowframebreaks]{3.1 Inverse Transform Method --- Motivation and Setup}
 
-  \medskip
-  \textbf{Key idea:} If we can \emph{invert} $F$, we can transform a
-  $\UU[0,1)$ sample into a sample from $F$.
+The fundamental problem of this chapter is: given a desired probability distribution
+with cumulative distribution function (c.d.f.) $F(x) = \PP(X \le x)$, how do we
+produce samples from it using only the stream of uniform random numbers $U_1, U_2,
+\ldots$ that a PRNG provides?
 
-  \medskip
-  \begin{block}{Generalized Inverse (Quantile Function)}
-    \[
-      \FInv(u) = \inf\{x : u \le F(x)\}, \qquad u\in(0,1).
-    \]
-    \begin{itemize}
-      \item $\FInv(u)$ is the \emph{generalized inverse} (or quantile function) of $F$.
-      \item If $F$ is strictly increasing and continuous, $\FInv = F^{-1}$.
-      \item $\FInv$ is non-decreasing and left-continuous.
-    \end{itemize}
-  \end{block}
+The Inverse Transform Method (ITM) answers this question cleanly for a wide
+range of distributions: if we can ``invert'' $F$, then we can map a single $\UU[0,1)$
+sample directly into a draw from $F$.  Throughout this chapter we write
+$U_1, U_2, \ldots$ for i.i.d.\ $\UU[0,1)$ random variables without further explanation.
 
-  \medskip
-  \textbf{Tail:} Define $\overline{F}(x)=1-F(x)$.  Then
-  $\overline{F}^{\leftarrow}(u)=\FInv(1-u)$.
-\end{frame}
-
-\begin{frame}{Properties of the Generalized Inverse}
-  \begin{block}{Key Properties}
-    \begin{enumerate}[(P1)]
-      \item $\FInv(u)$ is non-decreasing, left-continuous, with a right limit at $u$.
-      \item If $F$ is strictly increasing and $u\in F(\RR)$: $u=F(x)$ iff $\FInv(u)=x$.
-      \item $\FInv(F(x))\le x$; if $F$ is strictly increasing, $\FInv(F(x))=x$.
-      \item $F(F^{\leftarrow}(u))\ge u$; equality holds when $F$ is continuous.
-    \end{enumerate}
-  \end{block}
-
-  \begin{block}{Lemma 3.1.1 --- Fundamental Equivalence}
-    \[
-      u \le F(x) \iff \FInv(u) \le x.
-    \]
-    Consequently, if $F$ is continuous, $F(\FInv(u))=u$.
-  \end{block}
-
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.72\textwidth]{fig_generalized_inverse}
-    \caption{CDF $F$ (left) and its generalized inverse $\FInv$ (right).
-      Note the flat region in $F$ creates a jump in $\FInv$, and
-      a jump in $F$ creates a flat region in $\FInv$.}
-  \end{figure}
-\end{frame}
-
-\begin{frame}{The ITM Theorem and Algorithm}
-  \begin{block}{Proposition 3.1.2 --- The ITM Theorem}
-    \begin{enumerate}[(a)]
-      \item If $U\sim\UU[0,1)$, then $\FInv(U)\sim F$.
-      \item If $F$ is continuous and $X\sim F$, then $F(X)\sim\UU[0,1)$.
-    \end{enumerate}
-  \end{block}
-
-  \medskip
-  \textbf{Proof sketch:}
+\begin{block}{Generalized Inverse (Quantile Function) --- Definition 3.1}
+  The \emph{generalized inverse} of a c.d.f.\ $F$ is
   \[
-    \PP(\FInv(U)\le x) = \PP(U\le F(x)) = F(x).
+    \FInv(u) \;=\; \inf\{x \in \RR : u \le F(x)\}, \qquad u \in (0,1).
   \]
+  When $F$ is strictly increasing and continuous, $\FInv$ is simply the usual
+  functional inverse $F^{-1}$.  In general, $\FInv$ is non-decreasing and
+  left-continuous.
+\end{block}
 
-  \bigskip
-  \begin{alertblock}{Algorithm 6 --- ITM}
-    \textbf{Require:} c.d.f.\ $F$. \quad \textbf{Ensure:} $X\sim F$.
-    \begin{enumerate}
-      \item Generate $U\sim\UU[0,1)$.
-      \item Set $X = \FInv(U)$.
-      \item \textbf{return} $X$.
-    \end{enumerate}
-  \end{alertblock}
+The \emph{tail function} is $\overline{F}(x) = 1 - F(x)$.  Its generalized inverse
+satisfies $\overline{F}^{\leftarrow}(u) = \FInv(1-u)$, which is sometimes more
+convenient.
 
-  \medskip
-  \textbf{Corollary 3.1.3:} If $F$ is continuous, the $p$-value $p=F(T)$ is uniform on $[0,1)$.
+\framebreak
+
+The generalized inverse has six important properties that underpin every algorithm
+in this chapter.
+
+\begin{block}{Properties (P1)--(P6) of $\FInv$}
+  \begin{enumerate}[(P1)]
+    \item $\FInv(u)$ is non-decreasing, left-continuous, and admits a right
+          limit at every $u$.
+    \item If $F$ is strictly increasing and $u \in F(\RR)$, then
+          $u = F(x)$ if and only if $\FInv(u) = x$.
+    \item If $u \notin F(\RR)$, an example can be given where $\FInv(u) < x$
+          yet $F(\FInv(u)) < u$; see Fig.\ 3.1 in the textbook.
+    \item $\FInv(F(x)) \le x$; with equality when $F$ is strictly increasing.
+    \item $F(\FInv(u)) \ge u$; equality holds when $F$ is continuous.
+    \item $F(\FInv(u)) \ge u$ always, but $F(\FInv(u)) \ne u$ in general.
+  \end{enumerate}
+\end{block}
+
+The most practically useful consequence is captured in Lemma 3.1.1.
+
+\begin{block}{Lemma 3.1.1 --- Fundamental Equivalence}
+  \[
+    u \le F(x) \quad \iff \quad \FInv(u) \le x.
+  \]
+  As a corollary, if $F$ is continuous then $F(\FInv(u)) = u$.
+\end{block}
+
+The proof is immediate from the definition of the infimum: $\FInv(u) \le x$
+means $x$ is in the set $\{t : u \le F(t)\}$, which is exactly $u \le F(x)$.
+
+\framebreak
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.78\textwidth]{fig_generalized_inverse}
+  \caption{A CDF $F$ with a flat region (left, dashed line level) creates a
+    jump in $\FInv$; a jump in $F$ creates a flat region in $\FInv$ (right).
+    The point $x_1 = \FInv(u_1)$ is the leftmost $x$ with $F(x) \ge u_1$.}
+\end{figure}
+
 \end{frame}
 
-\begin{frame}[fragile]{3.1 Example: Exponential Distribution}
-  \begin{columns}
-    \column{0.48\textwidth}
-    \begin{block}{Exponential Distribution $\mathrm{Exp}(\lambda)$}
-      \[
-        F(x) = \begin{cases} 0 & x < 0 \\ 1 - e^{-\lambda x} & x \ge 0 \end{cases}
-      \]
-      Mean $= 1/\lambda$, Variance $= 1/\lambda^2$.
+\begin{frame}[allowframebreaks]{3.1 The ITM Theorem and Algorithm}
 
-      \medskip
-      Generalized inverse of $\overline{F}$:
-      \[
-        \overline{F}^{\leftarrow}(u) = -\frac{1}{\lambda}\log(u).
-      \]
-    \end{block}
+We are now ready to state the central result of the method.
 
-    \textbf{Algorithm 7 (ITM-Exp):}
-    \begin{enumerate}
-      \item $U\sim\UU[0,1)$
-      \item $X = -\log(U)/\lambda$
-      \item \textbf{return} $X$
-    \end{enumerate}
+\begin{block}{Proposition 3.1.2 --- The Inverse Transform Theorem}
+  \begin{enumerate}[(a)]
+    \item If $U \sim \UU[0,1)$, then $X = \FInv(U)$ has distribution $F$,
+          i.e.\ $\PP(X \le x) = F(x)$ for all $x$.
+    \item If $F$ is continuous and $X \sim F$, then $F(X) \sim \UU[0,1)$.
+  \end{enumerate}
+\end{block}
 
-    \column{0.50\textwidth}
-    \begin{lstlisting}[style=python, caption={ITM for Exponential}]
-import numpy as np
-rng = np.random.default_rng(42)
+\textbf{Proof of part (a).}  Using Lemma 3.1.1:
+\[
+  \PP(\FInv(U) \le x) \;=\; \PP(U \le F(x)) \;=\; F(x).
+\]
+The last step uses $U \sim \UU[0,1)$, so $\PP(U \le t) = t$ for $t \in [0,1]$.
 
-def sample_exp(lam, n, rng):
-    """Generate n samples ~ Exp(lam) via ITM."""
-    U = rng.uniform(0, 1, n)
-    return -np.log(U) / lam
+\textbf{Proof of part (b).}  For any $u \in (0,1)$, by Lemma 3.1.1 (b),
+$F(\FInv(u)) = u$ when $F$ is continuous.  Hence
+$\PP(F(X) \ge u) = \PP(X \ge \FInv(u)) = 1 - F(\FInv(u)) = 1 - u.$
 
-X = sample_exp(lam=2.0, n=5000, rng=rng)
-print(f"Mean: {X.mean():.4f} (theory: {0.5:.4f})")
-print(f"Var:  {X.var():.4f}  (theory: {0.25:.4f})")
-    \end{lstlisting}
+\begin{alertblock}{Algorithm 6 --- ITM: Generate $X \sim F$}
+  \textbf{Require:} c.d.f.\ $F$ (or an algorithm for $\FInv$). \quad
+  \textbf{Ensure:} $X \sim F$.
+  \begin{enumerate}
+    \item Generate $U \sim \UU[0,1)$.
+    \item Set $X = \FInv(U)$.
+    \item \textbf{return} $X$.
+  \end{enumerate}
+\end{alertblock}
 
-    \includegraphics[width=\textwidth]{fig_itm_exponential}
-  \end{columns}
+A variant uses $Y = \overline{F}^{\leftarrow}(U)$, which is equally valid because
+$1 - U \sim \UU[0,1)$ whenever $U \sim \UU[0,1)$, so $-\log(U)$ and $-\log(1-U)$
+have the same distribution.
+
+\begin{alertblock}{Key Insight}
+  ITM reduces sampling from \emph{any} distribution to:
+  (1) sampling one uniform number, and (2) evaluating $\FInv$.
+  The entire difficulty is therefore concentrated in step (2).
+\end{alertblock}
+
+\textbf{Corollary 3.1.3 (Uniform $p$-values).} If the c.d.f.\ of $T$ is continuous,
+the $p$-value $p = 1 - F(T)$ is $\UU[0,1)$-distributed under the null hypothesis.
+This is the theoretical justification for the second-level testing procedure of
+Chapter 2.
+
 \end{frame}
 
-\begin{frame}{3.1 Pareto Distribution (Heavy Tail)}
-  \begin{columns}
-    \column{0.52\textwidth}
-    \begin{block}{Pareto Distribution $\mathrm{Par}(\alpha)$}
-      \[
-        F(x) = \begin{cases} 0 & x < 0 \\ 1 - \dfrac{1}{(1+x)^\alpha} & x \ge 0 \end{cases}
-      \]
-      \begin{itemize}
-        \item $\alpha$ --- shape parameter (tail index)
-        \item $\EE X = \frac{1}{\alpha-1}$ (if $\alpha > 1$)
-        \item Heavy-tailed: $\EE e^{sX} = \infty$ for all $s>0$
-      \end{itemize}
+\begin{frame}[allowframebreaks]{3.1 Example: Exponential Distribution $\mathrm{Exp}(\lambda)$}
 
-      \medskip
-      ITM: $\overline{F}^{\leftarrow}(u) = u^{-1/\alpha} - 1$
+The exponential distribution is the canonical waiting-time distribution and
+is also the building block for the Poisson process.  Its c.d.f.\ is
+\[
+  F(x) = \begin{cases} 0 & x < 0, \\ 1 - e^{-\lambda x} & x \ge 0. \end{cases}
+\]
+Here $\lambda > 0$ is the \emph{rate parameter}.  The mean is $\EE X = 1/\lambda$
+and the variance is $\mathrm{Var}X = 1/\lambda^2$.  The distribution is
+\emph{light-tailed}: its moment generating function $\EE e^{sX} = \lambda/(\lambda - s)$
+is finite for all $s < \lambda$.
 
-      \textbf{Algorithm 8 (ITM-Par):}
-      \begin{enumerate}
-        \item $U\sim\UU[0,1)$
-        \item $X = U^{-1/\alpha} - 1$
-        \item \textbf{return} $X$
-      \end{enumerate}
-    \end{block}
+To apply ITM we need $\overline{F}^{\leftarrow}$.  Setting $\overline{F}(x) = u$,
+i.e.\ $e^{-\lambda x} = u$, and solving gives $x = -\log(u)/\lambda$.  Therefore
+\[
+  \overline{F}^{\leftarrow}(u) = -\frac{1}{\lambda}\log(u).
+\]
 
-    \column{0.46\textwidth}
-    \includegraphics[width=\textwidth]{fig_pareto}
-    \vspace{0.5em}
-    \footnotesize
-    Pareto CDF (top) and PDF (bottom) for $\alpha=1.5, 2, 3$.
-    Smaller $\alpha$ $\Rightarrow$ heavier tail.
-  \end{columns}
-\end{frame}
+\begin{block}{Algorithm 7 (ITM-Exp): Generate $X \sim \mathrm{Exp}(\lambda)$}
+  \begin{enumerate}
+    \item Generate $U \sim \UU[0,1)$.
+    \item Set $X = -\log(U)/\lambda$.
+    \item \textbf{return} $X$.
+  \end{enumerate}
+\end{block}
 
-% ============================================================
-\section{3.2 ITM for Lattice Distributions}
-% ============================================================
+\textbf{Worked example.}  Suppose $\lambda = 2$.  Draw $U = 0.3$.  Then
+$X = -\log(0.3)/2 = 1.204/2 \approx 0.602$.  The theoretical mean is $1/\lambda = 0.5$,
+and indeed over many draws the sample average will converge to $0.5$.
 
-\begin{frame}[allowframebreaks]{3.2 ITM Variants for Lattice Distributions}
-  \textbf{Setting:} $X$ takes values in $\{0,1,2,\ldots\}$ with probability function
-  $(p_k)$, $k=0,1,\ldots$
+\framebreak
 
-  \begin{block}{Proposition 3.2.1 --- Discrete ITM}
-    Let $U\sim\UU[0,1)$.  The random variable
-    \[
-      Y = \min\!\left\{k : U \le \sum_{i=0}^{k} p_i\right\}
-    \]
-    has probability function $(p_k)$.
-  \end{block}
-
-  \textbf{Algorithm 9 (ITM-d):}  sequentially add probabilities until cumulative sum $\ge U$.
-  Expected number of loop iterations = $\EE Y + 1$.
-
-  \framebreak
-
-  \textbf{Efficient variant (Algorithm 10, ITR):} When the ratio
-  $c_{k+1} = p_{k+1}/p_k$ is easily computable (e.g., Binomial, Poisson,
-  Negative Binomial), use the recursion directly --- avoids storing the full PMF.
-
-  \begin{block}{The $(a,b,0)$ class of distributions}
-    A PMF satisfies $p_k = p_{k-1}(a + b/k)$ for $k=1,2,\ldots$
-    \begin{itemize}
-      \item \textbf{Binomial B}$(n,p)$: $c_{k+1} = \dfrac{p(n-k)}{(1-p)(k+1)}$
-      \item \textbf{Poisson Poi}$(\lambda)$: $c_{k+1} = \dfrac{\lambda}{k+1}$
-      \item \textbf{Neg.\ Binomial NB}$(r,p)$: $c_{k+1} = \dfrac{(r+k)p}{k+1}$
-    \end{itemize}
-  \end{block}
-
-  \framebreak
-
-  \begin{block}{Geometric Distribution $\mathrm{Geo}(p)$}
-    PMF: $p_k = (1-p)p^k$, $k=0,1,\ldots$
-
-    \medskip
-    Mean $= p/q$ where $q=1-p$.
-
-    \medskip
-    \textbf{Closed-form ITM:}
-    \[
-      X = \lfloor \log U / \log p \rfloor \sim \mathrm{Geo}(p).
-    \]
-    \textit{Proof:}
-    \[
-      \PP(X \ge k) = \PP(\lfloor \log U / \log p\rfloor \ge k)
-                  = \PP(\log U \le k\log p) = \PP(U \le p^k) = p^k.
-    \]
-  \end{block}
-
+\begin{columns}
+  \column{0.50\textwidth}
   \begin{figure}
     \centering
-    \includegraphics[width=0.55\textwidth]{fig_geometric}
-    \caption{Geometric($p=0.3$) via closed-form ITM.}
+    \includegraphics[width=\textwidth]{fig_itm_exponential}
+    \caption{Histogram of $10\,000$ samples from $\mathrm{Exp}(2)$ via ITM,
+      overlaid with the true density $f(x) = 2e^{-2x}$.}
   \end{figure}
+  \column{0.48\textwidth}
+  \begin{figure}
+    \centering
+    \includegraphics[width=\textwidth]{fig_itm_algorithm}
+    \caption{Geometric illustration of ITM: a uniform draw $U$ on the vertical
+      axis is mapped to $X = F^{\leftarrow}(U)$ on the horizontal axis.}
+  \end{figure}
+\end{columns}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{3.1 Example: Pareto Distribution $\mathrm{Par}(\alpha)$}
+
+The Pareto distribution models phenomena where extreme values occur with
+non-negligible probability, such as wealth distributions, insurance claims,
+and internet traffic.  Its c.d.f.\ is
+\[
+  F(x) = \begin{cases} 0 & x < 0, \\ 1 - \dfrac{1}{(1+x)^{\alpha}} & x \ge 0. \end{cases}
+\]
+Here $\alpha > 0$ is the \emph{shape} (or tail index) parameter.
+
+The distribution is \textbf{heavy-tailed}: $\EE e^{sX} = \infty$ for all $s > 0$.
+The mean is $\EE X = 1/(\alpha - 1)$ for $\alpha > 1$, and does not exist for
+$\alpha \le 1$.  The variance is finite only for $\alpha > 2$.
+
+To apply ITM we solve $\overline{F}(x) = u$, i.e.\ $(1+x)^{-\alpha} = u$:
+$x = u^{-1/\alpha} - 1$.  Therefore $\overline{F}^{\leftarrow}(u) = u^{-1/\alpha} - 1$.
+
+\begin{block}{Algorithm 8 (ITM-Par): Generate $X \sim \mathrm{Par}(\alpha)$}
+  \begin{enumerate}
+    \item Generate $U \sim \UU[0,1)$.
+    \item Set $X = U^{-1/\alpha} - 1$.
+    \item \textbf{return} $X$.
+  \end{enumerate}
+\end{block}
+
+\textbf{Two-parameter Pareto $\mathrm{Par}(\alpha, c)$.}  To create a family with
+both a specified mean $m$ and shape $\alpha$, set $c = (\alpha - 1)m$ (for $\alpha > 1$).
+The c.d.f.\ is $F(x) = 1 - c^\alpha/(c+x)^\alpha$, $x \ge 0$.
+
+\framebreak
+
+\begin{columns}
+  \column{0.52\textwidth}
+  \begin{figure}
+    \centering
+    \includegraphics[width=\textwidth]{fig_pareto}
+    \caption{Pareto CDF (top) and PDF (bottom) for $\alpha = 1.5, 2, 3$.
+      Smaller $\alpha$ produces a heavier tail: larger values of $X$ are
+      more likely.}
+  \end{figure}
+  \column{0.46\textwidth}
+  \begin{alertblock}{Key Insight: Light vs.\ Heavy Tails}
+    For $\mathrm{Exp}(\lambda)$: all moments finite, running averages
+    converge quickly.
+
+    \medskip
+    For $\mathrm{Par}(\alpha)$: moments of order $\ge \alpha$ are
+    \emph{infinite}.  When $\alpha \le 2$, the variance is infinite,
+    causing running averages to converge extremely slowly and to show
+    dramatic occasional spikes.
+
+    \medskip
+    The same ITM formula $X = U^{-1/\alpha} - 1$ works for any $\alpha > 0$,
+    regardless of whether moments are finite.
+  \end{alertblock}
+\end{columns}
+
+\end{frame}
+
+% ============================================================
+\section{3.2 ITM Variants for Lattice Distributions}
+% ============================================================
+
+\begin{frame}[allowframebreaks]{3.2 ITM for Discrete (Lattice) Distributions}
+
+Many quantities of practical interest --- number of customers, number of events,
+queue lengths --- are integer-valued.  We now adapt ITM to such \emph{lattice
+distributions}, where $X$ takes values in $\{0, 1, 2, \ldots\}$ with probability
+function $(p_k)_{k \ge 0}$.
+
+The continuous ITM idea still works: since $F$ is a staircase function,
+$\FInv(u) = \min\{k : u \le F(k)\}$.  Substituting
+$F(k) = \sum_{i=0}^{k} p_i$ gives the following result.
+
+\begin{block}{Proposition 3.2.1 --- Discrete ITM}
+  Let $U \sim \UU[0,1)$.  The random variable
+  \[
+    Y \;=\; \min\!\left\{k : U \le \sum_{i=0}^{k} p_i\right\}
+  \]
+  has probability function $(p_k)$.
+\end{block}
+
+\textbf{Proof.}  The event $\{Y = l\}$ is equivalent to
+$\sum_{i=0}^{l-1} p_i < U \le \sum_{i=0}^{l} p_i$, which is an interval of
+length $p_l$.  Since $U \sim \UU[0,1)$, this event has probability $p_l$.
+
+\begin{alertblock}{Algorithm 9 (ITM-d): Generate $Y \sim (p_k)$}
+  \textbf{Require:} $(p_k)_{k \ge 0}$.  \textbf{Ensure:} $Y \sim (p_k)$.
+  \begin{enumerate}
+    \item $Y \leftarrow 0$; generate $U \sim \UU[0,1)$; $S \leftarrow p_0$.
+    \item \textbf{while} $S < U$ \textbf{do}: $Y \leftarrow Y+1$;
+          $S \leftarrow S + p_Y$.
+    \item \textbf{return} $Y$.
+  \end{enumerate}
+  The expected number of loop iterations equals $\EE Y + 1$.
+  Therefore ITM-d is inefficient for distributions with large mean.
+\end{alertblock}
+
+\framebreak
+
+\textbf{Efficient recursion-based variant (Algorithm 10, ITR).}
+When the ratio $c_{k+1} = p_{k+1}/p_k$ has a simple closed form,
+we can avoid storing the PMF and instead compute successive probabilities
+on the fly.  This is the ITR (Inverse Transform Recursion) algorithm.
+
+\begin{block}{The $(a,b,0)$ Class of Distributions}
+  A PMF $(p_k)_{k \ge 0}$ belongs to the $(a,b,0)$ class if
+  $p_k = p_{k-1}(a + b/k)$ for $k = 1, 2, \ldots$ and some $p_0 > 0$.
+  This covers the three most important count distributions:
+  \begin{itemize}
+    \item \textbf{Binomial} $\mathrm{B}(n,p)$:
+          $p_0 = (1-p)^n$, \quad $c_{k+1} = \dfrac{p(n-k)}{(1-p)(k+1)}$,
+          \quad $k = 0, \ldots, n-1$.
+    \item \textbf{Poisson} $\mathrm{Poi}(\lambda)$:
+          $p_0 = e^{-\lambda}$, \quad $c_{k+1} = \dfrac{\lambda}{k+1}$,
+          \quad $k = 0, 1, \ldots$
+    \item \textbf{Negative Binomial} $\mathrm{NB}(r,p)$:
+          $p_0 = (1-p)^r$, \quad $c_{k+1} = \dfrac{(r+k)p}{k+1}$,
+          \quad $k = 0, 1, \ldots$
+  \end{itemize}
+\end{block}
+
+\framebreak
+
+The ITR algorithm exploits the ratio formula directly.
+
+\begin{alertblock}{Algorithm 10 (ITR): Generate $X \sim (p_k)$}
+  \textbf{Require:} $p_0$ and the ratios $c_{k+1} = p_{k+1}/p_k$, $k = 0, 1, \ldots$
+  \begin{enumerate}
+    \item $S \leftarrow p_0$; $P \leftarrow p_0$; $X \leftarrow 0$.
+    \item Generate $U \sim \UU[0,1)$.
+    \item \textbf{while} $U > S$ \textbf{do}:
+          $X \leftarrow X+1$; $P \leftarrow P \cdot c_X$; $S \leftarrow S + P$.
+    \item \textbf{return} $X$.
+  \end{enumerate}
+  At each step, $P$ holds the current probability $p_X$, so no pre-computation
+  of the full PMF is needed.
+\end{alertblock}
+
+\textbf{Geometric Distribution $\mathrm{Geo}(p)$.}  PMF: $p_k = (1-p)p^k$,
+$k = 0, 1, \ldots$  Mean: $\EE X = p/(1-p) = p/q$.  For the geometric distribution
+a closed-form inverse exists, avoiding the loop entirely:
+\[
+  X = \lfloor \log U / \log p \rfloor \;\sim\; \mathrm{Geo}(p).
+\]
+\textbf{Proof.} $\PP(X \ge k) = \PP(\lfloor \log U/\log p\rfloor \ge k) =
+\PP(\log U \le k \log p) = \PP(U \le p^k) = p^k$, which is the survival function
+of $\mathrm{Geo}(p)$.
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.45\textwidth]{fig_geometric}
+  \caption{Histogram of $10\,000$ draws from $\mathrm{Geo}(p=0.3)$ via the
+    closed-form ITM, compared with the theoretical PMF.}
+\end{figure}
+
 \end{frame}
 
 % ============================================================
 \section{3.3 Ad Hoc Methods}
 % ============================================================
 
-\begin{frame}[allowframebreaks]{3.3.1 Binomial B$(n,p)$}
-  \begin{block}{Representation as Sum of Bernoulli Trials}
-    \[
-      X \stackrel{\mathcal{D}}{=} \sum_{j=1}^{n} \xi_j,
-    \]
-    where $\xi_1,\ldots,\xi_n$ are i.i.d.\ with $\PP(\xi_j=1)=p$.
-  \end{block}
+\begin{frame}[allowframebreaks]{3.3.1 Binomial Distribution $\mathrm{B}(n,p)$}
 
-  \textbf{Algorithm 11 (DB):}
+The binomial distribution models the number of successes in $n$ independent
+Bernoulli trials each with success probability $p$.  The standard representation
+is that $X = \xi_1 + \cdots + \xi_n$, where $\xi_1, \ldots, \xi_n$ are i.i.d.\
+with $\PP(\xi_j = 1) = p$ and $\PP(\xi_j = 0) = 1-p$.
+
+This representation gives a direct simulation algorithm.  Each $\xi_j$ is
+generated by comparing $U_j \sim \UU[0,1)$ with the threshold $p$: if $U_j \le p$,
+we record a success ($\xi_j = 1$); otherwise a failure ($\xi_j = 0$).
+
+\begin{alertblock}{Algorithm 11 (DB): Generate $X \sim \mathrm{B}(n,p)$}
+  \textbf{Require:} $p \in (0,1)$ and $n \in \{1, 2, \ldots\}$.
   \begin{enumerate}
-    \item $X \leftarrow 0$
-    \item \textbf{for} $i=1$ \textbf{to} $n$:
+    \item $X \leftarrow 0$.
+    \item \textbf{for} $i = 1$ \textbf{to} $n$:
     \begin{itemize}
-      \item Generate $U\sim\UU[0,1)$
-      \item \textbf{if} $U\le p$: $X \leftarrow X+1$
+      \item Generate $U \sim \UU[0,1)$.
+      \item \textbf{if} $U \le p$: $X \leftarrow X + 1$.
     \end{itemize}
-    \item \textbf{return} $X$
+    \item \textbf{return} $X$.
   \end{enumerate}
+  This is $O(n)$.  For large $n$ with moderate $\lambda = np$, the ITR algorithm
+  based on the $(a,b,0)$ recursion is asymptotically faster.
+\end{alertblock}
 
-  \medskip
-  This is $O(n)$.  For large $n$ with moderate $np$, the ITR algorithm
-  (based on the recursion) is faster.
+\textbf{Worked example.}  With $n = 5$, $p = 0.4$, draw $U_1, \ldots, U_5 =
+0.72, 0.15, 0.63, 0.38, 0.81$.  Successes at $i = 2$ (since $0.15 \le 0.4$) and
+$i = 4$ (since $0.38 \le 0.4$), so $X = 2$.  The mean is $np = 5 \times 0.4 = 2$.
 
-  \framebreak
-
-  \begin{block}{3.3.2 Erlang Distribution $\mathrm{Erl}(n,\lambda)$}
-    $X = Y_1 + \cdots + Y_n$ where $Y_i \stackrel{\text{i.i.d.}}{\sim} \mathrm{Exp}(\lambda)$.
-
-    \medskip
-    Since $Y_i = -\log(U_i)/\lambda$:
-    \[
-      X = -\frac{1}{\lambda}\log(U_1\cdots U_n) = -\frac{\log(\prod_{i=1}^n U_i)}{\lambda}.
-    \]
-    PDF: $f(x) = \dfrac{1}{\Gamma(n)}\lambda^n x^{n-1}e^{-\lambda x}$, $x\ge 0$.
-  \end{block}
-
-  Also: $\mathrm{Erl}(n,\lambda)$ is a special case of $\mathrm{Gamma}(n,\lambda)$.
 \end{frame}
 
-\begin{frame}{3.3.3 Poisson Distribution Poi$(\lambda)$}
-  \begin{columns}
-    \column{0.52\textwidth}
-    \begin{block}{Renewal Process Characterisation}
-      Let $\tau_1, \tau_2, \ldots$ be i.i.d.\ $\mathrm{Exp}(1)$.
-      Count the number $N$ of partial sums $\le \lambda$:
-      \[
-        N = \max\{i\ge 1 : \tau_1 + \cdots + \tau_i \le \lambda\}.
-      \]
-      \textbf{Proposition 3.3.1:} $N \stackrel{\mathcal{D}}{=} \mathrm{Poi}(\lambda)$.
-    \end{block}
+\begin{frame}[allowframebreaks]{3.3.2 Erlang Distribution $\mathrm{Erl}(n,\lambda)$}
 
-    Simplified using $\tau_i = -\log U_i$:
-    \[
-      N = \max\!\left\{n\ge 0 : \prod_{i=1}^n U_i \ge e^{-\lambda}\right\}.
-    \]
-    (\textit{convention:} empty product $= 1$.)
+The Erlang distribution is the sum of $n$ independent exponentials.  It is a
+special case of the Gamma distribution $\mathrm{Gamma}(n, \lambda)$, and arises
+naturally in queueing theory as the time until the $n$-th event in a Poisson process.
 
-    \column{0.46\textwidth}
-    \textbf{Algorithm 12 (DP):}
-    \begin{enumerate}
-      \item $X\leftarrow 0$, $U\sim\UU[0,1)$, $S\leftarrow -\log U$
-      \item \textbf{while} $S < \lambda$:
-      \begin{itemize}
-        \item $U\sim\UU[0,1)$
-        \item $S \leftarrow S - \log U$
-        \item $X \leftarrow X+1$
-      \end{itemize}
-      \item \textbf{return} $X$
-    \end{enumerate}
+\begin{block}{Definition and Simulation}
+  Let $Y_1, \ldots, Y_n \stackrel{\text{i.i.d.}}{\sim} \mathrm{Exp}(\lambda)$.  Then
+  $X = Y_1 + \cdots + Y_n \sim \mathrm{Erl}(n, \lambda)$.
 
+  Using $Y_i = -\log(U_i)/\lambda$, we get the numerically convenient formula
+  \[
+    X \;=\; -\frac{1}{\lambda}\!\left(\log U_1 + \cdots + \log U_n\right)
+       \;=\; -\frac{\log(U_1 \cdots U_n)}{\lambda},
+  \]
+  where $U_1, \ldots, U_n$ are i.i.d.\ $\UU[0,1)$.
+\end{block}
+
+The p.d.f.\ of $\mathrm{Erl}(n,\lambda)$ is
+$f(x) = \frac{\lambda^n}{\Gamma(n)} x^{n-1} e^{-\lambda x}$ for $x \ge 0$.
+The mean is $n/\lambda$ and the variance is $n/\lambda^2$.
+
+\textbf{Caution.}  For large $n$, computing the product $U_1 \cdots U_n$ risks
+underflow to zero.  It is safer to accumulate $\log U_1 + \cdots + \log U_n$ via
+a running sum, avoiding the product altogether.
+
+The survival function of $\mathrm{Erl}(n,\lambda)$ has the elegant formula
+\[
+  \overline{F}(x) = e^{-\lambda x}\!\left(1 + \lambda x + \frac{(\lambda x)^2}{2!}
+    + \cdots + \frac{(\lambda x)^{n-1}}{(n-1)!}\right),
+\]
+which we will use later for the Poisson connection.
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.50\textwidth]{fig_erlang}
+  \caption{Erlang densities for $\mathrm{Erl}(n,1)$ with $n=1,2,3,5$.
+    As $n$ increases, the distribution concentrates around its mean $n/\lambda$.}
+\end{figure}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{3.3.3 Poisson Distribution $\mathrm{Poi}(\lambda)$}
+
+The Poisson distribution counts the number of events in a unit-time window
+of a Poisson process with rate $\lambda$.  We derive an elegant simulation
+algorithm from the \emph{renewal process} interpretation.
+
+Let $\tau_1, \tau_2, \ldots$ be i.i.d.\ $\mathrm{Exp}(1)$, representing
+inter-arrival times.  Consider the partial sums $\sigma_k = \tau_1 + \cdots + \tau_k$.
+Define $N$ as the number of partial sums that fit into the window $(0, \lambda]$:
+\[
+  N = \begin{cases}
+    \max\{i \ge 1 : \tau_1 + \cdots + \tau_i \le \lambda\} & \text{if } \tau_1 \le \lambda, \\
+    0 & \text{if } \tau_1 > \lambda.
+  \end{cases}
+\]
+
+\begin{block}{Proposition 3.3.1 --- Poisson via Renewal Process}
+  $N \stackrel{\mathcal{D}}{=} \mathrm{Poi}(\lambda)$.
+\end{block}
+
+\textbf{Proof sketch.}  Since $\{N \le k\} = \{\sigma_{k+1} > \lambda\}$:
+\[
+  \PP(N \le k) = \PP\!\left(\sum_{j=1}^{k+1} \tau_j > \lambda\right)
+    = e^{-\lambda}\!\left(1 + \lambda + \cdots + \frac{\lambda^k}{k!}\right),
+\]
+using the Erlang survival formula above.  Then
+$\PP(N = k) = \PP(N \le k) - \PP(N \le k-1) = \frac{\lambda^k}{k!} e^{-\lambda}$.
+
+\framebreak
+
+Substituting $\tau_i = -\log U_i$ transforms the stopping criterion from
+$\sum \tau_i \le \lambda$ to $\prod U_i \ge e^{-\lambda}$:
+\[
+  N = \max\!\left\{n \ge 0 : \prod_{i=1}^{n} U_i \ge e^{-\lambda}\right\}.
+\]
+
+\begin{alertblock}{Algorithm 12 (DP): Generate $X \sim \mathrm{Poi}(\lambda)$}
+  \begin{enumerate}
+    \item $X \leftarrow 0$; generate $U \sim \UU[0,1)$; $S \leftarrow -\log U$.
+    \item \textbf{while} $S < \lambda$:
+    \begin{itemize}
+      \item Generate $U \sim \UU[0,1)$; $S \leftarrow S - \log U$; $X \leftarrow X + 1$.
+    \end{itemize}
+    \item \textbf{return} $X$.
+  \end{enumerate}
+  The expected number of uniforms consumed is $\EE X + 1 = \lambda + 1$.
+\end{alertblock}
+
+\textbf{Worked example.}  With $\lambda = 2$, suppose we draw
+$U_1 = 0.7, U_2 = 0.5, U_3 = 0.3$.  Then $S_1 = -\log(0.7) \approx 0.357 < 2$,
+$S_2 = 0.357 + 0.693 = 1.050 < 2$, $S_3 = 1.050 + 1.204 = 2.254 > 2$.
+We stop at $X = 2$.
+
+\begin{columns}
+  \column{0.50\textwidth}
+  \begin{figure}
+    \centering
     \includegraphics[width=\textwidth]{fig_poisson}
-  \end{columns}
+    \caption{Histogram of $\mathrm{Poi}(3)$ from Algorithm DP, compared
+      with the true PMF.}
+  \end{figure}
+  \column{0.48\textwidth}
+  \begin{alertblock}{Key Insight}
+    Poisson sampling is equivalent to waiting for a renewal process to
+    exceed level $\lambda$.  Each $-\log U_i$ is an $\mathrm{Exp}(1)$
+    inter-arrival time; we count how many arrivals fit in the window.
+  \end{alertblock}
+\end{columns}
+
 \end{frame}
 
-\begin{frame}[fragile]{3.3 Python Code: Poisson and Erlang}
-  \begin{lstlisting}[style=python, caption={Ad hoc methods for Poisson and Erlang}]
+\begin{frame}[fragile]{3.3 Python: Poisson and Erlang Simulation}
+\begin{lstlisting}[style=python, caption={Ad hoc methods for Poisson and Erlang distributions}]
 import numpy as np
 rng = np.random.default_rng(0)
 
 def sample_poisson(lam, rng):
-    """Renewal-process algorithm for Poi(lam)."""
+    """Renewal-process algorithm (Alg. 12) for Poi(lam)."""
     U = rng.uniform()
-    S = -np.log(U)
+    S = -np.log(U)   # first Exp(1) inter-arrival time
     X = 0
     while S < lam:
         U = rng.uniform()
-        S -= np.log(U)
+        S -= np.log(U)   # add next Exp(1) inter-arrival
         X += 1
     return X
 
 def sample_erlang(n, lam, rng):
-    """Sum of n Exp(lam) variables for Erl(n, lam)."""
-    U = rng.uniform(0, 1, n)
-    return -np.log(np.prod(U)) / lam   # numerically stable for small n
+    """Sum of n Exp(lam) variables => Erl(n, lam).
+    Stable: accumulate logs, not products."""
+    logs = rng.uniform(0, 1, n)
+    return -np.log(logs).sum() / lam
 
-# Example
+# Verify: empirical vs theoretical moments
 samples_poi = [sample_poisson(3.5, rng) for _ in range(10000)]
 samples_erl = [sample_erlang(4, 1.0, rng) for _ in range(10000)]
-print(f"Poi(3.5) mean = {np.mean(samples_poi):.3f} (theory: 3.5)")
-print(f"Erl(4,1) mean = {np.mean(samples_erl):.3f} (theory: 4.0)")
-  \end{lstlisting}
+print(f"Poi(3.5) mean = {np.mean(samples_poi):.3f}  (theory: 3.5)")
+print(f"Erl(4,1) mean = {np.mean(samples_erl):.3f}  (theory: 4.0)")
+print(f"Erl(4,1) var  = {np.var(samples_erl):.3f}   (theory: 4.0)")
+\end{lstlisting}
 \end{frame}
 
 % ============================================================
@@ -409,179 +596,245 @@ print(f"Erl(4,1) mean = {np.mean(samples_erl):.3f} (theory: 4.0)")
 % ============================================================
 
 \begin{frame}[allowframebreaks]{3.4 Uniform Distribution on Subsets of $\RR^d$}
-  A random vector $\mathbf{X}\in A\subset\RR^d$ is \emph{uniformly distributed}
-  $\UU(A)$ if:
-  \[
-    \PP(\mathbf{X}\in D) = \frac{\Vol D}{\Vol A}, \quad D\subset A.
-  \]
-  Equivalently, $f(\mathbf{x}) = \frac{1}{\Vol A}\mathbf{1}(\mathbf{x}\in A)$.
 
-  \medskip
-  \textbf{Linear transform:} If $V\sim\UU(a,b)$ is needed, use $V=(b-a)U+a$
-  where $U\sim\UU[0,1)$.
+A random vector $\mathbf{X} \in A \subset \RR^d$ is said to have the
+\emph{uniform distribution} $\UU(A)$ if it is equally likely to fall anywhere
+in $A$.  Formally, for any measurable $D \subset A$,
+\[
+  \PP(\mathbf{X} \in D) = \frac{\Vol D}{\Vol A},
+\]
+or equivalently, the density is $f(\mathbf{x}) = \frac{1}{\Vol A}\mathbf{1}(\mathbf{x} \in A)$.
 
-  \medskip
-  \begin{block}{Proposition 3.4.1 --- Rejection for Subsets}
-    If $A\subset B$ and $\mathbf{X}\sim\UU(B)$, then
-    $(\mathbf{X}\mid\mathbf{X}\in A)\sim\UU(A)$.
-  \end{block}
+To sample uniformly in a rectangle $[a_1,b_1] \times \cdots \times [a_d,b_d]$,
+we generate $d$ independent uniforms and apply a linear transform:
+$V_i = (b_i - a_i)U_i + a_i$, $i = 1,\ldots,d$, where $U_1,\ldots,U_d$
+are i.i.d.\ $\UU[0,1)$.
 
-  \framebreak
+For non-rectangular regions, the following \emph{conditional} observation
+gives us a rejection-based approach.
 
-  \textbf{Algorithm 13} $\UU(A)$:
+\begin{block}{Proposition 3.4.1 --- Uniform on Subset via Rejection}
+  Let $A \subset B$ be measurable sets with $\Vol B < \infty$.
+  If $\mathbf{X} \sim \UU(B)$, then the conditional distribution
+  $(\mathbf{X} \mid \mathbf{X} \in A) \sim \UU(A)$.
+\end{block}
+
+\textbf{Proof.}  For any $D \subset A$:
+$\PP(\mathbf{X} \in D \mid \mathbf{X} \in A) = \frac{\PP(\mathbf{X} \in D)}{\PP(\mathbf{X} \in A)}
+= \frac{\Vol D / \Vol B}{\Vol A / \Vol B} = \frac{\Vol D}{\Vol A}$.
+
+\framebreak
+
+\begin{alertblock}{Algorithm 13 --- $\UU(A)$: Rejection from Bounding Box}
+  \textbf{Require:} Bounding rectangle $B = [a_1,b_1] \times \cdots \times [a_d,b_d] \supset A$.
   \begin{enumerate}
-    \item Generate i.i.d.\ $U_1,\ldots,U_d\sim\UU[0,1)$
-    \item $V_i \leftarrow (b_i-a_i)U_i + a_i$ (transform to bounding box)
-    \item \textbf{if} $\mathbf{V}=(V_1,\ldots,V_d)\in A$: $\mathbf{X}=\mathbf{V}$; else go to 1
-    \item \textbf{return} $\mathbf{X}$
+    \item Generate $U_1,\ldots,U_d$ i.i.d.\ $\UU[0,1)$;
+          set $V_i = (b_i - a_i)U_i + a_i$ for each $i$.
+    \item \textbf{if} $\mathbf{V} = (V_1,\ldots,V_d) \in A$: set $\mathbf{X} = \mathbf{V}$
+          and \textbf{return} $\mathbf{X}$.
+    \item \textbf{else} go to step 1.
   \end{enumerate}
+  The acceptance probability is $\Vol A / \Vol B$.
+  The expected number of trials is $\Vol B / \Vol A$.
+\end{alertblock}
 
-  \medskip
-  \begin{alertblock}{Curse of Dimensionality for Balls}
-    The $d$-ball $B_d = \{\mathbf{x}:\sum x_i^2\le 1\}$ has volume
-    $\Vol B_d = \pi^{d/2}/\Gamma(d/2+1)$.
-    The $d$-cube $A_d=[-1,1]^d$ has volume $2^d$.
+\textbf{The curse of dimensionality for $d$-balls.}
+The $d$-dimensional unit ball $B_d = \{\mathbf{x} : \|\mathbf{x}\| \le 1\}$
+has volume $\Vol B_d = \pi^{d/2}/\Gamma(d/2+1)$, while the enclosing cube
+$[-1,1]^d$ has volume $2^d$.  For even $d = 2k$:
+\[
+  \frac{\Vol B_d}{\Vol [-1,1]^d} = \frac{\pi^k}{k! \cdot 2^{2k}} \;
+  \xrightarrow{k\to\infty}\; 0
+\]
+exponentially fast.  For example, at $d = 30$ this ratio is approximately
+$2 \times 10^{-14}$, meaning only 1 in $5 \times 10^{13}$ bounding box
+samples would be accepted.  Algorithm 13 is therefore completely impractical
+for high-dimensional balls; the Normal-distribution trick of Section 3.8
+must be used instead.
 
-    \medskip
-    Acceptance probability $= \Vol B_d / 2^d$.
-    By Stirling: $\approx \frac{1}{\sqrt{\pi k}}\!\left(\frac{\pi e}{4k}\right)^k\to 0$
-    exponentially fast (e.g., $\approx 2\times 10^{-14}$ for $d=30$).
-  \end{alertblock}
-
-  \textbf{Conclusion:} Rejection method is impractical for high-dimensional balls.
-  Better algorithms use the Normal-distribution trick (Section 3.8).
 \end{frame}
 
 % ============================================================
 \section{3.5 Acceptance-Rejection Method}
 % ============================================================
 
-\begin{frame}[allowframebreaks]{3.5.1 AR-d (Discrete Acceptance-Rejection)}
-  \textbf{Setting:} Want $X\sim(p_j)_{j\in E}$.  We can easily sample $Y\sim(q_j)_{j\in E}$.
-  There exists $c>0$ such that
+\begin{frame}[allowframebreaks]{3.5.1 AR-d: Discrete Acceptance-Rejection}
+
+The acceptance-rejection method, introduced by John von Neumann, is the most
+adaptable general-purpose sampling technique.  It applies whenever we want to
+sample from a distribution $(p_j)$ but can only easily sample from a ``proposal''
+distribution $(q_j)$.  The key condition is that there exists a finite constant
+$c > 0$ such that $p_j \le c \, q_j$ for every $j$ in the state space $E$.
+
+The intuition is that $p_j/(c\,q_j) \in [0,1]$ is the fraction of the
+``proposal budget'' that should be allocated to value $j$.  We accept a proposal
+$Y = j$ with probability $p_j/(c\,q_j)$, which is exactly the right fraction
+to correct the proposal distribution.
+
+\begin{block}{Proposition 3.5.1 --- AR-d Correctness}
+  Let $U \sim \UU[0,1)$ and $Y \sim (q_j)$ be independent.
+  Define the acceptance event $A = \{cUq_Y \le p_Y\}$.  Then:
   \[
-    p_j \le c\,q_j \quad \forall j\in E.
+    \PP(A) = \frac{1}{c} \qquad \text{and} \qquad \PP(Y = j \mid A) = p_j.
   \]
+\end{block}
 
-  \begin{block}{Proposition 3.5.1 --- AR Correctness}
-    Define the acceptance region $A = \{cUq_Y \le p_Y\}$ for independent
-    $U\sim\UU[0,1)$ and $Y\sim(q_j)$.  Then:
-    \[
-      \PP(A) = 1/c \quad\text{and}\quad \PP(Y=j\mid A) = p_j.
-    \]
-  \end{block}
+\textbf{Proof.}  By conditioning on $Y = j$:
+\[
+  \PP(Y = j, A) = q_j \cdot \PP(U \le p_j/(cq_j)) = q_j \cdot \frac{p_j}{cq_j} = \frac{p_j}{c}.
+\]
+Summing over $j$: $\PP(A) = \sum_j p_j/c = 1/c$.  Hence
+$\PP(Y = j \mid A) = \PP(Y=j, A)/\PP(A) = (p_j/c)/(1/c) = p_j$.
 
-  \begin{alertblock}{Algorithm 14 --- AR-d}
-    \textbf{Require:} $c>0$ with $p_j\le cq_j$; algorithm to sample $Y\sim(q_j)$.\\
-    \textbf{Ensure:} $X\sim(p_j)$.
-    \begin{enumerate}
-      \item \textbf{repeat}
-      \begin{itemize}
-        \item Generate $Y\sim(q_j)$ and $U\sim\UU[0,1)$ (independent)
-      \end{itemize}
-      \item \textbf{until} $cUq_Y \le p_Y$
-      \item \textbf{return} $X=Y$
-    \end{enumerate}
-    Expected number of iterations $= c$.  Choose the \emph{smallest} possible $c$.
-  \end{alertblock}
+\framebreak
 
-  \framebreak
+\begin{alertblock}{Algorithm 14 (AR-d): Generate $X \sim (p_j)$}
+  \textbf{Require:} Constant $c$ with $p_j \le cq_j$; algorithm for $Y \sim (q_j)$.
+  \begin{enumerate}
+    \item \textbf{repeat}
+    \begin{itemize}
+      \item Generate $Y \sim (q_j)$ and $U \sim \UU[0,1)$ (independent).
+    \end{itemize}
+    \item \textbf{until} $cU q_Y \le p_Y$.
+    \item \textbf{return} $X = Y$.
+  \end{enumerate}
+  The number of loop iterations $L$ has $\PP(L = k) = (1 - 1/c)^{k-1}/c$
+  (geometric), so $\EE L = c$.  Choose the \emph{smallest} possible $c$ to
+  maximise efficiency.
+\end{alertblock}
 
-  \textbf{Example 3.5.2:} Sample $X$ with $p_j = \frac{6}{\pi^2 j^2}$, $j=1,2,\ldots$
+\textbf{Example 3.5.2.}  We want to sample $X$ with $p_j = \frac{6}{\pi^2 j^2}$,
+$j = 1, 2, \ldots$ (proportional to $1/j^2$, which sums to $\pi^2/6$).
+Use proposal $q_j = \frac{1}{j(j+1)} = \frac{1}{j} - \frac{1}{j+1}$
+(sampled as $Y = \lfloor U^{-1} \rfloor$ for $U \sim \UU[0,1)$).
 
-  Proposal: $q_j = \frac{1}{j(j+1)}$ (can be sampled as $Y=\lfloor U^{-1}\rfloor$).
+Compute the ratio:
+$p_j/q_j = (6/\pi^2 j^2) \cdot j(j+1) = (6/\pi^2)(j+1)/j$.
+The supremum is $c = \max_j(p_j/q_j) = 12/\pi^2$ (at $j=1$).
+The acceptance condition $cUq_Y \le p_Y$ simplifies to $2UY \le Y + 1$.
 
-  \[
-    \frac{p_j}{q_j} = \frac{6}{\pi^2 j^2} \cdot j(j+1) = \frac{6}{\pi^2}\frac{j+1}{j}.
-  \]
-
-  $c = \sup_j(p_j/q_j) = 12/\pi^2$.
-
-  \medskip
-  Acceptance condition:
-  \[
-    cUq_Y \le p_Y \iff 2UY \le Y+1.
-  \]
 \end{frame}
 
-\begin{frame}[allowframebreaks]{3.5.2 AR-c (Continuous Acceptance-Rejection)}
-  \textbf{Setting:} Want $X$ with p.d.f.\ $f(x)$ on $E$.
-  Can sample $Y$ with p.d.f.\ $g(x)$.
-  There exists $c<\infty$ such that $f(x)\le cg(x)$ for all $x\in E$.
+\begin{frame}[allowframebreaks]{3.5.2 AR-c: Continuous Acceptance-Rejection}
 
-  \begin{block}{Proposition 3.5.3 --- AR-c Correctness}
-    \[
-      \PP(A) = 1/c \quad\text{and}\quad \PP(Y\in B\mid A) = \int_B f(y)\,dy.
-    \]
-  \end{block}
+The continuous version works analogously: we want to sample from a density $f(x)$
+on $E \subseteq \RR^d$, but can only easily sample from a density $g(x)$.
+We require $c < \infty$ such that $f(x) \le cg(x)$ for all $x$.
 
-  \begin{alertblock}{Algorithm 16 --- AR-c}
-    \textbf{Require:} $c>0$ with $f(x)\le cg(x)$; algorithm to sample $Y\sim g$.\\
-    \textbf{Ensure:} $X\sim f$.
-    \begin{enumerate}
-      \item \textbf{repeat}
-      \begin{itemize}
-        \item Generate $Y\sim g$ and $U\sim\UU[0,1]$ (independent)
-      \end{itemize}
-      \item \textbf{until} $cUg(Y)\le f(Y)$
-      \item \textbf{return} $X=Y$
-    \end{enumerate}
-  \end{alertblock}
+\begin{block}{Proposition 3.5.3 --- AR-c Correctness}
+  Let $Y \sim g$ and $U \sim \UU[0,1)$ be independent.
+  Define $A = \{cUg(Y) \le f(Y)\}$.  Then:
+  \[
+    \PP(A) = \frac{1}{c} \qquad \text{and} \qquad \PP(Y \in B \mid A) = \int_B f(y)\,dy \quad \forall B \subset E.
+  \]
+\end{block}
 
-  \framebreak
+\textbf{Proof.}  The joint density of $(U, Y)$ is $g(y)\,\mathrm{d}u\,\mathrm{d}y$.
+Conditioning on $A$:
+\[
+  \PP(Y \in B \mid A) = \frac{\int_B \int_0^{f(y)/(cg(y))} g(y)\,\mathrm{d}u\,\mathrm{d}y}{\PP(A)}
+    = \frac{\int_B f(y)\,\mathrm{d}y / c}{1/c} = \int_B f(y)\,\mathrm{d}y.
+\]
 
-  \begin{block}{Example 3.5.4 --- Normal from Exponential (AR-N)}
-    Half-normal target: $f(x) = \frac{2}{\sqrt{2\pi}}e^{-x^2/2}$, $x>0$.
+\begin{alertblock}{Algorithm 16 (AR-c): Generate $X \sim f$}
+  \textbf{Require:} $c$ with $f(x) \le cg(x)$; algorithm for $Y \sim g$.
+  \begin{enumerate}
+    \item \textbf{repeat}: generate $Y \sim g$ and $U \sim \UU[0,1]$ independently.
+    \item \textbf{until} $cUg(Y) \le f(Y)$.
+    \item \textbf{return} $X = Y$.
+  \end{enumerate}
+\end{alertblock}
 
-    Proposal: $g(x) = e^{-x}$ (i.e., $Y\sim\mathrm{Exp}(1)$).
+\framebreak
 
-    Optimal constant:
-    \[
-      c = \max_{x>0}\frac{f(x)}{g(x)} = \sqrt{\frac{2e}{\pi}} \approx 1.32.
-    \]
-    Acceptance condition (after simplification):
-    \[
-      U \le \exp\!\left(-\frac{(Y-1)^2}{2}\right).
-    \]
-    Then draw sign $I = \pm 1$ with probability $1/2$ each; return $Z = IY$.
-  \end{block}
+\textbf{Example 3.5.4 --- Generating $\NN(0,1)$ via AR-c (AR-N).}
 
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.6\textwidth]{fig_ar_halfnormal}
-    \caption{Half-normal density $f$, proposal $g\sim\mathrm{Exp}(1)$,
-      and envelope $cg$. Red area is rejected; blue area is accepted.}
-  \end{figure}
+We target the half-normal density $f(x) = \frac{2}{\sqrt{2\pi}}e^{-x^2/2}$,
+$x > 0$, and use the $\mathrm{Exp}(1)$ proposal $g(x) = e^{-x}$, $x > 0$.
+
+The ratio is $f(x)/g(x) = \frac{2}{\sqrt{2\pi}} e^{x - x^2/2}$.
+The maximum of $x - x^2/2$ is at $x = 1$, giving $c = \frac{2}{\sqrt{2\pi}} e^{1/2} = \sqrt{2e/\pi} \approx 1.315$.
+
+The acceptance condition $cUg(Y) \le f(Y)$ simplifies to
+\[
+  U \le \exp\!\left(-\frac{(Y-1)^2}{2}\right).
+\]
+
+To get a full $\NN(0,1)$ sample, we then assign $Z = IY$ where $I = +1$ or $-1$
+each with probability $\frac{1}{2}$.
+
+\begin{block}{Algorithm 17 (AR-N): Generate $Z \sim \NN(0,1)$}
+  \begin{enumerate}
+    \item Generate $U_1 \sim \UU[0,1)$; set $Y = -\log(U_1)$.
+          (So $Y \sim \mathrm{Exp}(1)$.)
+    \item Generate $U_2 \sim \UU[0,1)$.
+    \item \textbf{if} $U_2 > \exp(-(Y-1)^2/2)$: go to step 1.
+    \item Generate $U_3 \sim \UU[0,1)$; set $I = 2\lfloor 2U_3\rfloor - 1 \in \{-1,+1\}$.
+    \item \textbf{return} $Z = I \cdot Y$.
+  \end{enumerate}
+\end{block}
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.55\textwidth]{fig_ar_halfnormal}
+  \caption{Half-normal target $f$ (blue), proposal $g = \mathrm{Exp}(1)$ (gray),
+    and envelope $cg$ (dashed).  A proposal $Y$ is accepted when $(Y, U \cdot cg(Y))$
+    falls in the blue region.}
+\end{figure}
+
+\framebreak
+
+\textbf{Unknown normalising constants.}
+In many practical situations, we only know the unnormalized densities
+$f^*(x)$ and $g^*(x)$, with $f(x) = f^*(x)/c_f$ and $g(x) = g^*(x)/c_g$.
+We then need $c^* = \sup_x f^*(x)/g^*(x)$.  The acceptance condition
+$cUg(Y) \le f(Y)$ becomes $c^* U g^*(Y) \le f^*(Y)$, which does not require
+knowing $c_f$ or $c_g$ separately.  This flexibility makes AR-c particularly
+useful for Bayesian computation.
+
+\textbf{Example 3.5.5 --- Gamma$(\alpha, \lambda)$ for $\alpha < 1$ (Madras).}
+When $\alpha < 1$, use the mixture proposal
+$g(x) = p_1 g_1(x) + p_2 g_2(x)$ where $g_1(x) \propto x^{\alpha-1}$
+on $(0,1)$ (power law) and $g_2(x) = e^{-x}$ on $[1,\infty)$.
+The bounding constant is $c = 1/(K\Gamma(\alpha))$ where $K = \alpha e/(\alpha + e)$.
+
+\textbf{Example 3.5.6 --- Central $\chi^2_d$ Distribution.}
+Sum $d$ independent $\NN(0,1)$ squares: $\chi^2_d = Z_1^2 + \cdots + Z_d^2$.
+Alternatively, $\chi^2_d \sim \mathrm{Gamma}(d/2, 1/2)$ and
+$\chi^2_{2k} = \mathrm{Erl}(k, 1/2)$ is easily generated.
+
 \end{frame}
 
-\begin{frame}[fragile]{3.5 Python Code: AR-c for Normal}
-  \begin{lstlisting}[style=python, caption={AR-c to generate N(0,1) via half-normal and Exp(1)}]
+\begin{frame}[fragile]{3.5 Python: AR-c for $\NN(0,1)$}
+\begin{lstlisting}[style=python, caption={AR-N: generate standard normal via acceptance-rejection}]
 import numpy as np
 rng = np.random.default_rng(42)
 
-def sample_normal_arc(n, rng):
-    """Algorithm 17 AR-N: generate N(0,1) via AR-c."""
+def sample_normal_arn(n, rng):
+    """
+    Algorithm 17 AR-N: generate N(0,1) via AR-c
+    with Exp(1) proposal and half-normal target.
+    Acceptance rate: 1/c = sqrt(pi/(2e)) ~ 0.760
+    """
     out = np.empty(n)
     i = 0
+    total_trials = 0
     while i < n:
         U1 = rng.uniform()
-        Y  = -np.log(U1)          # Y ~ Exp(1)
+        Y  = -np.log(U1)           # Y ~ Exp(1)
         U2 = rng.uniform()
-        if U2 <= np.exp(-(Y - 1)**2 / 2):   # acceptance condition
+        total_trials += 1
+        if U2 <= np.exp(-(Y - 1)**2 / 2):   # acceptance test
             sign = 1 if rng.uniform() < 0.5 else -1
             out[i] = sign * Y
             i += 1
+    print(f"Acceptance rate: {n/total_trials:.3f}  (theory: {np.sqrt(np.pi/(2*np.e)):.3f})")
     return out
 
-Z = sample_normal_arc(5000, rng)
+Z = sample_normal_arn(5000, rng)
 print(f"Mean: {Z.mean():.4f}  (theory: 0)")
 print(f"Std:  {Z.std():.4f}   (theory: 1)")
-  \end{lstlisting}
-
-  \medskip
-  \textbf{Unknown normalising constants:}  When $f(x)=f^*(x)/c_f$ and
-  $g(x)=g^*(x)/c_g$, the acceptance condition $U\le f^*(Y)/(c^*g^*(Y))$ still works,
-  where $c^*=\sup f^*(x)/g^*(x)$.  No need to know $c_f$ or $c_g$ separately.
+\end{lstlisting}
 \end{frame}
 
 % ============================================================
@@ -589,78 +842,109 @@ print(f"Std:  {Z.std():.4f}   (theory: 1)")
 % ============================================================
 
 \begin{frame}[allowframebreaks]{3.6 Composition (Mixture) Method}
-  \begin{block}{Setup}
-    Suppose
-    \[
-      f(x) = \sum_{j=1}^{n} p_j\, g_j(x),
-    \]
-    where $g_j$ are p.d.f.s and $(p_j)$ is a probability function
-    ($p_j\ge 0$, $\sum p_j=1$).  $f$ is then a \emph{mixture distribution}.
-  \end{block}
 
-  \begin{alertblock}{Composition Algorithm}
-    \begin{enumerate}
-      \item Sample component index $J$ with $\PP(J=j)=p_j$.
-      \item Given $J=j$, generate $X\sim g_j$.
-      \item \textbf{return} $X$.
-    \end{enumerate}
-    Works for infinite mixtures too:
-    $f(x) = \sum_{j=0}^\infty p_j g_j(x)$.
-  \end{alertblock}
+The composition method addresses the case where the target distribution is a
+\emph{mixture}: its density (or PMF) can be written as a convex combination
+of simpler component densities that we already know how to sample from.
 
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.55\textwidth]{fig_composition}
-    \caption{Gaussian mixture $f = p_1 g_1 + p_2 g_2$ via composition method.}
-  \end{figure}
-
-  \framebreak
-
-  \textbf{Example 3.6.1 --- Non-central Chi-square:}
+\begin{block}{Setup and Algorithm}
+  Suppose the target density has the form
   \[
-    f(x) = \tfrac{1}{2}e^{-(x+\lambda)/2}\!\left(\tfrac{x}{\lambda}\right)^{d/4-1/2}\!
-            I_{d/2-1}(\sqrt{\lambda x}), \quad x\ge 0.
+    f(x) = \sum_{j=1}^{n} p_j\, g_j(x),
   \]
-  Can be represented as a mixture of $\mathrm{Gamma}(j+d/2, 1/2)$ distributions
-  with Poisson$(\lambda/2)$ mixing weights.
+  where each $g_j$ is a valid density, $(p_j)$ is a probability function
+  ($p_j \ge 0$, $\sum_j p_j = 1$), and we can sample each $g_j$ efficiently.
 
   \medskip
-  \textbf{Example 3.6.3 --- Gamma-Poisson (Negative Binomial) mixture:}
+  \textbf{Composition Algorithm:}
+  \begin{enumerate}
+    \item Sample a component index $J$ according to $\PP(J = j) = p_j$.
+    \item Conditional on $J = j$, sample $X \sim g_j$.
+    \item \textbf{return} $X$.
+  \end{enumerate}
 
-  If $X\mid\Lambda\sim\mathrm{Poi}(\Lambda)$ and
-  $\Lambda\sim\mathrm{Gamma}(\alpha,\lambda)$, then
-  \[
-    X\sim\mathrm{NB}\!\left(\alpha,\,\tfrac{1}{1+\lambda}\right).
-  \]
-  This is the \emph{Gamma-Poisson mixture} representation.
+  The output $X$ has the mixture density $f$ because, for any measurable $B$:
+  $\PP(X \in B) = \sum_j p_j \int_B g_j(x)\,dx = \int_B f(x)\,dx$.
+\end{block}
+
+The method also works for \emph{infinite} mixtures:
+$f(x) = \sum_{j=0}^{\infty} p_j g_j(x)$, where $J$ is itself simulated
+from the probability function $(p_j)_{j \ge 0}$.
+
+\framebreak
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.55\textwidth]{fig_composition}
+  \caption{A three-component Gaussian mixture $f = 0.3 g_1 + 0.5 g_2 + 0.2 g_3$
+    (solid black curve) and its three component densities (dashed).  The
+    composition method samples the component first, then draws from it.}
+\end{figure}
+
+\textbf{Example 3.6.1 --- Non-central Chi-squared Distribution.}
+The non-central $\chi^2$ distribution with $d$ degrees of freedom and
+non-centrality parameter $\lambda > 0$ has density expressible as an
+infinite Poisson-weighted mixture of Gamma densities:
+\[
+  f(x) = \sum_{j=0}^{\infty} p_j(\lambda/2)\, g_j(x),
+  \quad p_j(\mu) = \frac{\mu^j}{j!}e^{-\mu},
+  \quad g_j(x) \sim \mathrm{Gamma}\!\left(j + d/2, 1/2\right).
+\]
+This is simulated by first drawing $J \sim \mathrm{Poi}(\lambda/2)$, then
+$X \sim \mathrm{Gamma}(J + d/2, 1/2)$.
+
+\framebreak
+
+\textbf{Example 3.6.3 --- Gamma-Poisson Mixture (Negative Binomial).}
+When the Poisson rate is itself random, i.e.\ $X \mid \Lambda \sim \mathrm{Poi}(\Lambda)$
+and $\Lambda \sim \mathrm{Gamma}(\alpha, \lambda)$, the marginal distribution of
+$X$ is the \emph{negative binomial}:
+\[
+  p_n = \int_0^\infty \frac{\Lambda^n e^{-\Lambda}}{n!} \cdot
+    \frac{\lambda^\alpha \Lambda^{\alpha-1} e^{-\lambda\Lambda}}{\Gamma(\alpha)}
+    \,d\Lambda
+  = \binom{n + \alpha - 1}{n}
+    \!\left(\frac{1}{1+\lambda}\right)^{\!\alpha}\!\!
+    \left(\frac{\lambda}{1+\lambda}\right)^{\!n},
+\]
+which is $\mathrm{NB}(\alpha, 1/(1+\lambda))$.  Simulation: draw
+$\Lambda \sim \mathrm{Gamma}(\alpha,\lambda)$, then $X \sim \mathrm{Poi}(\Lambda)$.
+
 \end{frame}
 
-\begin{frame}[fragile]{3.6 Python Code: Mixture Sampling}
-  \begin{lstlisting}[style=python, caption={Composition method for Gaussian mixture}]
+\begin{frame}[fragile]{3.6 Python: Mixture Sampling}
+\begin{lstlisting}[style=python, caption={Composition method for a Gaussian mixture and NB via Gamma-Poisson}]
 import numpy as np
 rng = np.random.default_rng(0)
 
-def sample_mixture(p, mus, sigmas, n, rng):
+def sample_mixture(weights, mus, sigmas, n, rng):
     """
-    Composition method for Gaussian mixture.
-    p      : list of mixture weights (sum to 1)
-    mus    : list of means
-    sigmas : list of std devs
+    Composition method for a Gaussian mixture.
+    weights: mixture probabilities (sum to 1)
+    mus, sigmas: component parameters
     """
-    p = np.array(p)
-    # Step 1: sample component index
-    J = rng.choice(len(p), size=n, p=p)
-    # Step 2: sample from chosen component
+    weights = np.array(weights)
+    # Step 1: sample component index J ~ (p_j)
+    J = rng.choice(len(weights), size=n, p=weights)
+    # Step 2: sample from the chosen component
     X = np.array([rng.normal(mus[j], sigmas[j]) for j in J])
     return X
 
-p     = [0.3, 0.5, 0.2]
-mus   = [-3.0, 1.0, 5.0]
-sigmas= [0.8,  1.2, 0.5]
-X = sample_mixture(p, mus, sigmas, n=10000, rng=rng)
-print(f"Empirical mean: {X.mean():.3f}")
-# Theory: 0.3*(-3) + 0.5*1 + 0.2*5 = 0.6
-  \end{lstlisting}
+def sample_nb_gamma_poisson(alpha, lam, n, rng):
+    """Sample NB(alpha, 1/(1+lam)) via Gamma-Poisson mixture."""
+    Lambda = rng.gamma(alpha, 1.0/lam, size=n)   # Lambda ~ Gamma(alpha, lam)
+    X = rng.poisson(Lambda)                        # X | Lambda ~ Poi(Lambda)
+    return X
+
+# 3-component Gaussian mixture
+w = [0.3, 0.5, 0.2];  mus = [-3., 1., 5.];  sigs = [0.8, 1.2, 0.5]
+X = sample_mixture(w, mus, sigs, n=10000, rng=rng)
+# Theoretical mean: 0.3*(-3) + 0.5*1 + 0.2*5 = 0.6
+print(f"Mixture mean: {X.mean():.3f}  (theory: 0.60)")
+
+Y = sample_nb_gamma_poisson(alpha=3.0, lam=2.0, n=10000, rng=rng)
+print(f"NB mean: {Y.mean():.3f}  (theory: {3.0/2.0:.3f})")
+\end{lstlisting}
 \end{frame}
 
 % ============================================================
@@ -668,314 +952,428 @@ print(f"Empirical mean: {X.mean():.3f}")
 % ============================================================
 
 \begin{frame}[allowframebreaks]{3.7.1 Box-Muller Method}
-  \begin{block}{Lemma 3.7.1 --- Polar Representation of Bivariate Normal}
-    Let $Z_1, Z_2$ be i.i.d.\ $\NN(0,1)$.  Let $(D,\Theta)$ be their
-    polar coordinates.  Then:
-    \begin{itemize}
-      \item $D$ and $\Theta$ are \emph{independent},
-      \item $D$ has p.d.f.\ $f(r) = r e^{-r^2/2}$ (Rayleigh distribution),
-      \item $\Theta\sim\UU[0,2\pi)$.
-    \end{itemize}
-  \end{block}
 
-  \begin{block}{Lemma 3.7.2 --- Rayleigh Distribution}
-    If $D$ has the Rayleigh distribution, then $Y=D^2\sim\mathrm{Exp}(1/2)$.
-    Thus $D \stackrel{\mathcal{D}}{=} (-2\log U)^{1/2}$.
-  \end{block}
+To generate standard normal random variables $Z_1, Z_2 \sim \NN(0,1)$ we exploit
+the special structure of the bivariate normal density in \emph{polar coordinates}.
+If $(Z_1, Z_2)$ is a pair of independent standard normals, let $(D, \Theta)$ be
+their polar representation: $Z_1 = D\cos\Theta$, $Z_2 = D\sin\Theta$.
 
-  \begin{alertblock}{Proposition 3.7.3 --- Box-Muller}
-    Let $U_1,U_2\stackrel{\text{i.i.d.}}{\sim}\UU[0,1)$.  Set
-    \[
-      Z_1 = (-2\log U_1)^{1/2}\cos(2\pi U_2), \quad
-      Z_2 = (-2\log U_1)^{1/2}\sin(2\pi U_2).
-    \]
-    Then $Z_1, Z_2$ are i.i.d.\ $\NN(0,1)$.
-  \end{alertblock}
+\begin{block}{Lemma 3.7.1 --- Polar Structure of Bivariate Normal}
+  Let $Z_1, Z_2 \stackrel{\text{i.i.d.}}{\sim} \NN(0,1)$ and $(D,\Theta)$ their
+  polar coordinates.  Then $D$ and $\Theta$ are \emph{independent}, with
+  $\Theta \sim \UU[0,2\pi)$ and $D$ having the \textbf{Rayleigh} density
+  $f_D(r) = r e^{-r^2/2}$, $r > 0$.
+\end{block}
 
-  \framebreak
+\textbf{Proof.}  The joint density of $(Z_1,Z_2)$ is $\frac{1}{2\pi}e^{-(z_1^2+z_2^2)/2}$.
+Changing to polar coordinates $(r,\theta)$ via $z_1 = r\cos\theta$,
+$z_2 = r\sin\theta$ with Jacobian $r$:
+\[
+  f_{(D,\Theta)}(r,\theta) = \frac{1}{2\pi}e^{-r^2/2} \cdot r
+    = \underbrace{re^{-r^2/2}}_{f_D(r)} \cdot \underbrace{\frac{1}{2\pi}}_{f_\Theta(\theta)}.
+\]
+The factorization $f_{(D,\Theta)}(r,\theta) = f_D(r) f_\Theta(\theta)$
+proves independence.
 
-  \textbf{Algorithm 20 (BM):}
+\begin{block}{Lemma 3.7.2 --- Simulating the Rayleigh Distribution}
+  If $D$ is Rayleigh, then $D^2 \sim \mathrm{Exp}(1/2)$.  Therefore, for
+  $U \sim \UU[0,1)$:
+  \[
+    D \stackrel{\mathcal{D}}{=} (-2\log U)^{1/2}.
+  \]
+\end{block}
+
+\textbf{Proof.} $\PP(D^2 > x) = \int_{\sqrt{x}}^\infty re^{-r^2/2}\,dr = e^{-x/2}$.
+
+\framebreak
+
+\begin{alertblock}{Proposition 3.7.3 --- Box-Muller Transform}
+  Let $U_1, U_2 \stackrel{\text{i.i.d.}}{\sim} \UU[0,1)$ and define
+  \[
+    Z_1 = (-2\log U_1)^{1/2}\cos(2\pi U_2), \qquad
+    Z_2 = (-2\log U_1)^{1/2}\sin(2\pi U_2).
+  \]
+  Then $Z_1$ and $Z_2$ are independent $\NN(0,1)$ random variables.
+\end{alertblock}
+
+The proof is immediate: set $D = (-2\log U_1)^{1/2}$ (Rayleigh by Lemma 3.7.2)
+and $\Theta = 2\pi U_2$ (uniform on $[0,2\pi)$); then $(D,\Theta)$ has the same
+joint distribution as the polar representation of two independent standard normals,
+and $(Z_1,Z_2) = (D\cos\Theta, D\sin\Theta)$.
+
+\begin{alertblock}{Algorithm 20 (BM): Generate $Z_1, Z_2 \sim \NN(0,1)$}
   \begin{enumerate}
-    \item Generate $U_1,U_2$ i.i.d.\ $\UU[0,1)$
-    \item $D\leftarrow -2\log U_1$, $V\leftarrow 2\pi U_2$
-    \item $Z_1=\sqrt{D}\cos V$, $Z_2=\sqrt{D}\sin V$
-    \item \textbf{return} $Z_1, Z_2$
+    \item Generate $U_1, U_2$ i.i.d.\ $\UU[0,1)$.
+    \item $D \leftarrow (-2\log U_1)^{1/2}$; $V \leftarrow 2\pi U_2$.
+    \item $Z_1 \leftarrow D\cos V$; $Z_2 \leftarrow D\sin V$.
+    \item \textbf{return} $(Z_1, Z_2)$.
   \end{enumerate}
+  Produces \emph{two} independent normals from \emph{two} uniforms.
+\end{alertblock}
 
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.65\textwidth]{fig_box_muller}
-    \caption{Box-Muller: histograms of $Z_1$ and $Z_2$ vs $\NN(0,1)$ density.}
-  \end{figure}
+\begin{figure}
+  \centering
+  \includegraphics[width=0.62\textwidth]{fig_box_muller}
+  \caption{Box-Muller output: histograms of $Z_1$ (left) and $Z_2$ (right)
+    from 5\,000 draws, overlaid with the $\NN(0,1)$ density.}
+\end{figure}
+
 \end{frame}
 
 \begin{frame}[allowframebreaks]{3.7.1 Marsaglia-Bray Method}
-  \begin{block}{Proposition 3.7.4 --- Marsaglia-Bray}
-    Let $V_1,V_2\stackrel{\text{i.i.d.}}{\sim}\UU[-1,1)$.  Set
-    $Y_i = (-2\log(V_1^2+V_2^2))^{1/2} V_i/(V_1^2+V_2^2)^{1/2}$.
 
-    Conditional on $V_1^2+V_2^2\le 1$:
-    $(Z_1,Z_2) = (Y_1,Y_2) \stackrel{\mathcal{D}}{=}$ i.i.d.\ $\NN(0,1)$.
-  \end{block}
+The Box-Muller method requires computing $\cos$ and $\sin$, which is computationally
+expensive on older hardware.  Marsaglia and Bray (1964) proposed a polar-coordinate
+variant that avoids trigonometric functions by working directly inside the unit disc.
 
-  \textbf{Algorithm 21 (MB):}
+The idea: if $(W_1, W_2) \sim \UU(B_2)$ where $B_2$ is the unit disc in $\RR^2$,
+then the polar coordinates $(D', \Theta')$ of $(W_1, W_2)$ satisfy $D'^2 \sim \UU[0,1)$
+and $\Theta' \sim \UU[0,2\pi)$, independently.  This means that $\cos\Theta' = W_1/D'$
+and $\sin\Theta' = W_2/D'$ are obtained without any trig evaluation.
+
+\begin{block}{Proposition 3.7.4 --- Marsaglia-Bray}
+  Let $V_1, V_2 \stackrel{\text{i.i.d.}}{\sim} \UU[-1,1)$ and $X' = V_1^2 + V_2^2$.
+  Conditional on $X' \le 1$, define $Y = \sqrt{-2\log(X')/X'}$ and set
+  $Z_1 = V_1 \cdot Y$, $Z_2 = V_2 \cdot Y$.  Then $Z_1, Z_2$ are independent $\NN(0,1)$.
+\end{block}
+
+\begin{alertblock}{Algorithm 21 (MB): Generate $Z_1, Z_2 \sim \NN(0,1)$}
   \begin{enumerate}
-    \item \textbf{repeat}: $U_1,U_2$ i.i.d.\ $\UU[0,1)$;
-      $V_1=2U_1-1$, $V_2=2U_2-1$; $X'=V_1^2+V_2^2$
-    \item \textbf{until} $X'\le 1$
-    \item $Y\leftarrow\sqrt{-2\log(X')/X'}$
-    \item $Z_1=V_1\cdot Y$, $Z_2=V_2\cdot Y$
+    \item \textbf{repeat}: generate $U_1, U_2$ i.i.d.\ $\UU[0,1)$;
+          set $V_1 = 2U_1 - 1$, $V_2 = 2U_2 - 1$; $X' = V_1^2 + V_2^2$.
+    \item \textbf{until} $X' \le 1$.
+    \item $Y \leftarrow \sqrt{-2\log(X')/X'}$.
+    \item $Z_1 \leftarrow V_1 Y$; $Z_2 \leftarrow V_2 Y$.
+    \item \textbf{return} $(Z_1, Z_2)$.
   \end{enumerate}
+  Acceptance probability $= \PP(V_1^2 + V_2^2 \le 1) = \pi/4 \approx 78.5\%$,
+  so on average $4/\pi \approx 1.27$ pairs are generated per accepted pair.
+\end{alertblock}
 
-  \textbf{Acceptance probability} $\approx \pi/4 \approx 78.5\%$.
-
-  \medskip
-  \textbf{Advantage over Box-Muller:}
-  Avoids trigonometric functions; generally faster in practice.
-
+\begin{columns}
+  \column{0.5\textwidth}
   \begin{figure}
     \centering
-    \includegraphics[width=0.45\textwidth]{fig_marsaglia_bray}
-    \caption{2000 standard normal pairs from Marsaglia-Bray.}
+    \includegraphics[width=\textwidth]{fig_marsaglia_bray}
+    \caption{Scatter plot of 2\,000 $(Z_1, Z_2)$ pairs from MB method,
+      showing the expected isotropic normal cloud.}
   \end{figure}
+  \column{0.48\textwidth}
+  \begin{alertblock}{Box-Muller vs.\ Marsaglia-Bray}
+    BM: uses $\cos$, $\sin$ (slow); no rejections.
+
+    MB: no trig; $\approx 21.5\%$ rejection rate.
+
+    On modern hardware with fast trig, BM is competitive.
+    On older hardware or in low-level code, MB is faster.
+    Both produce exact $\NN(0,1)$ samples.
+  \end{alertblock}
+\end{columns}
+
 \end{frame}
 
-\begin{frame}[fragile]{3.7.2 ITM for Normal Variables}
-  To generate $\NN(0,1)$ via ITM, invert the c.d.f.\ $\Phi$.
-  No closed form for $\Phi^{-1}(u)$; use numerical methods.
+\begin{frame}[allowframebreaks]{3.7.2 ITM for Normal Variables --- Numerical Inversion of $\Phi$}
 
-  \begin{block}{Newton's Method}
-    Solve $\Phi(x)=u$ starting from $x_0=\pm\sqrt{|-1.6\log(1.0004-(1-2u)^2)|}$:
-    \[
-      x_{n+1} = x_n + (u - \Phi(x_n))e^{0.5x_n^2+c}, \quad c=\log\sqrt{2\pi}.
-    \]
-    One additional step reduces error to below $10^{-15}$.
-  \end{block}
+To generate $Z \sim \NN(0,1)$ via the ITM, we need the quantile function
+$\Phi^{-1}(u)$.  There is no closed-form expression; numerical methods are required.
 
-  \begin{lstlisting}[style=python, caption={Inverse normal c.d.f.\ via scipy}]
-from scipy.stats import norm
-import numpy as np
+Newton's method applied to $\Phi(x) = u$ uses the iteration
+\[
+  x_{n+1} = x_n + (u - \Phi(x_n))\,e^{x_n^2/2 + c}, \qquad
+  c = \log\sqrt{2\pi},
+\]
+since $1/\phi(x_n) = e^{x_n^2/2} \cdot \sqrt{2\pi}$.  A suitable starting point is
+\[
+  x_0 = \pm\sqrt{-1.6\log(1.0004 - (1 - 2u)^2)},
+\]
+and one additional Newton step reduces the error to below $10^{-15}$.
 
-# scipy.stats.norm.ppf implements the Beasley-Springer-Moro algorithm
-p = 0.95
-quantile = norm.ppf(p)
-print(f"Phi^(-1)(0.95) = {quantile:.6f}")  # 1.644854
+The \textbf{Beasley-Springer-Moro} algorithm (Algorithm 22) is a highly optimized
+rational-function approximation used in practice.  For $|u - 0.5| < 0.42$, it uses
+a rational function of $(u - 0.5)^2$; in the tails ($|y| \ge 0.42$) it switches
+to a polynomial approximation of $\log(-\log r)$ where $r = \min(u, 1-u)$.
+This algorithm achieves errors below $4 \times 10^{-9}$ across the entire range
+$(0,1)$, and is the basis of \texttt{scipy.stats.norm.ppf}.
 
-# Generate N(0,1) samples via ITM
-rng = np.random.default_rng(42)
-U = rng.uniform(0, 1, 5000)
-Z = norm.ppf(U)      # inverse CDF method
-print(f"Mean: {Z.mean():.4f}, Std: {Z.std():.4f}")
-  \end{lstlisting}
+\begin{alertblock}{Key Insight}
+  ITM via numerical inversion is the method of choice when vectorized
+  processing of large batches is needed (e.g.\ NumPy), since the
+  polynomial/rational approximations are highly parallelizable.
+  Box-Muller and Marsaglia-Bray produce two samples at a time and
+  are better suited for sequential loops.
+\end{alertblock}
+
 \end{frame}
 
-\begin{frame}[allowframebreaks]{3.7.3 Generating Multivariate Normal $\NN(\boldsymbol{\mu},\boldsymbol{\Sigma})$}
-  \begin{block}{Cholesky Factorisation Method}
-    Every symmetric positive-semidefinite matrix $\boldsymbol{\Sigma}$ admits
-    \[
-      \boldsymbol{\Sigma} = \mathbf{A}\mathbf{A}^T.
-    \]
-    (Cholesky gives lower-triangular $\mathbf{A}$.)
+\begin{frame}[allowframebreaks]{3.7.3 Multivariate Normal $\NN(\boldsymbol{\mu}, \boldsymbol{\Sigma})$}
 
-    \medskip
-    \textbf{Proposition 3.7.8:} Let $\mathbf{Z}=(Z_1,\ldots,Z_d)^T$, i.i.d.\ $\NN(0,1)$.
-    Then
-    \[
-      \mathbf{X} = \mathbf{A}\mathbf{Z} + \boldsymbol{\mu} \sim \NN(\boldsymbol{\mu},\boldsymbol{\Sigma}).
-    \]
-    \textit{Proof:} $\EE[\mathbf{X}]=\boldsymbol{\mu}$ and
-    $\mathrm{Cov}(\mathbf{X})=\mathbf{A}\mathbf{Id}\,\mathbf{A}^T=\boldsymbol{\Sigma}$.
-  \end{block}
+A random vector $\mathbf{X} \in \RR^d$ has the multivariate normal distribution
+$\NN(\boldsymbol{\mu}, \boldsymbol{\Sigma})$ if every linear combination
+$\mathbf{a}^T\mathbf{X}$ is univariate normal.  Here $\boldsymbol{\mu}$ is the
+mean vector and $\boldsymbol{\Sigma}$ is the $d \times d$ covariance matrix
+(symmetric, positive semidefinite).
 
-  \begin{block}{Bivariate Case ($d=2$)}
-    With $\boldsymbol{\Sigma}=\begin{pmatrix}\sigma_1^2 & \rho\sigma_1\sigma_2\\
-    \rho\sigma_1\sigma_2 & \sigma_2^2\end{pmatrix}$:
-    \[
-      X_1 = \sigma_1(\sqrt{1-|\rho|}Z_1 + \sqrt{|\rho|}Z_3),\quad
-      X_2 = \sigma_2(\sqrt{1-|\rho|}Z_2 + \mathrm{sign}(\rho)\sqrt{|\rho|}Z_3).
-    \]
-  \end{block}
+The key structural fact is that $\NN(\boldsymbol{\mu}, \boldsymbol{\Sigma})$
+can be obtained from i.i.d.\ standard normals by a linear transformation.
 
-  \framebreak
+\begin{block}{Proposition 3.7.8 --- Cholesky Method for Multivariate Normal}
+  Every symmetric positive semidefinite matrix $\boldsymbol{\Sigma}$ admits a
+  factorization $\boldsymbol{\Sigma} = \mathbf{A}\mathbf{A}^T$ (e.g.\ the Cholesky
+  lower-triangular factor).  If $\mathbf{Z} = (Z_1,\ldots,Z_d)^T$ with i.i.d.\
+  $Z_i \sim \NN(0,1)$, then
+  \[
+    \mathbf{X} = \mathbf{A}\mathbf{Z} + \boldsymbol{\mu} \;\sim\; \NN(\boldsymbol{\mu},\boldsymbol{\Sigma}).
+  \]
+\end{block}
 
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.85\textwidth]{fig_bivariate_normal}
-    \caption{500 samples from bivariate normal under three different covariance settings.}
-  \end{figure}
+\textbf{Proof.}  $\EE[\mathbf{X}] = \mathbf{A}\EE[\mathbf{Z}] + \boldsymbol{\mu} = \boldsymbol{\mu}$.
+$\mathrm{Cov}(\mathbf{X}) = \mathbf{A}\,\mathrm{Cov}(\mathbf{Z})\,\mathbf{A}^T
+= \mathbf{A}\,\mathbf{Id}\,\mathbf{A}^T = \boldsymbol{\Sigma}$.
+
+\textbf{Bivariate case ($d = 2$).}  With $\boldsymbol{\Sigma} = \begin{pmatrix}\sigma_1^2 & \rho\sigma_1\sigma_2 \\ \rho\sigma_1\sigma_2 & \sigma_2^2\end{pmatrix}$:
+\[
+  X_1 = \sigma_1\!\left(\sqrt{1-|\rho|}\,Z_1 + \sqrt{|\rho|}\,Z_3\right), \quad
+  X_2 = \sigma_2\!\left(\sqrt{1-|\rho|}\,Z_2 + \mathrm{sign}(\rho)\sqrt{|\rho|}\,Z_3\right),
+\]
+where $Z_1, Z_2, Z_3$ are independent $\NN(0,1)$.
+
+\framebreak
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.82\textwidth]{fig_bivariate_normal}
+  \caption{500 samples from $\NN(\mathbf{0}, \boldsymbol{\Sigma})$ for three
+    settings: (a) $\sigma_1^2=\sigma_2^2=1$, $\rho=0$ (circular);
+    (b) $\sigma_1^2=3$, $\sigma_2^2=1$, $\rho=0.6$; (c) $\rho=0.9$ (elongated).}
+\end{figure}
+
 \end{frame}
 
-\begin{frame}[fragile]{3.7.3 Python: Multivariate Normal via Cholesky}
-  \begin{lstlisting}[style=python, caption={Generate multivariate normal via Cholesky decomposition}]
+\begin{frame}[fragile]{3.7 Python: Multivariate Normal via Cholesky}
+\begin{lstlisting}[style=python, caption={Multivariate normal sampling via Cholesky decomposition}]
 import numpy as np
 rng = np.random.default_rng(42)
 
 def sample_multivariate_normal(mu, Sigma, n, rng):
-    """Generate n samples from N(mu, Sigma) via Cholesky."""
+    """
+    Generate n samples from N(mu, Sigma) using the Cholesky method.
+    Proposition 3.7.8: X = A*Z + mu, where A = cholesky(Sigma).
+    """
     d = len(mu)
-    A = np.linalg.cholesky(Sigma)   # Sigma = A @ A.T
-    Z = rng.standard_normal((d, n))  # d x n matrix of i.i.d. N(0,1)
-    return (A @ Z).T + mu            # n x d output
+    A = np.linalg.cholesky(Sigma)   # Sigma = A @ A.T (lower-triangular)
+    Z = rng.standard_normal((d, n)) # d x n matrix of i.i.d. N(0,1)
+    return (A @ Z).T + mu           # n x d output matrix
 
-# Example: 2D normal with correlation 0.8
+# 2D example: strong positive correlation (rho ~ 0.849)
 mu    = np.array([1.0, -2.0])
 Sigma = np.array([[2.0, 1.2],
-                  [1.2, 1.0]])       # rho = 1.2/sqrt(2) ? 0.849
+                  [1.2, 1.0]])   # rho = 1.2 / sqrt(2*1) = 0.849
+
 samples = sample_multivariate_normal(mu, Sigma, 2000, rng)
-print("Empirical mean:", samples.mean(axis=0).round(3))
-print("Empirical cov:\n", np.cov(samples.T).round(3))
-  \end{lstlisting}
+print("Empirical mean:   ", samples.mean(axis=0).round(3))
+print("Empirical cov:\n",  np.cov(samples.T).round(3))
+
+# Verify: theoretical mean [1, -2] and Sigma as above
+\end{lstlisting}
 \end{frame}
 
 % ============================================================
 \section{3.8 Uniform Distribution on Balls, Spheres, Ellipsoids}
 % ============================================================
 
-\begin{frame}[allowframebreaks]{3.8 Geometric Setup}
-  \textbf{Objects:}
+\begin{frame}[allowframebreaks]{3.8 Geometry: Balls, Spheres, and Their Volumes}
+
+This section develops algorithms to sample uniformly from geometric objects ---
+the $d$-ball, the $(d-1)$-sphere, and ellipsoids --- without relying on the
+rejection method (which fails in high dimensions, as we saw in Section 3.4).
+
+\begin{block}{Key Geometric Objects}
   \begin{align*}
-    B_d &= \{\mathbf{x}\in\RR^d : x_1^2+\cdots+x_d^2\le 1\},
-      \quad \Vol(B_d) = \frac{\pi^{d/2}}{\Gamma(d/2+1)}, \\[4pt]
-    S_{d-1} &= \{\mathbf{x}\in\RR^d : x_1^2+\cdots+x_d^2 = 1\},
-      \quad \mathrm{Area}(S_{d-1}) = \frac{d\pi^{d/2}}{\Gamma(d/2+1)}.
+    B_d &= \{\mathbf{x} \in \RR^d : x_1^2 + \cdots + x_d^2 \le 1\}, &
+    \Vol(B_d) &= \frac{\pi^{d/2}}{\Gamma(d/2+1)}, \\[4pt]
+    S_{d-1} &= \{\mathbf{x} \in \RR^d : x_1^2 + \cdots + x_d^2 = 1\}, &
+    \mathrm{Area}(S_{d-1}) &= \frac{d\pi^{d/2}}{\Gamma(d/2+1)} = \frac{2\pi^{d/2}}{\Gamma(d/2)}.
   \end{align*}
+\end{block}
 
-  \begin{block}{Change of Variables --- Key Formula}
-    For a parametrised surface $\mathbf{x}(\mathbf{t})$ with Jacobian matrix
-    $\mathbf{J}(\mathbf{t}) = (\partial x_j/\partial t_i)_{i,j}$:
-    \[
-      \sqrt{g(\mathbf{t})} = \sqrt{|\det(\mathbf{J}\mathbf{J}^T)|}.
-    \]
-    Surface area element: $dA = \sqrt{g(\mathbf{t})}\,d\mathbf{t}$.
-  \end{block}
+\textbf{Change of variables on surfaces (Lemma 3.8.8).}
+For a parametrised surface $\mathbf{x}(\mathbf{t})$ with Jacobian matrix
+$\mathbf{J}(\mathbf{t}) = (\partial x_j/\partial t_i)_{i,j}$,
+the surface area element is
+$dA = \sqrt{g(\mathbf{t})}\,d\mathbf{t}$ where
+$\sqrt{g(\mathbf{t})} = \sqrt{|\det(\mathbf{J}\mathbf{J}^T)|}$.
+This generalises the usual Jacobian formula to lower-dimensional surfaces
+embedded in $\RR^d$.
 
-  \framebreak
+\end{frame}
 
-  \begin{block}{3.8.1 Random Point in $B_3$ and on $S_2$}
-    Spherical coordinates for $B_3$:
-    $x = r\cos\theta\sin\phi$, $y=r\sin\theta\sin\phi$, $z=r\cos\phi$.
+\begin{frame}[allowframebreaks]{3.8.1 Sampling Uniformly on $S_2$ and in $B_3$}
 
-    \medskip
-    \textbf{Proposition 3.8.4:} For $\mathbf{X}\sim\UU(B_3)$ in spherical coords $(D,\Phi,\Theta)$:
-    \begin{itemize}
-      \item $D^{1/3}\sim\UU[0,1)$ (so $D\stackrel{\mathcal{D}}{=}U^{1/3}$),
-      \item $\Phi = \arccos(1-2U')$, $U'\sim\UU[0,1)$,
-      \item $\Theta\sim\UU[0,2\pi)$.
-    \end{itemize}
+For $d = 3$, the sphere $S_2$ uses spherical coordinates:
+$x = r\cos\theta\sin\phi$, $y = r\sin\theta\sin\phi$, $z = r\cos\phi$,
+with $r > 0$, $\theta \in [0,2\pi)$, $\phi \in [0,\pi)$.
+The area element is $dA = \sin\phi\,d\phi\,d\theta$.
 
-    \medskip
-    \textbf{Proposition 3.8.6:} If $Z_1,Z_2,Z_3\stackrel{\text{i.i.d.}}{\sim}\NN(0,1)$:
-    \[
-      \left(\frac{Z_1}{\|\mathbf{Z}\|},\frac{Z_2}{\|\mathbf{Z}\|},\frac{Z_3}{\|\mathbf{Z}\|}\right)
-      \sim\UU(S_2).
-    \]
-    \textbf{Proposition 3.8.13:} If $\mathbf{X}\sim\UU(S_{d-1})$ and
-    $U\sim\UU[0,1)$ independent, then $U^{1/d}\mathbf{X}\sim\UU(B_d)$.
-  \end{block}
+The distribution $f(\phi) \propto \sin\phi$ on $[0,\pi)$ is not uniform in $\phi$;
+the correct density is $\frac{1}{2}\sin\phi$.  Importantly, $\Phi = \arccos(1 - 2V)$
+for $V \sim \UU[0,1)$ has this distribution (since $F_\Phi(\phi) = (1-\cos\phi)/2$,
+so $\FInv_\Phi(v) = \arccos(1-2v)$).
 
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.60\textwidth]{fig_ball_sphere}
-    \caption{Uniform random points on $S_2$ (left) and in $B_3$ (right).}
-  \end{figure}
+\begin{block}{Proposition 3.8.4 --- Uniform in $B_3$}
+  For $\mathbf{X} \sim \UU(B_3)$, the spherical coordinates $(D,\Phi,\Theta)$ are
+  independent with $D^{1/3} \sim \UU[0,1)$, $\Phi = \arccos(1-2V)$, $\Theta = 2\pi W$,
+  where $V, W \sim \UU[0,1)$ are independent.
+\end{block}
+
+\begin{block}{Proposition 3.8.6 --- Normal Trick for $\UU(S_2)$}
+  If $Z_1, Z_2, Z_3 \stackrel{\text{i.i.d.}}{\sim} \NN(0,1)$, then
+  \[
+    \left(\frac{Z_1}{\|\mathbf{Z}\|}, \frac{Z_2}{\|\mathbf{Z}\|}, \frac{Z_3}{\|\mathbf{Z}\|}\right) \sim \UU(S_2).
+  \]
+  The density of $\NN(0,\mathbf{Id})$ is spherically symmetric, so the direction
+  $\mathbf{Z}/\|\mathbf{Z}\|$ is uniformly distributed on the sphere, independent
+  of the radius $\|\mathbf{Z}\|$.
+\end{block}
+
+\framebreak
+
+The Normal trick generalises immediately to any dimension.
+
+\begin{block}{General Algorithm: $\UU(S_{d-1})$ and $\UU(B_d)$}
+  \textbf{Sample uniformly on $(d-1)$-sphere:}
+  \begin{enumerate}
+    \item Generate $\mathbf{Z} = (Z_1,\ldots,Z_d)^T$ with i.i.d.\ $Z_i \sim \NN(0,1)$.
+    \item \textbf{return} $\mathbf{X} = \mathbf{Z}/\|\mathbf{Z}\|$.
+  \end{enumerate}
+
+  \textbf{Sample uniformly in $d$-ball (Proposition 3.8.13):}
+  \begin{enumerate}
+    \item Sample $\mathbf{S} \sim \UU(S_{d-1})$ (using above).
+    \item Sample $U \sim \UU[0,1)$ independently.
+    \item \textbf{return} $\mathbf{X} = U^{1/d}\,\mathbf{S}$.
+  \end{enumerate}
+  The scaling $U^{1/d}$ ensures uniformity in the ball: the CDF of the radius
+  $R = \|\mathbf{X}\|$ must be $F_R(r) = r^d$ for $r \in [0,1]$, and
+  $U^{1/d}$ achieves this.
+\end{block}
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.60\textwidth]{fig_ball_sphere}
+  \caption{Left: 1\,000 uniform random points on $S_2$ via the Normal trick.
+    Right: 1\,000 uniform random points in $B_3$ via the $U^{1/3}$ scaling.}
+\end{figure}
+
 \end{frame}
 
 \begin{frame}[fragile]{3.8 Python: Sphere and Ball Sampling}
-  \begin{lstlisting}[style=python, caption={Sample uniformly from sphere and ball in d dimensions}]
+\begin{lstlisting}[style=python, caption={Uniform sampling on sphere S_{d-1} and ball B_d}]
 import numpy as np
 rng = np.random.default_rng(42)
 
 def sample_sphere(d, n, rng):
-    """Uniform on (d-1)-sphere S_{d-1} by normalising N(0,I)."""
+    """
+    Uniform on the (d-1)-sphere S_{d-1} in R^d.
+    Method: normalise a vector of d independent N(0,1) variables.
+    """
     Z = rng.standard_normal((n, d))
-    return Z / np.linalg.norm(Z, axis=1, keepdims=True)
+    norms = np.linalg.norm(Z, axis=1, keepdims=True)
+    return Z / norms
 
 def sample_ball(d, n, rng):
-    """Uniform in d-ball B_d: X = U^{1/d} * point_on_sphere."""
-    X = sample_sphere(d, n, rng)
-    U = rng.uniform(0, 1, n)
-    return X * U[:, None]**(1.0/d)
+    """
+    Uniform inside the d-ball B_d in R^d.
+    Method: X = U^(1/d) * (point on sphere).
+    The U^(1/d) scaling gives CDF F_R(r) = r^d on [0,1].
+    """
+    S = sample_sphere(d, n, rng)          # uniform direction
+    U = rng.uniform(0, 1, n)[:, None]    # uniform [0,1)
+    return S * (U ** (1.0 / d))           # scale radius
 
-# 3D examples
-pts_sphere = sample_sphere(3, 1000, rng)
-pts_ball   = sample_ball(3, 1000, rng)
-print("Sphere norms:", np.linalg.norm(pts_sphere, axis=1).mean().round(4))  # ~1
-print("Ball norms:  ", np.linalg.norm(pts_ball,   axis=1).mean().round(4))  # ~0.75
-  \end{lstlisting}
+# Verification
+pts_sphere = sample_sphere(3, 5000, rng)
+pts_ball   = sample_ball(3, 5000, rng)
+norms_sph = np.linalg.norm(pts_sphere, axis=1)
+norms_bal = np.linalg.norm(pts_ball,   axis=1)
+print(f"Sphere norms (should be 1.000): {norms_sph.mean():.4f} +/- {norms_sph.std():.6f}")
+print(f"Ball   norms (should be 0.750): {norms_bal.mean():.4f}")
+# Theoretical mean radius in B_3: E[R] = d/(d+1) = 3/4 = 0.75
+\end{lstlisting}
 \end{frame}
 
-\begin{frame}[allowframebreaks]{3.8.2--3.8.3 Spherical Coordinates \& Ellipsoids}
-  \begin{block}{3.8.2 General Spherical Coordinates in $\RR^d$}
-    \[
-      x_1 = r\cos\phi_1, \quad x_2 = r\sin\phi_1\cos\phi_2, \quad \ldots
-    \]
-    Jacobian: $J = r^{d-1}\sin^{d-2}\phi_1\sin^{d-3}\phi_2\cdots\sin\phi_{d-2}$.
+\begin{frame}[allowframebreaks]{3.8.3 Sampling Uniformly Within an Ellipsoid}
 
-    \medskip
-    \textbf{Lemma 3.8.10:} For $\mathbf{Z}\sim\NN(\mathbf{0},\mathbf{Id})$, the
-    spherical coordinates $(D,\Phi_1,\ldots,\Phi_{d-2},\Theta)$ are independent,
-    $D^2\sim\chi^2_d$, and $\Phi_i$ has p.d.f.\ $c_{d-i-1}\sin^{d-i-1}x$.
-  \end{block}
+An ellipsoid $\mathcal{E}_d = \{\mathbf{x} \in \RR^d : \mathbf{x}^T \mathbf{A}^{-1} \mathbf{x} \le 1\}$
+is a linearly stretched unit ball, where $\mathbf{A}$ is a symmetric positive-definite
+matrix.  The volume of $\mathcal{E}_d$ is $\Vol(B_d) \cdot \sqrt{\det \mathbf{A}}$.
 
-  \begin{block}{3.8.3 Ellipsoids}
-    A $d$-ellipsoid: $\mathcal{E}_d = \{\mathbf{x}\in\RR^d : \mathbf{x}^T\mathbf{A}^{-1}\mathbf{x}\le 1\}$
-    where $\mathbf{A}$ is symmetric positive-definite.
+\textbf{Key idea.}  Factorize $\mathbf{A} = \mathbf{L}\mathbf{L}^T$ (Cholesky).
+Then the mapping $\mathbf{x} \mapsto \mathbf{L}^{-1}\mathbf{x}$ transforms
+$\mathcal{E}_d$ bijectively to $B_d$.  So: sample $\mathbf{X} \sim \UU(B_d)$,
+then return $\mathbf{Y} = \mathbf{L}\mathbf{X} \sim \UU(\mathcal{E}_d)$.
 
-    \medskip
-    Factorize $\mathbf{A} = \mathbf{L}\mathbf{L}^T$.
+\begin{block}{Algorithm 23 --- $\UU(\mathcal{E}_d)$}
+  \begin{enumerate}
+    \item Diagonalize $\mathbf{A} = \mathbf{P}\,\mathrm{diag}(\mathbf{a}^2)\,\mathbf{P}^T$
+          (spectral decomposition).
+    \item Set $\mathbf{L} = \mathbf{P}\,\mathrm{diag}(\mathbf{a})$, so
+          $\mathbf{A} = \mathbf{L}\mathbf{L}^T$.
+    \item Generate $\mathbf{X} \sim \UU(B_d)$ (using the normal trick).
+    \item \textbf{return} $\mathbf{Y} = \mathbf{L}\mathbf{X}$.
+  \end{enumerate}
+\end{block}
 
-    \medskip
-    \textbf{Algorithm 23:}
-    \begin{enumerate}
-      \item Diagonalize $\mathbf{A}=\mathbf{P}\,\mathrm{diag}(\mathbf{a}^2)\,\mathbf{P}^T$
-      \item $\mathbf{L}\leftarrow\mathbf{P}\,\mathrm{diag}(\mathbf{a})$
-      \item Generate $\mathbf{X}\sim\UU(B_d)$
-      \item $\mathbf{Y}\leftarrow\mathbf{L}\mathbf{X}$
-      \item \textbf{return} $\mathbf{Y}$
-    \end{enumerate}
-  \end{block}
+\textbf{2D example.}  For the ellipse $(x/a)^2 + (y/b)^2 \le 1$ with $a = 3$,
+$b = 1$: the matrix is diagonal, $\mathbf{A} = \mathrm{diag}(9, 1)$,
+$\mathbf{L} = \mathrm{diag}(3, 1)$.  Sample $(X_1, X_2) \sim \UU(B_2)$,
+then return $(Y_1, Y_2) = (3X_1, X_2)$.
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.48\textwidth]{fig_ellipse_uniform}
+  \caption{1\,000 uniform random points within an ellipse $(x/3)^2 + y^2 \le 1$
+    via Algorithm 23.}
+\end{figure}
+
 \end{frame}
 
-\begin{frame}[allowframebreaks]{3.8.4--3.8.5 Sampling on an Ellipsoid Surface}
-  \textbf{Problem:} Sample uniformly from the surface of the ellipsoid
-  $\frac{x^2}{a^2}+\frac{y^2}{b^2}+\frac{z^2}{c^2}=1$.
+\begin{frame}[allowframebreaks]{3.8.4--3.8.5 Sampling on Ellipsoid Surface and Average Shadow}
 
-  \medskip
-  Parametrisation: $\mathbf{x}(\theta,\phi) = (a\cos\theta\sin\phi,\,
-  b\sin\theta\sin\phi,\,c\cos\phi)$ with
-  $\theta\in[0,2\pi)$, $\phi\in[0,\pi)$.
+\textbf{Sampling on the surface of a 3D ellipsoid.}
+Consider the ellipsoid $E_1: \frac{x^2}{a^2} + \frac{y^2}{b^2} + \frac{z^2}{c^2} = 1$.
+Parametrize via $\theta \in [0,2\pi)$, $\phi \in [0,\pi)$:
+$\mathbf{x}(\theta,\phi) = (a\cos\theta\sin\phi,\, b\sin\theta\sin\phi,\, c\cos\phi)$.
 
+The area element $dA = \sqrt{g(\phi,\theta)}\,d\phi\,d\theta$ where
+$\sqrt{g} = \sin\phi\sqrt{c^2(a^2\sin^2\phi\sin^2\theta + b^2\sin^2\phi\cos^2\theta) + a^2b^2\cos^2\phi}$
+does \emph{not} factor into independent marginals when $a \ne b \ne c$.
+Therefore $\theta$ and $\phi$ cannot be sampled independently, and
+a numerical Algorithm (24) is needed: subdivide the parameter rectangle into
+a grid, approximate each cell's area via a cross-product of tangent vectors,
+then sample a cell proportional to its area and place a uniform point within it.
+
+\textbf{Average shadow of a 3D body (Section 3.8.5).}
+The shadow of a face $F$ cast by parallel light with direction normal $\mathbf{n}$
+has area $|\cos\angle(\mathbf{n}, \hat{\mathbf{n}}_F)| \cdot \mathrm{Area}(F)$,
+where $\hat{\mathbf{n}}_F$ is the outward face normal.
+
+\begin{block}{Expected Shadow Formula}
+  For a flat face $F$ with normal direction drawn uniformly from $S_2$:
   \[
-    \sqrt{g(\phi,\theta)} = \sin\phi\!\sqrt{c^2(a^2-b^2)\cos^2\theta(\cos^2\phi-1) + a^2(b^2-c^2)\cos^2\phi + c^2}.
+    \EE[\mathrm{Area}(\mathrm{shadow}(F))] = \frac{\mathrm{Area}(F)}{2}.
   \]
+  For a convex polyhedron with faces $F_1, \ldots, F_m$:
+  \[
+    \EE[\mathrm{Area}(\mathrm{shadow})] = \frac{\mathrm{surface\ area}}{4}.
+  \]
+  For a unit cube: $\EE[\mathrm{shadow}] = \frac{6}{4} = \frac{3}{2}$.
+\end{block}
 
-  Density $\propto\sqrt{g(\phi,\theta)}$ --- coordinates are \emph{not} independent
-  for general $a,b,c$.
+\textbf{Derivation.}  For a single face, $\EE[|\cos\phi|\sin\phi] = 1/2$ where
+$\phi \sim f(\phi) = \frac{1}{2}\sin\phi$ on $[0,\pi)$.
+Summing over all faces and noting that each is ``visible'' with probability $1/2$
+(faces pointing away from the light cast no shadow) gives the factor of $1/4$.
 
-  \medskip
-  \begin{block}{Numerical Approach (Algorithm 24)}
-    \begin{enumerate}
-      \item Build a grid of $n_k\times n_l$ parallelogram patches on the surface.
-      \item Approximate each patch area using cross-products of tangent vectors.
-      \item Sample a patch proportional to its area (composition method).
-      \item Sample a uniform point within the chosen patch.
-    \end{enumerate}
-  \end{block}
-
-  \framebreak
-
-  \begin{block}{3.8.5 Average Shadow of a Convex 3D Body}
-    For a flat face $F$ with outward normal randomly drawn from $\UU(S_2)$:
-    \[
-      \EE[\mathrm{Area}(\mathrm{shadow}(F))] = \frac{\mathrm{Area}(F)}{2}.
-    \]
-    For a convex polyhedron $B$ with faces $F_1,\ldots,F_m$:
-    \[
-      \EE[\mathrm{Area}(\mathrm{shadow}(B))]
-      = \frac{\mathrm{Area}(\mathrm{surface}(B))}{4}.
-    \]
-    For a cube with edge $s$: $\EE[\mathrm{shadow}] = \frac{6s^2}{4} = \frac{3}{2}s^2$.
-  \end{block}
 \end{frame}
 
 % ============================================================
@@ -983,265 +1381,356 @@ print("Ball norms:  ", np.linalg.norm(pts_ball,   axis=1).mean().round(4))  # ~0
 % ============================================================
 
 \begin{frame}[allowframebreaks]{3.9.1 Conditional Inverse Transform Method}
-  \textbf{Setup:} Joint density $f(x,y)$, marginals $f_X(x)$ and $f_Y(y)$,
-  conditional c.d.f.:
-  \[
-    F_{Y|X=x}(y) = \frac{F_{X=x,Y}(\mathbf{x},y)}{f_X(\mathbf{x})}, \quad
-    F_{X=x,Y}(\mathbf{x},y) = \int_{y_0}^y f(\mathbf{x},u)\,du.
-  \]
 
-  \begin{alertblock}{Algorithm: Conditional ITM}
-    \begin{enumerate}
-      \item Compute marginal c.d.f.\ $F_X$; sample $X=F_X^{-1}(U_1)$.
-      \item Given $X=\mathbf{x}$, compute conditional c.d.f.\ $F_{Y|X=\mathbf{x}}$.
-      \item Set $Y = F_{Y|X=\mathbf{x}}^{-1}(U_2)$, independent $U_2$.
-      \item \textbf{return} $(X,Y)$.
-    \end{enumerate}
-  \end{alertblock}
+When we need to simulate a \emph{bivariate} random vector $(X,Y)$ with a
+specified joint density $f(x,y)$, one powerful approach is the
+\emph{conditional ITM}: first simulate $X$ from its marginal distribution,
+then simulate $Y$ from the conditional distribution $f_{Y|X=x}$.
 
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.45\textwidth]{fig_conditional_itm}
-    \caption{100 samples from $f(x,y)=xe^{-x(y+1)}$ via conditional ITM.}
-  \end{figure}
-
-  \framebreak
-
-  \textbf{Example 3.9.1:} $f(x,y) = x\exp(-x(y+1))$, $x,y\ge 0$.
-  \begin{itemize}
-    \item $f_X(x) = e^{-x}$, so $X\sim\mathrm{Exp}(1)$: $X=-\log U_1$.
-    \item $f_{Y|X=x}(y) = xe^{-xy}$ (Exp$(x)$): $Y = -\log U_2 / X$.
-  \end{itemize}
-\end{frame}
-
-\begin{frame}[allowframebreaks]{3.9.2 Bivariate Copulas --- Sklar's Theorem}
-  \begin{block}{Definition: Copula}
-    A \textbf{copula} $C(u_1,u_2)$ is any bivariate c.d.f.\ with
-    $\UU[0,1)$ marginals.  Formally, $C:[0,1]^2\to[0,1]$ satisfies:
-    \begin{enumerate}
-      \item $C(u_i,0)=0$ and $C(u_i,1)=u_i$,
-      \item $C(v_1,v_2)-C(u_1,v_2)-C(v_1,u_2)+C(u_1,u_2)\ge 0$
-            for $u_i\le v_i$.
-    \end{enumerate}
-  \end{block}
-
-  \begin{block}{Theorem 3.9.2 --- Sklar's Theorem}
-    For any joint c.d.f.\ $F_{X,Y}(t_1,t_2)$ there exists a copula $C$ such that
-    \[
-      F_{X,Y}(t_1,t_2) = C(F_X(t_1),F_Y(t_2)).
-    \]
-    If the marginals $F_X$ and $F_Y$ are continuous, $C$ is \emph{unique}.
-
-    \medskip
-    Moreover, the joint density factors as:
-    \[
-      f_{X,Y}(t_1,t_2) = f_X(t_1)\,f_Y(t_2)\,c(F_X(t_1),F_Y(t_2)),
-    \]
-    where $c$ is the copula density.
-  \end{block}
-
-  \framebreak
-
-  \begin{block}{Fr?chet-Hoeffding Bounds (Theorem 3.9.6)}
-    For any copula $C$:
-    \[
-      (F(x)+F(y)-1)_+ \;\le\; F(x,y) \;\le\; \min(F(x),F(y)).
-    \]
-    \begin{itemize}
-      \item \textbf{Upper bound} $C_U(u_1,u_2) = \min(u_1,u_2)$:
-            perfect positive dependence, $V_1=V_2=U$.
-      \item \textbf{Lower bound} $C_L(u_1,u_2) = \max(0,u_1+u_2-1)$:
-            perfect negative dependence, $V_1=U$, $V_2=1-U$.
-      \item \textbf{Independence copula} $C_I(u_1,u_2) = u_1 u_2$:
-            $V_1=U_1$, $V_2=U_2$ independent.
-    \end{itemize}
-  \end{block}
-
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.75\textwidth]{fig_copulas}
-    \caption{Fr?chet upper, independence, and Gaussian ($\rho=0.8$) copula samples.}
-  \end{figure}
-\end{frame}
-
-\begin{frame}[allowframebreaks]{3.9.3 Classical Copulas}
-  \begin{block}{Gaussian (Normal) Copula}
-    Let $\Phi_\rho$ be the bivariate normal c.d.f.\ with correlation $\rho$:
-    \[
-      C(u_1,u_2) = \Phi_\rho(\Phi^{-1}(u_1),\Phi^{-1}(u_2)).
-    \]
-    \textbf{Simulation:} Generate $(X,Y)\sim\NN(\mathbf{0},\boldsymbol{\Sigma})$
-    with $\boldsymbol{\Sigma}=\bigl(\begin{smallmatrix}1&\rho\\\rho&1\end{smallmatrix}\bigr)$;
-    set $(V_1,V_2)=(\Phi(X),\Phi(Y))$.
-    \begin{itemize}
-      \item As $\rho\to 0$: $C\to C_I$; as $\rho\to 1$: $C\to C_U$;
-            as $\rho\to -1$: $C\to C_L$.
-    \end{itemize}
-  \end{block}
-
-  \begin{block}{Clayton Copula (Exercise 3.T.38)}
-    Parameter $\theta>0$:
-    $(V_1,V_2) = ((1-\log U_1/X)^{-1/\theta}, (1-\log U_2/X)^{-1/\theta})$,
-    where $X\sim\mathrm{Gamma}(1/\theta,1)$ and $U_1,U_2\sim\UU[0,1)$ independent.
-  \end{block}
-
-  \framebreak
-
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.65\textwidth]{fig_normal_copula}
-    \caption{Gaussian copula: $\rho=0.9$ (left) and $\rho=-0.8$ (right).}
-  \end{figure}
-
-  \textbf{Using Copulas to Construct Joint Distributions (Example 3.9.10):}
-
-  Given Exp(1) marginal for $X'$ and Par(1) for $Y'$:
+\begin{block}{Algorithm --- Conditional ITM for $(X,Y)$}
   \begin{enumerate}
-    \item Sample $(V_1,V_2)$ from a Gaussian copula with $\rho$.
-    \item Transform: $X' = F_{\mathrm{Exp}}^{-1}(V_1) = -\log(1-V_1)$,
-      $Y' = F_{\mathrm{Par}}^{-1}(V_2) = \frac{1}{1-V_2}-1$.
+    \item Compute the marginal density $f_X(x) = \int f(x,y)\,dy$ and its
+          c.d.f.\ $F_X$.
+    \item Generate $X = F_X^{\leftarrow}(U_1)$ for $U_1 \sim \UU[0,1)$.
+    \item Given $X = \mathsf{x}$, compute the conditional c.d.f.\
+          $F_{Y|X=\mathsf{x}}(y) = \int_{-\infty}^y f(\mathsf{x},t)/f_X(\mathsf{x})\,dt$.
+    \item Generate $Y = F_{Y|X=\mathsf{x}}^{\leftarrow}(U_2)$ for
+          $U_2 \sim \UU[0,1)$ independent of $U_1$.
+    \item \textbf{return} $(X, Y)$.
   \end{enumerate}
-  This preserves the marginal distributions while changing the dependence structure.
+\end{block}
+
+\textbf{Example 3.9.1.}  Let $f(x,y) = x\exp(-x(y+1))$ for $x,y \ge 0$.
+
+\emph{Step 1: marginal.}
+$f_X(x) = x\int_0^\infty e^{-x(y+1)}\,dy = x \cdot e^{-x}/x = e^{-x}$,
+so $X \sim \mathrm{Exp}(1)$.  Simulation: $X = -\log U_1$.
+
+\emph{Step 2: conditional.}
+$f_{Y|X=\mathsf{x}}(y) = f(\mathsf{x},y)/f_X(\mathsf{x}) = \mathsf{x}\,e^{-\mathsf{x}y}$,
+so $Y | X = \mathsf{x}$ is $\mathrm{Exp}(\mathsf{x})$.
+Simulation: $Y = -\log(U_2)/\mathsf{x}$ for independent $U_2$.
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.42\textwidth]{fig_conditional_itm}
+  \caption{100 samples from $f(x,y) = xe^{-x(y+1)}$ via conditional ITM.
+    The strong positive correlation arises because, for large $X$, the
+    conditional $\mathrm{Exp}(X)$ distribution concentrates near $Y = 0$.}
+\end{figure}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{3.9.2 Bivariate Copulas and Sklar's Theorem}
+
+A fundamental limitation of specifying a joint distribution by its density is
+that the dependence structure and the marginal distributions are intertwined.
+\emph{Copulas} allow us to separate them: a copula encodes only the dependence
+structure, independently of the marginal distributions.
+
+\begin{block}{Definition --- Bivariate Copula}
+  A \textbf{copula} $C: [0,1]^2 \to [0,1]$ is any bivariate c.d.f.\ with
+  uniform $\UU[0,1)$ marginal distributions.  Formally:
+  \begin{enumerate}[(a)]
+    \item $C(u,0) = C(0,v) = 0$ and $C(u,1) = u$, $C(1,v) = v$.
+    \item $C$ is 2-increasing: for $u_1 \le u_2$, $v_1 \le v_2$,
+          $C(u_2,v_2) - C(u_1,v_2) - C(u_2,v_1) + C(u_1,v_1) \ge 0$.
+  \end{enumerate}
+\end{block}
+
+\begin{block}{Theorem 3.9.2 --- Sklar's Theorem}
+  For any joint c.d.f.\ $F_{X,Y}(t_1,t_2)$ with marginals $F_X$ and $F_Y$,
+  there exists a copula $C$ such that
+  \[
+    F_{X,Y}(t_1,t_2) = C(F_X(t_1),\,F_Y(t_2)).
+  \]
+  If $F_X$ and $F_Y$ are continuous, $C$ is \emph{unique}.
+  The joint density factors as
+  \[
+    f_{X,Y}(t_1,t_2) = f_X(t_1)\,f_Y(t_2)\,c(F_X(t_1),F_Y(t_2)),
+  \]
+  where $c(u_1,u_2) = \partial^2 C(u_1,u_2)/\partial u_1 \partial u_2$
+  is the \textbf{copula density}.
+\end{block}
+
+Sklar's theorem is powerful because it says we can \emph{choose} any marginals
+$F_X$, $F_Y$ and any copula $C$ independently, and the result is always a valid
+joint distribution.
+
+\framebreak
+
+\begin{block}{Fr\'{e}chet-Hoeffding Bounds (Theorem 3.9.6)}
+  For any bivariate c.d.f.\ $F$ with marginals $F_X = F_Y = F$:
+  \[
+    \max(F(x) + F(y) - 1, 0) \;\le\; F(x,y) \;\le\; \min(F(x),F(y)).
+  \]
+  The three extremal copulas are:
+  \begin{itemize}
+    \item \textbf{Upper bound} $C_U(u_1,u_2) = \min(u_1,u_2)$: perfect positive
+          dependence, $V_1 = V_2 = U$.
+    \item \textbf{Lower bound} $C_L(u_1,u_2) = \max(0,u_1+u_2-1)$: perfect negative
+          dependence, $V_1 = U$, $V_2 = 1 - U$.
+    \item \textbf{Independence} $C_I(u_1,u_2) = u_1 u_2$: $V_1,V_2$ independent.
+  \end{itemize}
+\end{block}
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.72\textwidth]{fig_copulas}
+  \caption{1\,000 samples from the Fr\'{e}chet upper copula (left), the independence
+    copula (centre), and the Gaussian copula with $\rho=0.8$ (right).}
+\end{figure}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{3.9.3 Classical Copulas and Their Simulation}
+
+\begin{block}{Gaussian (Normal) Copula}
+  Let $\Phi_\rho$ be the bivariate normal c.d.f.\ with standard marginals and
+  correlation $\rho \in (-1,1)$.  The Gaussian copula is
+  \[
+    C_\rho(u_1,u_2) = \Phi_\rho(\Phi^{-1}(u_1),\Phi^{-1}(u_2)).
+  \]
+  \textbf{Simulation:}
+  \begin{enumerate}
+    \item Generate $(X,Y) \sim \NN(\mathbf{0}, \boldsymbol{\Sigma})$ with
+          $\boldsymbol{\Sigma} = \bigl(\begin{smallmatrix}1&\rho\\\rho&1\end{smallmatrix}\bigr)$.
+    \item Set $(V_1,V_2) = (\Phi(X),\Phi(Y))$.
+  \end{enumerate}
+  As $\rho \to 0$: $C_\rho \to C_I$; as $\rho \to 1$: $C_\rho \to C_U$;
+  as $\rho \to -1$: $C_\rho \to C_L$.
+\end{block}
+
+\textbf{Transforming copula samples to arbitrary marginals.}
+Given $(V_1,V_2)$ from copula $C$, transform to any marginals $F_X$, $F_Y$ via:
+$X' = F_X^{\leftarrow}(V_1)$ and $Y' = F_Y^{\leftarrow}(V_2)$.
+
+\textbf{Example 3.9.10.}  Target: $X' \sim \mathrm{Exp}(1)$, $Y' \sim \mathrm{Par}(1)$,
+with Gaussian copula at $\rho = 0.8$.
+\begin{enumerate}
+  \item Sample $(V_1,V_2)$ from $C_{0.8}$ (Gaussian copula).
+  \item $X' = F_{\mathrm{Exp}}^{\leftarrow}(V_1) = -\log(1-V_1)$.
+  \item $Y' = F_{\mathrm{Par}}^{\leftarrow}(V_2) = \frac{1}{1-V_2} - 1$.
+\end{enumerate}
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.60\textwidth]{fig_normal_copula}
+  \caption{Gaussian copula samples: $\rho = 0.9$ (strong positive dependence,
+    left) vs.\ $\rho = -0.8$ (strong negative dependence, right).}
+\end{figure}
+
+\framebreak
+
+\begin{alertblock}{Key Insight: Copulas and Dependence}
+  Copulas provide a \emph{modular} framework:
+  \begin{itemize}
+    \item Choose marginals (e.g.\ Exp and Pareto) to match univariate data.
+    \item Choose copula (e.g.\ Gaussian with estimated $\rho$) to match
+          observed dependence.
+    \item Sklar's theorem guarantees the result is always a valid
+          joint distribution.
+  \end{itemize}
+  This is widely used in finance (credit risk modelling), insurance (aggregate
+  loss modelling), and environmental science (extreme co-occurrence analysis).
+\end{alertblock}
+
 \end{frame}
 
 \begin{frame}[fragile]{3.9 Python: Gaussian Copula}
-  \begin{lstlisting}[style=python, caption={Gaussian copula with specified marginals}]
+\begin{lstlisting}[style=python, caption={Gaussian copula simulation with arbitrary marginals}]
 import numpy as np
 from scipy.stats import norm
 
 rng = np.random.default_rng(42)
 
 def sample_gaussian_copula(rho, n, rng):
-    """Sample (V1, V2) from Gaussian copula with correlation rho."""
-    Sigma = np.array([[1, rho], [rho, 1]])
-    A = np.linalg.cholesky(Sigma)
+    """
+    Sample (V1, V2) from the Gaussian copula with correlation rho.
+    Steps: (1) generate bivariate normal, (2) apply Phi to each margin.
+    """
+    Sigma = np.array([[1.0, rho], [rho, 1.0]])
+    A = np.linalg.cholesky(Sigma)  # Cholesky: Sigma = A @ A.T
     Z = rng.standard_normal((2, n))
-    W = A @ Z
-    return norm.cdf(W[0]), norm.cdf(W[1])
+    W = A @ Z                       # bivariate normal with corr rho
+    return norm.cdf(W[0]), norm.cdf(W[1])   # uniform marginals
 
-def to_exp_pareto(V1, V2):
-    """Transform copula samples to Exp(1) x Pareto(1) marginals."""
-    X = -np.log(1 - V1)           # F_Exp^{-1}(V1)
-    Y = 1.0 / (1 - V2) - 1        # F_Par^{-1}(V2) for Par(alpha=1)
+def transform_marginals(V1, V2):
+    """Transform copula samples to Exp(1) x Par(1) marginals."""
+    X = -np.log(1 - V1)        # F_Exp^{-1}(V1)
+    Y = 1.0 / (1 - V2) - 1    # F_Par^{-1}(V2), Par(alpha=1)
     return X, Y
 
-V1, V2 = sample_gaussian_copula(rho=0.8, n=1000, rng=rng)
-X, Y   = to_exp_pareto(V1, V2)
-print(f"Corr(X,Y) = {np.corrcoef(X, Y)[0,1]:.3f}")
-  \end{lstlisting}
+# Test at rho = 0.8
+V1, V2 = sample_gaussian_copula(rho=0.8, n=5000, rng=rng)
+print(f"Copula: Corr(V1,V2) = {np.corrcoef(V1,V2)[0,1]:.3f}  (target rho=0.8)")
+
+X, Y = transform_marginals(V1, V2)
+print(f"Exp(1) mean: {X.mean():.3f}  (theory: 1.0)")
+# Par(1) has infinite mean, but large-sample median = 1
+print(f"Par(1) median: {np.median(Y):.3f}  (theory: 1.0)")
+\end{lstlisting}
 \end{frame}
 
 % ============================================================
 \section{3.10 Heaviness of Distributions}
 % ============================================================
 
-\begin{frame}[allowframebreaks]{3.10 Can We See the Heaviness of a Distribution?}
-  \textbf{Setting:} Compare i.i.d.\ sequences $X_1,X_2,\ldots$ with the same mean ($=1$)
-  but different tails.  Look at:
-  \begin{itemize}
-    \item Running average $S_n/n = \frac{1}{n}\sum_{i=1}^n X_i$,
-    \item Individual time series $(X_i)$.
-  \end{itemize}
+\begin{frame}[allowframebreaks]{3.10 Can We See the ``Heaviness'' of a Distribution?}
 
-  \begin{columns}
-    \column{0.48\textwidth}
-    \begin{block}{Light vs Heavy Tails}
-      \begin{tabular}{lll}
-        \toprule
-        Distribution & Mean & Tail \\
-        \midrule
-        $\NN(1,1)$ & 1 & Light \\
-        $\mathrm{Exp}(1)$ & 1 & Light \\
-        $\mathrm{LN}(-1/2,1)$ & 1 & Heavy \\
-        $\mathrm{W}(1/2,\sqrt{2})$ & 1 & Heavy \\
-        $0.2\cdot\mathrm{Par}(1.2)$ & 1 & Very heavy \\
-        \bottomrule
-      \end{tabular}
-    \end{block}
+We now illustrate the practical consequences of heavy tails through simulation.
+Consider sequences of i.i.d.\ random variables $X_1, X_2, \ldots$ each with
+mean $\EE X_i = 1$ (where finite), but from distributions with different tail
+behaviours.  We plot:
+\begin{itemize}
+  \item The running average $S_n/n = \frac{1}{n}\sum_{i=1}^n X_i$ as $n$ grows.
+  \item The raw time series $(X_i)$ to reveal extreme spikes.
+\end{itemize}
 
-    \column{0.50\textwidth}
-    \includegraphics[width=\textwidth]{fig_heavy_tail}
-  \end{columns}
-
-  \framebreak
-
-  \begin{block}{QQ Plots for Tail Detection}
-    Plot the sample quantiles of $X$ against theoretical quantiles of $\NN(0,1)$:
-    \begin{itemize}
-      \item \textbf{Light-tailed:} points approximately on a straight line.
-      \item \textbf{Heavy-tailed:} upper right (and lower left) bend upward.
-      \item \textbf{Skewed:} asymmetric deviations.
-    \end{itemize}
+\begin{columns}
+  \column{0.50\textwidth}
+  \begin{block}{Distributions Compared (all mean $= 1$)}
+    \begin{tabular}{@{}lll@{}}
+      \toprule
+      Distribution & Tail & Variance \\
+      \midrule
+      $\NN(1,1)$ & Light & 1 \\
+      $\mathrm{Exp}(1)$ & Light & 1 \\
+      $\mathrm{LN}(-1/2,1)$ & Heavy & $e^2 - e \approx 4.67$ \\
+      $\mathrm{W}(1/2,\sqrt{2})$ & Heavy & Finite \\
+      $0.2\cdot\mathrm{Par}(1.2)$ & Very heavy & $\infty$ \\
+      \bottomrule
+    \end{tabular}
   \end{block}
 
-  \begin{figure}
-    \centering
-    \includegraphics[width=0.70\textwidth]{fig_qq_plots}
-    \caption{QQ plots: Normal (left, straight line) vs Pareto(1.5) (right, heavy-tail bend).}
-  \end{figure}
+  \column{0.48\textwidth}
+  \begin{alertblock}{What to Expect}
+    For light-tailed distributions ($\NN$, $\mathrm{Exp}$): running averages
+    converge smoothly to the true mean, with no dramatic spikes.
 
-  \textbf{Key observation:} The Pareto distribution has \emph{infinite variance}
-  for $\alpha\le 2$; this makes $S_n/n$ converge extremely slowly, with large spikes.
+    For $\mathrm{Par}(\alpha)$ with $\alpha \le 2$: variance is
+    \emph{infinite}, so the CLT error $\propto 1/\sqrt{n}$ is not
+    achievable.  Running averages converge very slowly and large outliers
+    cause sudden jumps.
+  \end{alertblock}
+\end{columns}
+
+\framebreak
+
+\begin{figure}
+  \centering
+  \includegraphics[width=\textwidth]{fig_heavy_tail}
+  \caption{(a) Running averages $S_n/n$ for $n=1,\ldots,5000$: Normal and
+    Exp converge quickly; Pareto(1.2) (red) shows persistent fluctuations.
+    (b) Time series of $X_i$: Pareto(1.2) displays rare but enormous spikes
+    that dominate the sum.}
+\end{figure}
+
+\framebreak
+
+\begin{block}{QQ Plots for Tail Detection}
+  A \emph{quantile-quantile} (QQ) plot compares the sample quantiles of data
+  against the theoretical quantiles of a reference distribution (usually $\NN(0,1)$).
+  \begin{itemize}
+    \item \textbf{Light-tailed data:} points lie approximately on a straight
+          line through the origin.
+    \item \textbf{Heavy-tailed data:} the upper-right and lower-left corners
+          curve away from the line (the sample has more extreme observations
+          than a normal distribution would predict).
+    \item \textbf{Skewed data:} asymmetric deviation (only one tail curves
+          away).
+  \end{itemize}
+\end{block}
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.68\textwidth]{fig_qq_plots}
+  \caption{QQ plots: $\NN(0,1)$ data (left, straight line) vs.\ $\mathrm{Par}(1.5)$
+    data (right, pronounced upward curve in the right tail indicating heavy-tailedness).}
+\end{figure}
+
+\begin{alertblock}{Key Takeaway}
+  Heavy-tailedness is \emph{observable}: QQ plots and the rate of convergence
+  of running averages both reveal it.  In Monte Carlo estimation, using a
+  heavy-tailed estimator (without variance reduction) can make the method
+  unreliable for any practical sample size.
+\end{alertblock}
+
 \end{frame}
 
 % ============================================================
 \section{Summary}
 % ============================================================
 
-\begin{frame}[allowframebreaks]{Chapter 3 --- Summary of Methods}
-  \begin{block}{Method Overview}
-    \begin{tabular}{@{}lll@{}}
+\begin{frame}[allowframebreaks]{Chapter 3 --- Summary of All Methods}
+
+  \begin{block}{Complete Method Reference Table}
+    \begin{tabular}{@{}llp{4.8cm}@{}}
       \toprule
-      Method & When to use & Key idea \\
+      Method & Algorithm & Key idea \\
       \midrule
-      ITM (Alg.\ 6) & $F^{\leftarrow}$ available & $X = F^{\leftarrow}(U)$ \\
-      ITM-d (Alg.\ 9) & Discrete, finite mean & Sequential accumulation \\
-      ITR (Alg.\ 10) & $(a,b,0)$ class PMFs & Ratio recursion \\
-      Geo.\ closed form & $\mathrm{Geo}(p)$ & $X=\lfloor\log U/\log p\rfloor$ \\
-      DB (Alg.\ 11) & Binomial $B(n,p)$ & Sum of Bernoullis \\
-      Erlang & $\mathrm{Erl}(n,\lambda)$ & Product of Uniforms \\
-      DP (Alg.\ 12) & Poisson $\mathrm{Poi}(\lambda)$ & Renewal process \\
-      AR-d (Alg.\ 14) & Discrete, $p_j\le cq_j$ & Accept with prob $p_j/(cq_j)$ \\
-      AR-c (Alg.\ 16) & Continuous, $f\le cg$ & Geometric area under curve \\
-      Composition & Mixture $f=\sum p_j g_j$ & Sample component, then value \\
-      Box-Muller (Alg.\ 20) & Normal pairs & Polar transform \\
-      Marsaglia-Bray (Alg.\ 21) & Normal pairs & Polar in 2D ball \\
-      Cholesky & Multivariate normal & $\mathbf{X}=\mathbf{A}\mathbf{Z}+\boldsymbol{\mu}$ \\
-      Normal trick & $\UU(S_{d-1})$ & Normalize $\NN(0,\mathbf{Id})$ \\
-      Cond.\ ITM & Joint densities & Marginal then conditional \\
-      Copula & Flexible dependence & Sklar's theorem \\
+      ITM & 6 & $X = F^{\leftarrow}(U)$; works when $F^{\leftarrow}$ is cheap \\
+      ITM-Exp & 7 & $X = -\log(U)/\lambda$ \\
+      ITM-Par & 8 & $X = U^{-1/\alpha} - 1$ \\
+      Geometric & closed & $X = \lfloor\log U/\log p\rfloor$ \\
+      ITM-d & 9 & Sequential accumulation; $O(\EE Y)$ \\
+      ITR & 10 & Ratio recursion $c_{k+1} = p_{k+1}/p_k$ \\
+      DB (Binomial) & 11 & Sum $n$ Bernoulli trials; $O(n)$ \\
+      Erlang & -- & $X = -\log(\prod U_i)/\lambda$ \\
+      DP (Poisson) & 12 & Renewal process; $O(\lambda)$ \\
+      AR-d & 14 & $p_j \le cq_j$; accept with prob $p_j/(cq_j)$ \\
+      AR-c & 16 & $f \le cg$; accept with prob $f(Y)/(cg(Y))$ \\
+      AR-N (Normal) & 17 & Exp(1) proposal; $c = \sqrt{2e/\pi}$ \\
+      Composition & -- & Sample component $J$, then draw from $g_J$ \\
+      Box-Muller & 20 & Polar transform; produces 2 normals \\
+      Marsaglia-Bray & 21 & Polar in disc; avoids trig \\
+      ITM normal & 22 & BSM algorithm for $\Phi^{-1}$; vectorizable \\
+      Cholesky & -- & $\mathbf{X} = \mathbf{A}\mathbf{Z} + \boldsymbol{\mu}$ \\
+      Normal trick & -- & $\mathbf{X} = \mathbf{Z}/\|\mathbf{Z}\| \sim \UU(S_{d-1})$ \\
+      $d$-ball & -- & $\mathbf{X} = U^{1/d}\mathbf{Z}/\|\mathbf{Z}\|$ \\
+      Ellipsoid & 23 & Linear transform from $\UU(B_d)$ \\
+      Cond.\ ITM & -- & Marginal first, then conditional \\
+      Gaussian copula & -- & Bivariate normal $\to$ $\Phi$; arbitrary marginals \\
       \bottomrule
     \end{tabular}
   \end{block}
 
-  \framebreak
+\framebreak
 
   \begin{columns}
-    \column{0.48\textwidth}
+    \column{0.50\textwidth}
     \begin{block}{Key Formulas}
       \begin{align*}
-        \text{ITM: } & X = F^{\leftarrow}(U) \\[4pt]
-        \text{Exp: } & X = -\tfrac{1}{\lambda}\log U \\[4pt]
-        \text{Pareto: } & X = U^{-1/\alpha} - 1 \\[4pt]
-        \text{Geo: } & X = \lfloor \tfrac{\log U}{\log p}\rfloor \\[4pt]
-        \text{Erlang: } & X = -\tfrac{\log(\prod U_i)}{\lambda} \\[4pt]
-        \text{Box-Muller: }& Z = \sqrt{-2\log U_1}\cos(2\pi U_2) \\[4pt]
-        \text{Multivariate: }& \mathbf{X} = \mathbf{A}\mathbf{Z}+\boldsymbol{\mu}
+        \text{ITM: } & X = F^{\leftarrow}(U) \\[3pt]
+        \text{Exp: } & X = -\tfrac{1}{\lambda}\log U \\[3pt]
+        \text{Par: } & X = U^{-1/\alpha} - 1 \\[3pt]
+        \text{Geo: } & X = \lfloor \tfrac{\log U}{\log p}\rfloor \\[3pt]
+        \text{Erlang: } & X = -\tfrac{\log(\prod U_i)}{\lambda} \\[3pt]
+        \text{BM: } & Z = \sqrt{-2\log U_1}\cos(2\pi U_2) \\[3pt]
+        \text{MVN: } & \mathbf{X} = \mathbf{A}\mathbf{Z} + \boldsymbol{\mu} \\[3pt]
+        \text{Sphere: } & \mathbf{X} = \mathbf{Z}/\|\mathbf{Z}\| \\[3pt]
+        \text{Ball: } & \mathbf{X} = U^{1/d}\mathbf{Z}/\|\mathbf{Z}\|
       \end{align*}
     \end{block}
 
-    \column{0.50\textwidth}
+    \column{0.48\textwidth}
     \begin{block}{Design Principles}
       \begin{itemize}
-        \item AR method: choose $c = \sup f(x)/g(x)$ as small as possible.
-        \item Efficiency $= 1/c$ (acceptance probability).
-        \item Composition: excellent when $f$ is a finite mixture.
-        \item Copulas: separate marginals from dependence structure (Sklar).
-        \item Sphere sampling: normalize i.i.d.\ normals (exact, no rejection).
-        \item QQ plots: visual tool to detect tail behaviour.
+        \item AR method: choose $c = \sup f(x)/g(x)$ as small as possible
+              (minimum $c$ maximises acceptance rate $= 1/c$).
+        \item Composition: excellent when $f$ is a finite or infinite mixture
+              of easy-to-sample components.
+        \item Normalising constants: not needed in AR-c (work with $f^*$
+              and $g^*$ directly).
+        \item Copulas: Sklar's theorem separates dependence from marginals;
+              change one without changing the other.
+        \item High-dimensional sphere: always use the Normal trick;
+              rejection from cube is exponentially inefficient.
+        \item QQ plots: visual diagnostic for tail heaviness.
       \end{itemize}
     \end{block}
   \end{columns}
+
 \end{frame}
 
 % ============================================================
@@ -1251,17 +1740,21 @@ print(f"Corr(X,Y) = {np.corrcoef(X, Y)[0,1]:.3f}")
 \begin{frame}{3.11 Bibliographical Notes}
   \begin{itemize}
     \item \textbf{Devroye (1986)} --- \textit{Non-Uniform Random Variate Generation}.
-          Comprehensive reference for all methods in this chapter.
+          The definitive reference for all methods in this chapter, with
+          detailed proofs and efficiency analyses.
     \item \textbf{Knuth (1997)} --- \textit{The Art of Computer Programming, Vol.\ 2}.
-          Classic treatment of the inverse transform method.
-    \item \textbf{Asmussen \& Glynn (2007)} --- Fr?chet-Hoeffding bounds and copulas.
-    \item \textbf{Box \& Muller (1958)} --- Original Box-Muller algorithm paper.
-    \item \textbf{Marsaglia \& Bray (1964)} --- Polar method (Marsaglia-Bray).
-    \item \textbf{Glasserman (2004)} --- ITM for normal r.v.s and Beasley-Springer-Moro.
-    \item \textbf{Madras (2002)} --- AR-c for Gamma distribution.
-    \item \textbf{Wichura (1988), AS241} --- Algorithm behind \texttt{scipy.stats.norm.ppf}.
+          Classical treatment of the inverse transform and discrete methods.
+    \item \textbf{Glasserman (2004)} --- \textit{Monte Carlo Methods in Financial Engineering}.
+          Covers ITM for normal variables and the Beasley-Springer-Moro algorithm.
+    \item \textbf{Asmussen \& Glynn (2007)} --- Simulation Algorithms for Stochastic Systems.
+          Fr\'{e}chet-Hoeffding bounds and copulas.
+    \item \textbf{Box \& Muller (1958)} --- Original paper introducing Algorithm 20.
+    \item \textbf{Marsaglia \& Bray (1964)} --- Original paper introducing Algorithm 21.
+    \item \textbf{Madras (2002)} --- AR-c method for Gamma distributions.
+    \item \textbf{Wichura (1988), AS241} --- Algorithm underlying \texttt{scipy.stats.norm.ppf}.
     \item \textbf{Embrechts \& Hofert} --- Properties of copulas and generalized inverses.
-    \item \textbf{Dagpunar (2007)} --- Composition method, Gamma sampling.
+    \item \textbf{Dagpunar (2007)} --- Composition method, atomic physics example (Dagpunar [28]).
+    \item \textbf{Ross (2006)} --- Elementary introduction to simulation methods.
   \end{itemize}
 \end{frame}
 

@@ -1,0 +1,1239 @@
+%% chapter08_slides.tex  –  Chapter 8: Stochastic Methods
+%% Algorithms for Optimization, 2nd ed. 2026 – Kochenderfer & Wheeler
+%% Compile: pdflatex -interaction=nonstopmode chapter08_slides.tex  (twice)
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+
+%% ── packages ────────────────────────────────────────────────────────────────
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
+\usepackage{algorithm2e}
+%\usepackage{microtype}
+
+\graphicspath{{figures/}}
+
+%% ── listings style ──────────────────────────────────────────────────────────
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\definecolor{codegreen}{rgb}{0.1,0.45,0.1}
+\definecolor{codekw}{rgb}{0.1,0.1,0.6}
+\lstdefinestyle{pycode}{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codegreen}\itshape,
+  stringstyle=\color{orange!80!black},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt,
+  frame=single,
+  backgroundcolor=\color{codegray},
+  tabsize=4,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+}
+\lstset{style=pycode}
+
+%% ── custom colours ──────────────────────────────────────────────────────────
+\definecolor{myblue}{RGB}{33,102,172}
+\definecolor{myorange}{RGB}{214,96,77}
+\definecolor{mylightblue}{RGB}{171,217,233}
+
+%% ── footline ────────────────────────────────────────────────────────────────
+\setbeamertemplate{footline}[frame number]
+
+%% ── macros ──────────────────────────────────────────────────────────────────
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\bd}{\mathbf{d}}
+\newcommand{\bmu}{\bm{\mu}}
+\newcommand{\bSigma}{\bm{\Sigma}}
+\newcommand{\btheta}{\bm{\theta}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Exp}{\mathbb{E}}
+\newcommand{\calN}{\mathcal{N}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\bLambda}{\bm{\Lambda}}
+
+%%═════════════════════════════════════════════════════════════════════════════
+\title[Ch.~8: Stochastic Methods]{%
+  Chapter 8: Stochastic Methods}
+\subtitle{Algorithms for Optimization, 2\textsuperscript{nd} ed.\ 2026\\
+  Kochenderfer \& Wheeler}
+\author{Lecture Notes}
+\date{2026}
+
+%%═════════════════════════════════════════════════════════════════════════════
+\begin{document}
+
+%% ──────────────────────────────────────────────────────────────────────────
+\begin{frame}
+  \titlepage
+\end{frame}
+
+%% ── TOC ──────────────────────────────────────────────────────────────────
+\begin{frame}{Chapter Outline}
+  \tableofcontents
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{Introduction to Stochastic Methods}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{Why Stochastic Methods?}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Motivation}
+\begin{itemize}
+  \item \textbf{Escape local minima}: deterministic gradient methods can get stuck.
+  \item \textbf{Noisy evaluations}: objective may not be computed exactly (neural network training, simulation-based optimisation).
+  \item \textbf{Randomisation increases coverage} of the design space.
+  \item \textbf{Large-scale models}: zeroth-order methods reduce memory cost when gradients are expensive or unavailable.
+\end{itemize}
+\end{block}
+\begin{block}{Stochastic vs. Deterministic}
+\begin{tabular}{lcc}
+\toprule
+Property & Deterministic & Stochastic \\
+\midrule
+Local minima & stuck & can escape \\
+Reproducibility & yes & no (seed) \\
+Memory & $O(n)$ & $O(1)$--$O(n^2)$ \\
+\bottomrule
+\end{tabular}
+\end{block}
+
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{noisy_descent.pdf}
+\vspace{0.2em}
+{\small Clean vs.\ noisy gradient descent on a quadratic bowl.
+Noise can help escape narrow valleys.}
+\end{columns}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.1 Noisy Descent}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{8.1 Noisy Descent}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\begin{block}{Stochastic Gradient Descent (SGD)}
+Adding stochasticity to gradient descent:
+\[
+  \bx^{(k+1)} \leftarrow \bx^{(k)} - \alpha^{(k)}\,\tilde{\nabla} f\!\left(\bx^{(k)}\right)
+\]
+where $\tilde{\nabla} f$ is the \emph{noisy gradient} with
+\[
+  \tilde{\nabla} f(\bx) = \nabla f(\bx) + \boldsymbol{\epsilon}, \quad
+  \boldsymbol{\epsilon} \sim \calN(\mathbf{0}, \sigma^2 \mathbf{I})
+\]
+\end{block}
+
+\begin{block}{Convergence Conditions (Robbins--Monro)}
+\[
+  \sum_{k=1}^{\infty} \alpha^{(k)} = \infty, \qquad
+  \sum_{k=1}^{\infty} \left(\alpha^{(k)}\right)^2 < \infty
+\]
+\begin{itemize}
+  \item The step must be large enough to reach the minimum.
+  \item The step must shrink fast enough that fluctuations vanish.
+  \item Typical schedule: $\alpha^{(k)} = \alpha^{(1)}/k$
+\end{itemize}
+\end{block}
+
+\column{0.45\textwidth}
+\begin{block}{Why Noise Helps}
+\begin{itemize}
+  \item Flat regions: noise provides a random kick.
+  \item Narrow valleys: escapes with probability $\propto e^{-\Delta/\sigma^2}$.
+  \item Neural-network training: mini-batches provide cheap noisy gradients.
+\end{itemize}
+\end{block}
+\begin{alertblock}{Caveat}
+The gradient estimator must be \textbf{unbiased}:
+\[
+  \Exp[\tilde{\nabla} f(\bx)] = \nabla f(\bx)
+\]
+Otherwise the method converges to the wrong point.
+\end{alertblock}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{8.1 Noisy Descent -- Python Implementation}
+\begin{lstlisting}[caption={Noisy gradient descent (Python/NumPy equivalent)}]
+import numpy as np
+
+def noisy_descent(f, grad_f, x0, alpha=lambda k: 1.0/k,
+                  sigma=0.1, max_iter=1000, tol=1e-5):
+    """
+    f       : objective function  R^n -> R
+    grad_f  : gradient function   R^n -> R^n
+    x0      : initial point
+    alpha   : step-size schedule  k -> float
+    sigma   : noise standard deviation
+    """
+    x = np.array(x0, dtype=float)
+    for k in range(1, max_iter + 1):
+        g     = grad_f(x)
+        noise = np.random.randn(len(x)) * sigma
+        g_hat = g + noise                       # noisy gradient
+        x     = x - alpha(k) * g_hat
+        if np.linalg.norm(alpha(k) * g_hat) < tol:
+            break
+    return x
+
+# Example: minimize f(x) = x1^2 + 2*x2^2  from x0 = [3, 3]
+f      = lambda x: x[0]**2 + 2*x[1]**2
+grad_f = lambda x: np.array([2*x[0], 4*x[1]])
+x_opt  = noisy_descent(f, grad_f, [3.0, 3.0], sigma=0.5)
+print(f"Optimum: {x_opt}")   # approx [0, 0]
+\end{lstlisting}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.2 Mesh Adaptive Direct Search (MADS)}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{8.2 Mesh Adaptive Direct Search (MADS)}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\begin{block}{Key Idea}
+\begin{itemize}
+  \item \textbf{Pattern search} method that uses random directions.
+  \item Generates a \emph{positive spanning set} of directions at each iteration.
+  \item Probes $n+1$ directions from a random lower-triangular matrix \textbf{L}.
+  \item Step size $\alpha$ starts at 1, always a power of 4, $\alpha \le 1$.
+\end{itemize}
+\end{block}
+
+\begin{block}{Positive Spanning Set Construction}
+\begin{enumerate}
+  \item $\delta = \lfloor 1/\sqrt{\alpha} \rfloor$
+  \item Build random lower-triangular $\mathbf{L}$ with diagonal $\pm 1$ and off-diagonal entries in $[-\delta+1, \delta-1]$
+  \item Randomly permute rows and columns $\Rightarrow \mathbf{D}$
+  \item Add extra direction: $\mathbf{d}^{(n+1)} = -\sum_{i=1}^n \mathbf{d}^{(i)}$
+\end{enumerate}
+\smallskip
+Each direction: $\|\mathbf{d}^{(i)}\|_\infty = 1/\sqrt{\alpha}$
+\end{block}
+
+\column{0.47\textwidth}
+\includegraphics[width=\linewidth]{book_mads_spanning.png}
+{\small \textbf{Example 8.1.} Eight positive spanning sets for $\R^2$. Only the lower-triangular generation can produce the first two columns.}
+\end{columns}
+\end{frame}
+
+\begin{frame}{8.2 MADS -- Step-Size Update Rule}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\begin{block}{Algorithm 8.3: MADS Update}
+\begin{enumerate}
+  \item Evaluate $f(\bx^{(k)} + \alpha\mathbf{d})$ for each direction $\mathbf{d}$ in the spanning set.
+  \item If improvement found at $\bx' = \bx + \alpha\mathbf{d}$:
+    \begin{itemize}
+      \item Mark \texttt{improved = True}
+      \item Also probe $\bx'' = \bx + 3\alpha\mathbf{d}$ (opportunistic step)
+      \item Accept the better of $\bx', \bx''$
+    \end{itemize}
+  \item Update step size:
+  \[
+    \alpha^{(k+1)} \leftarrow
+    \begin{cases}
+      \min(1,\,4\alpha^{(k)}) & \text{if improved} \\
+      \alpha^{(k)}/4          & \text{otherwise}
+    \end{cases}
+  \]
+\end{enumerate}
+\end{block}
+
+\begin{block}{Convergence Property}
+Using a power of 4 means the maximum componentwise step size
+$\alpha/\sqrt{\alpha} = \sqrt{\alpha}$ stays on a grid of spacing $2^m$ for integer $m < 1$.
+\end{block}
+
+\column{0.45\textwidth}
+\begin{block}{Properties}
+\begin{itemize}
+  \item \textbf{Convergence guaranteed} when $\alpha \to 0$ (dense patterns).
+  \item \textbf{No gradient required} -- purely zeroth-order.
+  \item \textbf{Opportunistic}: not dynamic-ordering (direction after success is random).
+  \item Practical for \textbf{noisy, black-box} objectives.
+\end{itemize}
+\end{block}
+
+\includegraphics[width=\linewidth]{mads_search.pdf}
+{\small MADS trajectory on a noisy quadratic.}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{8.2 MADS -- Python Implementation}
+\begin{lstlisting}[caption={MADS: random positive spanning set + search (Algorithms 8.2 \& 8.3)}]
+import numpy as np
+
+def rand_positive_spanning_set(alpha, n):
+    """Algorithm 8.2: random positive spanning set of n+1 directions."""
+    delta = int(round(1 / np.sqrt(alpha)))
+    L = np.diag(np.random.choice([-1, 1], n))       # diagonal +/-1
+    for i in range(1, n):
+        for j in range(i):
+            L[i, j] = np.random.randint(-delta+1, delta)  # subdiagonal
+    perm_r = np.random.permutation(n)
+    perm_c = np.random.permutation(n)
+    D = L[perm_r, :][:, perm_c]
+    extra = -D.sum(axis=1, keepdims=True)            # -(sum of columns)
+    return np.hstack([D, extra]).T                   # shape (n+1, n)
+
+def mesh_adaptive_direct_search(f, x, eps=1e-4, alpha_init=1.0):
+    """Algorithm 8.3: MADS."""
+    alpha, y, n = alpha_init, f(x), len(x)
+    while alpha > eps:
+        improved = False
+        for d in rand_positive_spanning_set(alpha, n):
+            x_new = x + alpha * d;  y_new = f(x_new)
+            if y_new < y:
+                x, y, improved = x_new, y_new, True
+                x2 = x + 3*alpha*d;  y2 = f(x2)   # opportunistic probe
+                if y2 < y:  x, y = x2, y2
+                break
+        alpha = min(4*alpha, 1.0) if improved else alpha / 4
+    return x
+
+# Usage
+f = lambda x: (x[0]-1)**2 + 2*(x[1]+1)**2
+print(mesh_adaptive_direct_search(f, np.array([3.0, 3.0])))  # -> [1, -1]
+\end{lstlisting}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.3 Memory-Efficient Zeroth-Order Optimization (MeZO)}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{8.3 Memory-Efficient Zeroth-Order Optimization}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Motivation}
+\begin{itemize}
+  \item Optimising LLMs with \textbf{billions of parameters}.
+  \item Backpropagation requires storing all activations: $O(n)$ memory for gradients alone.
+  \item \textbf{MeZO} (Zhang et al., 2022): estimate gradient using \emph{two} forward passes with a PRNG seed.
+\end{itemize}
+\end{block}
+
+\begin{block}{MeZO Gradient Estimator}
+Sample $\mathbf{z} \sim \calN(\mathbf{0}, \mathbf{I})$ using a \textbf{fixed seed} $s$:
+\[
+  \hat{g} = \frac{f(\bx + \epsilon\mathbf{z}) - f(\bx - \epsilon\mathbf{z})}{2\epsilon}\,\mathbf{z}
+\]
+Update: $\bx \leftarrow \bx - \alpha \hat{g}$
+
+\medskip
+Re-generate $\mathbf{z}$ using the same seed $s$ to apply the update \emph{in-place} without storing $\mathbf{z}$ explicitly.
+\end{block}
+
+\column{0.42\textwidth}
+\begin{block}{Key Properties}
+\begin{itemize}
+  \item \textbf{Memory}: $O(1)$ extra (two scalar function evaluations).
+  \item \textbf{Unbiased}: $\Exp[\hat{g}] = \nabla f(\bx)$ (spherical symmetry).
+  \item \textbf{No backward pass} required.
+  \item Suitable for \textbf{fine-tuning} large frozen models.
+\end{itemize}
+\end{block}
+
+\begin{block}{Numerical Example (1D)}
+$f(x) = x^2$, $x_0 = 3$, $\epsilon = 0.3$, $\alpha = 0.1$:
+\[
+  \hat{g} = \frac{(3+0.3z)^2 - (3-0.3z)^2}{0.6}\,z = \frac{3.6\cdot 0.3z^2}{0.6}\cdot\frac{1}{z}
+\]
+For $z=1$: $\hat{g} = 6.0$ (true grad $= 6$). \checkmark
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{8.3 MeZO -- Python Implementation}
+\begin{lstlisting}[caption={MeZO: memory-efficient zeroth-order optimisation (Algorithm 8.4)}]
+import numpy as np
+
+def mezo_step(f, x, eps=1e-3, alpha=1e-3, seed=None):
+    """
+    One MeZO step. Re-uses PRNG seed to avoid storing z.
+    f    : objective (x -> scalar)
+    x    : current parameters (modified in place)
+    eps  : smoothing radius
+    alpha: learning rate
+    """
+    rng = np.random.default_rng(seed)
+    z = rng.standard_normal(x.shape)          # random direction
+    # Two function evaluations (forward passes only)
+    f_plus  = f(x + eps * z)
+    f_minus = f(x - eps * z)
+    grad_est = (f_plus - f_minus) / (2 * eps)  # scalar
+    # Re-generate same z using same seed for in-place update
+    rng2 = np.random.default_rng(seed)
+    z2   = rng2.standard_normal(x.shape)
+    x -= alpha * grad_est * z2                 # O(1) extra memory
+    return x
+
+def mezo_optimize(f, x0, n_iter=500, eps=1e-3, alpha=1e-3):
+    x = np.array(x0, dtype=float)
+    for k in range(n_iter):
+        x = mezo_step(f, x, eps=eps, alpha=alpha, seed=k)
+    return x
+
+# Fine-tuning demo on a simple quadratic
+f_quad = lambda x: np.sum((x - np.array([1.0, 2.0]))**2)
+x_opt  = mezo_optimize(f_quad, [5.0, 5.0], n_iter=2000, alpha=0.05)
+print(f"Solution: {x_opt}")   # approaches [1, 2]
+\end{lstlisting}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.4 Simulated Annealing}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{8.4 Simulated Annealing -- Core Idea}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\begin{block}{Physical Analogy}
+Inspired by the cooling of metals in metallurgy:
+\begin{itemize}
+  \item High temperature $\Rightarrow$ high randomness, explores widely.
+  \item Low temperature $\Rightarrow$ low randomness, exploits locally.
+  \item \textbf{Annealing schedule}: gradually reduce temperature $t^{(k)}$.
+\end{itemize}
+\end{block}
+
+\begin{block}{Metropolis Acceptance Criterion}
+At iteration $k$, propose $\bx' \sim T(\bx'|\bx^{(k)})$:
+\[
+  \bx^{(k+1)} \leftarrow
+  \begin{cases}
+    \bx' & \text{if } f(\bx') \le f(\bx^{(k)}) \\
+    \bx' & \text{with prob.}\ e^{-\Delta y / t^{(k)}} \\
+    \bx^{(k)} & \text{otherwise}
+  \end{cases}
+\]
+where $\Delta y = f(\bx') - f(\bx^{(k)})$.
+\end{block}
+
+\begin{alertblock}{Key insight}
+SA \textbf{accepts worse solutions} with small probability,
+proportional to how much worse they are.
+\end{alertblock}
+
+\column{0.45\textwidth}
+\includegraphics[width=\linewidth]{sa_acceptance.pdf}
+{\small Left: acceptance probability vs.\ $\Delta y$ for various temperatures.
+Right: three standard cooling schedules.}
+\end{columns}
+\end{frame}
+
+\begin{frame}{8.4 Simulated Annealing -- Cooling Schedules}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Standard Cooling Schedules}
+\begin{tabular}{lll}
+\toprule
+Name & Schedule & Convergence \\
+\midrule
+Boltzmann & $t^{(k)} = t^{(1)} / \ln(k)$ & Slow, guaranteed \\
+Cauchy    & $t^{(k)} = t^{(1)} / k$      & Fast, not guaranteed \\
+Exponential & $t^{(k)} = t^{(1)}\gamma^k$ & Practical \\
+\bottomrule
+\end{tabular}
+\end{block}
+
+\begin{block}{Boltzmann Annealing}
+\begin{itemize}
+  \item Uses Gaussian transition: $\bx' = \bx + t^{(k)}\calN(\mathbf{0},\mathbf{I})$
+  \item Converges to global minimum \emph{asymptotically}.
+  \item Requires $t^{(1)}/\ln(k)$ cooling $\Rightarrow$ very slow in practice.
+\end{itemize}
+\end{block}
+
+\begin{block}{Fast Simulated Annealing (Cauchy)}
+\begin{itemize}
+  \item Cauchy/Lorentz transition distribution.
+  \item Heavier tails allow larger jumps.
+  \item Schedule: $t^{(k)} = t^{(1)}/k$ still achieves global convergence under conditions.
+\end{itemize}
+\end{block}
+
+\column{0.42\textwidth}
+\begin{block}{Numerical Example}
+$t^{(1)}=10$, Exponential $\gamma=0.95$:
+\begin{center}
+\begin{tabular}{rr}
+\toprule
+$k$ & $t^{(k)}$ \\
+\midrule
+1   & 10.00 \\
+10  & 5.99  \\
+50  & 0.769 \\
+100 & 0.059 \\
+200 & 0.00035 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{block}
+\begin{block}{Acceptance probability at $t=1$}
+\[
+  P(\Delta y = 1) = e^{-1/1} \approx 0.368
+\]
+\[
+  P(\Delta y = 5) = e^{-5/1} \approx 0.007
+\]
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{8.4 Simulated Annealing -- Python Implementation}
+\begin{lstlisting}[caption={Simulated annealing (Algorithm 8.6)}]
+import numpy as np
+
+def simulated_annealing(f, x0, t_init=10.0, t_schedule='boltzmann',
+                        sigma=1.0, n_iter=1000):
+    """
+    f          : objective function
+    x0         : starting point
+    t_init     : initial temperature
+    t_schedule : 'boltzmann' | 'cauchy' | 'exponential'
+    sigma      : transition distribution std. dev.
+    """
+    x = np.array(x0, dtype=float)
+    y = f(x)
+    best_x, best_y = x.copy(), y
+    gamma = 0.95  # for exponential schedule
+
+    for k in range(1, n_iter + 1):
+        # Temperature schedule
+        if t_schedule == 'boltzmann':
+            t = t_init / np.log(k + 1)
+        elif t_schedule == 'cauchy':
+            t = t_init / k
+        else:  # exponential
+            t = t_init * gamma**k
+
+        # Propose new point (Gaussian transition)
+        x_new = x + np.random.randn(len(x)) * sigma
+        y_new = f(x_new)
+        delta = y_new - y
+
+        # Metropolis acceptance
+        if delta < 0 or np.random.rand() < np.exp(-delta / max(t, 1e-12)):
+            x, y = x_new, y_new
+            if y < best_y:
+                best_x, best_y = x.copy(), y
+
+    return best_x
+
+# Minimize Ackley (many local minima)
+def ackley(x, a=20, b=0.2, c=2*np.pi):
+    n = len(x)
+    return (-a*np.exp(-b*np.sqrt(np.sum(x**2)/n))
+            - np.exp(np.sum(np.cos(c*x))/n) + a + np.e)
+
+x_opt = simulated_annealing(ackley, [15.0, 15.0], sigma=5.0, n_iter=5000)
+print(f"SA result: {x_opt}, f={ackley(x_opt):.4f}")  # near [0,0]
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{8.4 SA -- Effect of Temperature and Variance (Example 8.2)}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\includegraphics[width=\linewidth]{sa_ackley.pdf}
+\column{0.49\textwidth}
+\begin{block}{Key Observations}
+\begin{itemize}
+  \item \textbf{Spread} of the transition distribution ($\sigma$) has the greatest impact on performance on Ackley's function.
+  \item Small $\sigma$ ($=1$): can't jump between distant local minima.
+  \item Large $\sigma$ ($=25$): explores broadly but converges slowly.
+  \item Optimal $\sigma$ ($\approx 5$) balances exploration and exploitation.
+  \item Temperature schedule has secondary effect here.
+\end{itemize}
+\end{block}
+\begin{block}{Takeaway}
+For functions with widely-separated local minima, use a transition distribution with \textbf{large spread}.
+The temperature schedule controls \emph{when} to stop accepting bad moves.
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}{8.4 Adaptive Simulated Annealing (Algorithm 8.7)}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Adaptive SA Idea (Ingber, 1989)}
+\begin{itemize}
+  \item Each coordinate $i$ has its own step vector $v_i$ and temperature.
+  \item The step vector is adapted so that the acceptance rate stays near a target.
+  \item \textbf{Procedure}:
+    \begin{enumerate}
+      \item Perform a cycle of $n_s$ random moves, one coordinate at a time.
+      \item Adjust $v_i$ to target 50\% acceptance in each direction.
+      \item Repeat $n_t$ temperature-reduction cycles.
+      \item When no adjustment needed for $n_\epsilon$ cycles, add point to optimum list.
+    \end{enumerate}
+\end{itemize}
+\end{block}
+
+\begin{block}{Step-Size Update}
+\[
+  v_i \leftarrow
+  \begin{cases}
+    v_i\left(1 + c_i\frac{A_i/n_s - 0.6}{0.4}\right)
+      & \text{if } A_i > 0.6\,n_s \\
+    v_i\left(1 + c_i\frac{0.4 - A_i/n_s}{0.4}\right)^{-1}
+      & \text{if } A_i < 0.4\,n_s \\
+    v_i & \text{otherwise}
+  \end{cases}
+\]
+where $A_i$ = number of accepted moves in direction $i$.
+\end{block}
+
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{book_sa_flowchart.png}
+{\small Flowchart of the adaptive simulated annealing algorithm.}
+\end{columns}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.5 Cross-Entropy Method}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{8.5 Cross-Entropy Method}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Idea}
+\begin{itemize}
+  \item Maintain a \textbf{proposal distribution} $P_\theta(\bx)$ over the design space.
+  \item Iteratively fit $P$ to the \textbf{elite samples} -- the $m_\text{elite}$ samples with best objective values.
+  \item Reduces cross-entropy between proposal and the target (distribution concentrated at global optimum).
+\end{itemize}
+\end{block}
+
+\begin{block}{Algorithm 8.8 (CEM)}
+\begin{enumerate}
+  \item Draw $m$ samples: $\bx^{(1)},\ldots,\bx^{(m)} \sim P$
+  \item Rank samples by $f$: best $m_\text{elite}$ become elite set $\mathcal{E}$
+  \item Update $P \leftarrow \text{fit}(\text{type}(P),\ \mathcal{E})$
+  \item Repeat until convergence
+\end{enumerate}
+\end{block}
+
+\begin{block}{MLE Update for $\calN(\bmu, \bSigma)$}
+\[
+  \bmu^{(k+1)} = \frac{1}{m_e}\sum_{i=1}^{m_e}\bx^{(i)}
+\]
+\[
+  \bSigma^{(k+1)} = \frac{1}{m_e}\sum_{i=1}^{m_e}(\bx^{(i)}-\bmu^{(k+1)})(\bx^{(i)}-\bmu^{(k+1)})^\top
+\]
+\end{block}
+
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{book_cem_fig.png}
+{\small CEM on a 1D function. Distribution narrows onto the global minimum over iterations.}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{8.5 Cross-Entropy Method -- Python Implementation}
+\begin{lstlisting}[caption={Cross-entropy method with Gaussian proposal (Algorithm 8.8)}]
+import numpy as np
+
+def cross_entropy_method(f, mu0, Sigma0, k_max=50, m=100, m_elite=10):
+    """
+    f       : objective to MINIMISE  R^n -> R
+    mu0     : initial mean  (n,)
+    Sigma0  : initial covariance  (n,n)
+    m       : total samples per iteration
+    m_elite : number of elite samples used for refitting
+    Returns : estimated minimiser (final mean)
+    """
+    mu    = np.array(mu0, dtype=float)
+    Sigma = np.array(Sigma0, dtype=float)
+
+    for k in range(k_max):
+        # Sample from proposal distribution
+        samples = np.random.multivariate_normal(mu, Sigma, m)  # (m, n)
+        values  = np.array([f(x) for x in samples])
+
+        # Select elite samples (lowest f values)
+        elite_idx = np.argsort(values)[:m_elite]
+        elite     = samples[elite_idx]
+
+        # Refit distribution (MLE for multivariate Gaussian)
+        mu    = elite.mean(axis=0)
+        diff  = elite - mu
+        Sigma = (diff.T @ diff) / m_elite + np.eye(len(mu)) * 1e-6
+
+    return mu
+
+# Minimise Branin function (2D, 3 global minima)
+def branin(x):
+    x1, x2 = x[0], x[1]
+    a,b,c  = 1, 5.1/(4*np.pi**2), 5/np.pi
+    r,s,t  = 6, 10, 1/(8*np.pi)
+    return a*(x2 - b*x1**2 + c*x1 - r)**2 + s*(1-t)*np.cos(x1) + s
+
+mu0    = np.array([0.5, 5.0])
+Sigma0 = np.array([[1.0, 0.2], [0.2, 1.0]])
+x_opt  = cross_entropy_method(branin, mu0, Sigma0)
+print(f"CEM solution: {x_opt}, f = {branin(x_opt):.4f}")
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{8.5 CEM -- Numerical Example (Branin, Example 8.3)}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\begin{block}{Setup}
+\begin{itemize}
+  \item Branin function: 3 global minima at $f^* \approx 0.398$
+  \item Initial: $\bmu = [0.5, 5.0]$, $\bSigma = \mathbf{I}$
+  \item $m=40$ samples, $m_\text{elite}=10$, $k_\text{max}=10$
+\end{itemize}
+\end{block}
+\begin{block}{Convergence}
+\begin{center}
+\begin{tabular}{rccr}
+\toprule
+Iter & $\mu_1$ & $\mu_2$ & $f(\bmu)$ \\
+\midrule
+0    & 0.50  & 5.00  & 51.8 \\
+2    & -0.12 & 4.21  & 12.3 \\
+4    & -2.1  & 12.1  &  3.4 \\
+6    & -3.1  & 12.3  &  0.9 \\
+8    & -3.14 & 12.27 &  0.40 \\
+10   & -3.14 & 12.27 &  0.398 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{block}
+\begin{alertblock}{Note on Elite Fraction}
+If $m_\text{elite}/m \to 1$: distribution barely changes $\Rightarrow$ slow convergence.
+If $m_\text{elite}/m \to 0$: very noisy update $\Rightarrow$ instability.
+Typical: $m_\text{elite} \approx m/10$.
+\end{alertblock}
+
+\column{0.47\textwidth}
+\includegraphics[width=\linewidth]{cem_evolution.pdf}
+{\small CEM applied to a 1D multi-modal function. The Gaussian proposal (blue shading) narrows onto the global minimum.}
+\end{columns}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.6 Proposal Distribution Descent}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{8.6 Proposal Distribution Descent (PDD)}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Idea}
+Instead of fitting to elite samples (CEM), \textbf{directly differentiate} through the expected objective:
+\[
+  J(\btheta) = \Exp_{x \sim p_\theta}[f(\bx)]
+\]
+Update: $\btheta^{(k+1)} \leftarrow \btheta^{(k)} - \alpha\,\nabla_\theta J(\btheta^{(k)})$
+\end{block}
+
+\begin{block}{Score Function Gradient (REINFORCE)}
+Using $\nabla_\theta \log p = \nabla p / p$:
+\[
+  \nabla_\theta J(\btheta) = \Exp_{x \sim p_\theta}\!\left[f(\bx)\,\nabla_\theta \log p_\theta(\bx)\right]
+\]
+Monte Carlo estimate with $m$ samples:
+\[
+  \nabla_\theta J \approx \frac{1}{m}\sum_{i=1}^m f(\bx^{(i)})\,\nabla_\theta \log p_\theta(\bx^{(i)})
+\]
+\end{block}
+
+\begin{block}{For $\calN(\mu, \nu)$ (1D), score functions}
+\[
+  \nabla_\mu \log \calN = \frac{x-\mu}{\nu}, \quad
+  \nabla_\nu \log \calN = \frac{(x-\mu)^2 - \nu}{2\nu^2}
+\]
+\end{block}
+
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{pdd_illustration.pdf}
+{\small Left: unimodal vs.\ mixture proposal. Right: PDD parameter evolution on a noisy objective.}
+
+\begin{alertblock}{Exercise 8.3 warning}
+When $\mu = x^*$ (at the optimum), the gradient w.r.t.\ variance $\nu$ is \emph{positive}. A fixed step size $\alpha$ can push $\nu$ negative. Use $\nu = e^\eta$ reparameterisation or enforce $\nu > 0$.
+\end{alertblock}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{8.6 PDD -- Python Implementation}
+\begin{lstlisting}[caption={Proposal distribution descent with Gaussian proposal (Algorithm 8.9)}]
+import numpy as np
+
+def proposal_distribution_descent(f, mu0, nu0, alpha=0.1, m=50, n_iter=200):
+    """
+    Minimise E_{x~N(mu,nu)}[f(x)] via score-function gradient.
+    f    : objective R -> R
+    mu0  : initial mean
+    nu0  : initial variance (>0)
+    """
+    mu, log_nu = float(mu0), np.log(float(nu0))  # nu = exp(log_nu) > 0
+
+    for _ in range(n_iter):
+        nu = np.exp(log_nu)
+        xs = np.random.normal(mu, np.sqrt(nu), m)
+        fs = np.array([f(x) for x in xs])
+
+        # Score-function gradients (Alg 8.9 eq 8.16)
+        score_mu = (xs - mu) / nu
+        score_nu = ((xs - mu)**2 - nu) / (2 * nu**2)
+
+        g_mu     = np.mean(fs * score_mu)
+        g_nu     = np.mean(fs * score_nu)
+
+        # Update (reparameterise nu = exp(log_nu) to keep nu > 0)
+        g_log_nu = g_nu * nu             # chain rule
+        mu     -= alpha * g_mu
+        log_nu -= alpha * g_log_nu
+
+    return mu, np.exp(log_nu)
+
+# Multi-modal target: minimize f = sin(3x)*cos(x) + 0.05*x^2
+f_mm = lambda x: np.sin(3*x)*np.cos(x) + 0.05*x**2
+mu_opt, nu_opt = proposal_distribution_descent(f_mm, mu0=0.5, nu0=4.0)
+print(f"PDD: mu*={mu_opt:.3f}, nu*={nu_opt:.4f}, f={f_mm(mu_opt):.4f}")
+\end{lstlisting}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.7 Information-Geometric Optimization (IGO)}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{8.7 Information-Geometric Optimization}
+\begin{columns}[T]
+\column{0.57\textwidth}
+\begin{block}{Motivation: Invariance}
+\begin{itemize}
+  \item Ordinary gradient descent on $\btheta$ is \textbf{not invariant} to reparameterisation.
+  \item \textbf{Natural gradient} uses the \emph{Fisher information matrix} $\mathbf{F}$ to correct for geometry of the statistical manifold:
+\end{itemize}
+\[
+  \tilde{\nabla}_\theta J = \mathbf{F}^{-1}(\btheta)\,\nabla_\theta J(\btheta)
+\]
+\[
+  \mathbf{F}(\btheta) = \Exp_{x\sim p_\theta}\!\left[\nabla_\theta\log p\,(\nabla_\theta\log p)^\top\right]
+\]
+\end{block}
+
+\begin{block}{Natural Gradient for $\calN(\bmu, \bSigma)$}
+Log-density:
+$\log p(\bx|\bmu,\bSigma) = -\tfrac{1}{2}(n\log 2\pi + \log|\bSigma| + (\bx-\bmu)^\top\bSigma^{-1}(\bx-\bmu))$
+
+Natural gradient updates (eqs.\ 8.25--8.26):
+\[
+  \tilde{\nabla}_{\mu} J = \Exp\!\left[f(\bx)(\bx-\bmu)\right]
+\]
+\[
+  \tilde{\nabla}_{\Sigma} J = \tfrac{1}{2}\Exp\!\left[f(\bx)\!\left((\bx-\bmu)(\bx-\bmu)^\top - \bSigma\right)\right]
+\]
+\end{block}
+
+\column{0.40\textwidth}
+\includegraphics[width=\linewidth]{igo_illustration.pdf}
+{\small IGO distributions converging on the Banana (Rosenbrock) function. Fisher information removes scale dependence.}
+
+\begin{block}{Why IGO is Better}
+\begin{itemize}
+  \item Invariant to \textbf{order-preserving transforms} of $f$.
+  \item No tuning of absolute scale needed.
+  \item Uses \textbf{fitness ranking} rather than raw values.
+\end{itemize}
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{8.7 IGO -- Python Implementation (Algorithm 8.10)}
+\begin{lstlisting}[caption={Information-geometric optimisation with multivariate Gaussian}]
+import numpy as np
+
+def information_geometric_optimization(f, mu0, Sigma0, k_max=100, alpha=1.0):
+    """
+    Algorithm 8.10: IGO with multivariate normal.
+    Sample size m = 4 + floor(3*log(n)).
+    Elite fraction: half the samples (ranked weighting).
+    """
+    mu    = np.array(mu0, dtype=float)
+    Sigma = np.array(Sigma0, dtype=float)
+    n     = len(mu)
+
+    m        = 4 + int(3 * np.log(n))         # population size
+    m_elite  = m // 2                          # number of elite samples
+
+    # Log-based weights (eq. 8.29): rank 1 = best
+    ws = np.log(m_elite + 1) - np.log(np.arange(1, m_elite + 1))
+    ws /= ws.sum()                             # normalise
+
+    for _ in range(k_max):
+        # Sample and evaluate
+        xs = np.random.multivariate_normal(mu, Sigma, m)
+        ys = np.array([f(x) for x in xs])
+        order = np.argsort(ys)                 # best to worst
+
+        # Weighted natural gradient updates
+        delta_mu    = np.zeros(n)
+        delta_Sigma = np.zeros((n, n))
+        for i, wi in zip(order[:m_elite], ws):
+            d = xs[i] - mu
+            delta_mu    += wi * d
+            delta_Sigma += wi * (np.outer(d, d) - Sigma)
+
+        mu    += alpha * delta_mu
+        Sigma += alpha * delta_Sigma
+        Sigma  = (Sigma + Sigma.T) / 2        # enforce symmetry
+
+    return mu, Sigma
+
+f_rosen = lambda x: (1-x[0])**2 + 100*(x[1]-x[0]**2)**2
+mu_opt, S_opt = information_geometric_optimization(
+    f_rosen, [0.,0.], np.eye(2)*2, k_max=200)
+print(f"IGO: mu*={mu_opt}, f={f_rosen(mu_opt):.6f}")  # near [1,1]
+\end{lstlisting}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.8 Covariance Matrix Adaptation (CMA-ES)}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{8.8 Covariance Matrix Adaptation Evolution Strategy}
+\begin{columns}[T]
+\column{0.58\textwidth}
+\begin{block}{Extension of IGO}
+CMA-ES (Hansen \& Ostermeier, 2001) extends IGO by separating:
+\begin{itemize}
+  \item $\sigma$ -- overall step size (scale)
+  \item $\mathbf{C}$ -- shape matrix (covariance up to scale)
+\end{itemize}
+\[
+  \bx^{(i)} \sim \calN\!\left(\bmu,\, \sigma^2 \mathbf{C}\right)
+\]
+\end{block}
+
+\begin{block}{Mean Update (same as IGO)}
+\[
+  \bmu' = \bmu + \alpha_\mu\sum_{i=1}^m w_i\!\left(\bx^{[i]} - \bmu\right)
+\]
+where $[i]$ indexes samples ordered best-to-worst and $w_i$ are log weights.
+\end{block}
+
+\begin{block}{Evolution Paths}
+\textbf{$\sigma$-path} (cumulated step):
+\[
+  \mathbf{p}_\sigma^{(k+1)} = (1-\alpha_\sigma)\mathbf{p}_\sigma^{(k)}
+    + \sqrt{\alpha_\sigma(2-\alpha_\sigma)m_\text{eff}}\,\frac{\bmu'-\bmu}{\sigma}
+\]
+\textbf{$C$-path} (cumulated covariance):
+\[
+  \mathbf{p}_c^{(k+1)} = (1-\alpha_c)\mathbf{p}_c^{(k)}
+    + \sqrt{\alpha_c(2-\alpha_c)m_\text{eff}}\,\frac{\bmu'-\bmu}{\sigma}
+\]
+\end{block}
+
+\column{0.39\textwidth}
+\includegraphics[width=\linewidth]{cmaes_evolution.pdf}
+{\small CMA-ES adapts both scale ($\sigma$) and shape ($\mathbf{C}$) to follow the problem geometry.}
+
+\begin{block}{Effective Population Size}
+\[
+  m_\text{eff} = \frac{1}{\sum_{i=1}^m w_i^2}
+\]
+Controls the variance of the weighted mean.
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}{8.8 CMA-ES -- Step Size and Covariance Updates}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Step-Size Control (eq.\ 8.34)}
+\[
+  \sigma^{(k+1)} = \sigma^{(k)} \exp\!\left(\frac{\alpha_\sigma}{\beta_\sigma}\left(
+    \frac{\|\mathbf{p}_\sigma\|}{\mathbb{E}[\|\mathcal{N}(0,\mathbf{I})\|]} - 1\right)\right)
+\]
+\begin{itemize}
+  \item $\mathbb{E}[\|\mathcal{N}(0,\mathbf{I})\|] = \sqrt{2}\,\Gamma\!\left(\frac{n+1}{2}\right)/\Gamma\!\left(\frac{n}{2}\right)$
+  \item If $\|\mathbf{p}_\sigma\| >$ expected $\Rightarrow$ increase $\sigma$
+  \item If $\|\mathbf{p}_\sigma\| <$ expected $\Rightarrow$ decrease $\sigma$
+\end{itemize}
+\end{block}
+
+\begin{block}{Covariance Update (eq.\ 8.35)}
+Rank-1 + rank-$m$ update:
+\[
+  \mathbf{C}^{(k+1)} = (1-\alpha_1-\alpha_e)\mathbf{C}^{(k)}
+  + \alpha_1 \mathbf{p}_c \mathbf{p}_c^\top
+  + \frac{\alpha_e}{\sigma^2}\sum_{i=1}^m w_i \bx^{[i]}(\bx^{[i]})^\top
+\]
+\begin{itemize}
+  \item Rank-1: exploits correlated steps over time.
+  \item Rank-$m$: exploits correlated elite samples within iteration.
+\end{itemize}
+\end{block}
+
+\column{0.42\textwidth}
+\includegraphics[width=\linewidth]{cmaes_paths.pdf}
+{\small Evolution path $\mathbf{p}_\sigma$ adapts step direction over iterations.}
+
+\begin{block}{Default Hyperparameters ($n$-dim)}
+\begin{tabular}{ll}
+$m$        & $4 + \lfloor 3\ln n \rfloor$ \\
+$m_e$      & $m/2$ \\
+$\alpha_1$ & $2/n^2$ \\
+$\alpha_e$ & $m_e/n^2$ \\
+$\alpha_c$ & $1/\sqrt{n}$ \\
+$\alpha_\sigma$ & $1/\sqrt{n}$ \\
+$\beta_\sigma$ & $1.0$ \\
+\end{tabular}
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{8.8 CMA-ES -- Python Implementation (Algorithm 8.11)}
+\begin{lstlisting}[caption={CMA-ES: covariance matrix adaptation evolution strategy}]
+import numpy as np
+from scipy.special import gamma as gamma_fn
+
+def cmaes(f, mu0, sigma0=1.0, C0=None, k_max=500):
+    n   = len(mu0)
+    mu  = np.array(mu0, dtype=float)
+    sig = float(sigma0)
+    C   = np.eye(n) if C0 is None else np.array(C0, dtype=float)
+
+    m        = 4 + int(3 * np.log(n))
+    m_elite  = m // 2
+    a1       = 2 / n**2;           ae = m_elite / n**2
+    ac       = 1 / np.sqrt(n);     ao = 1 / np.sqrt(n)
+    amu      = 1 - a1 - ae;        bs = 1.0
+    ws = np.log(m_elite+1) - np.log(np.arange(1,m_elite+1))
+    ws /= ws.sum()
+    m_eff    = 1 / np.sum(ws**2)
+    exp_len  = (np.sqrt(2) * gamma_fn((n+1)/2) / gamma_fn(n/2))
+    p_sig = np.zeros(n);           p_c = np.zeros(n)
+
+    for _ in range(k_max):
+        xs = np.random.multivariate_normal(mu, sig**2 * C, m)
+        ys = np.array([f(x) for x in xs])
+        idx = np.argsort(ys)                   # best first
+
+        mu_new = mu + amu * sum(ws[i]*(xs[idx[i]]-mu) for i in range(m_elite))
+        delta  = (mu_new - mu) / sig
+
+        # Evolution path updates
+        p_sig = (1-ao)*p_sig + np.sqrt(ao*(2-ao)*m_eff)*delta
+        p_c   = (1-ac)*p_c   + np.sqrt(ac*(2-ac)*m_eff)*delta
+
+        # Step-size control
+        sig  *= np.exp(ao/bs * (np.linalg.norm(p_sig)/exp_len - 1))
+
+        # Covariance update
+        C = (amu*C + a1*np.outer(p_c,p_c)
+             + ae/sig**2 * sum(ws[i]*np.outer(xs[idx[i]]-mu,
+                                              xs[idx[i]]-mu)
+                               for i in range(m_elite)))
+        C = (C + C.T) / 2           # enforce symmetry
+        mu = mu_new
+    return mu, sig, C
+
+mu_opt,_,_ = cmaes(lambda x: sum((x-1)**2), [5.]*4, sigma0=2.0)
+print(f"CMA-ES: {mu_opt}")   # -> [1, 1, 1, 1]
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{8.8 CMA-ES -- Flower Function Example}
+\begin{columns}[T]
+\column{0.46\textwidth}
+\includegraphics[width=\linewidth]{book_cmaes_flower.png}
+{\small CMA-ES applied to the flower function (Appendix B.4).
+Rows: $x_2$ vs $x_1$; columns show iterations 0, 5, 15, 40.
+The distribution rotates and shrinks to align with the objective contours.}
+
+\column{0.51\textwidth}
+\begin{block}{Observations}
+\begin{itemize}
+  \item Iteration 0: large isotropic distribution.
+  \item Iteration 5: ellipse aligns with principal curvature direction.
+  \item Iteration 15: covariance shrinks; distribution concentrates near minimum.
+  \item Iteration 40: near-converged, tightly around global minimum.
+\end{itemize}
+\end{block}
+\begin{block}{Scale Invariance}
+CMA-ES is invariant to:
+\begin{enumerate}
+  \item \textbf{Order-preserving transformations} of $f$ (uses ranks not values).
+  \item \textbf{Rotation} of the search space.
+  \item \textbf{Scaling} of the search space (via $\sigma$ adaptation).
+\end{enumerate}
+These properties make CMA-ES robust on ill-conditioned problems.
+\end{block}
+\begin{block}{Complexity}
+$O(n^2)$ per iteration (covariance matrix); $O(n^3)$ eigendecomposition every $O(n)$ steps.
+\end{block}
+\end{columns}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{Method Comparison}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{Comparing Stochastic Methods}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\begin{block}{Summary Table}
+{\footnotesize
+\begin{tabular}{lccc}
+\toprule
+Method & Order & Memory & Global? \\
+\midrule
+Noisy Descent  & 1st & $O(n)$   & No  \\
+MADS           & 0th & $O(n^2)$ & \checkmark$^\dagger$ \\
+MeZO           & 0th & $O(1)$   & No  \\
+Sim.\ Annealing & 0th & $O(1)$   & \checkmark$^\dagger$ \\
+Cross-Entropy  & 0th & $O(n^2)$ & \checkmark \\
+PDD            & 0th & $O(n^2)$ & No  \\
+IGO            & 0th & $O(n^2)$ & \checkmark \\
+CMA-ES         & 0th & $O(n^2)$ & \checkmark \\
+\bottomrule
+\multicolumn{4}{l}{$\dagger$ asymptotic / with conditions}
+\end{tabular}
+}
+\end{block}
+
+\begin{block}{When to Use What}
+\begin{itemize}
+  \item \textbf{Gradient available, large scale}: Noisy descent, MeZO
+  \item \textbf{Black box, $n < 20$}: MADS, SA
+  \item \textbf{Many local minima}: SA, CEM, CMA-ES
+  \item \textbf{$n = 10$--$100$}: CMA-ES (state of the art)
+  \item \textbf{$n > 10^6$}: MeZO
+\end{itemize}
+\end{block}
+
+\column{0.47\textwidth}
+\includegraphics[width=\linewidth]{method_comparison.pdf}
+{\small Noisy descent, SA, and CEM on the Rosenbrock function from $(-1.5,1.5)$.}
+\end{columns}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{8.9--8.10 Summary \& Exercises}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}[allowframebreaks]{8.9 Summary}
+\begin{itemize}
+  \item \textbf{Stochastic methods} employ random numbers during optimisation to escape local minima and handle noisy objectives.
+
+  \item \textbf{Noisy descent} adds Gaussian noise to the gradient. Convergence is guaranteed by the Robbins--Monro step-size conditions.
+
+  \item \textbf{Mesh adaptive direct search (MADS)} is a pattern-search method that uses randomly generated positive spanning sets and an adaptive step size that is always a power of 4.
+
+  \item \textbf{Memory-efficient zeroth-order optimisation (MeZO)} estimates the gradient using only two forward passes and a re-seeded PRNG, requiring $O(1)$ additional memory.
+
+  \item \textbf{Simulated annealing} uses a temperature-controlled Metropolis criterion to accept uphill moves with probability $e^{-\Delta y / t}$. The Boltzmann schedule ($t \propto 1/\ln k$) guarantees asymptotic convergence; faster schedules are used in practice.
+
+  \item \textbf{The cross-entropy method} maintains a proposal distribution and repeatedly fits it to the elite samples (best function values) using maximum likelihood estimation.
+
+  \item \textbf{Proposal distribution descent} uses score-function (REINFORCE) gradient estimates to descend on the expected objective directly.
+
+  \item \textbf{Information-geometric optimisation (IGO)} applies the natural gradient, pre-multiplied by the inverse Fisher information matrix, making updates invariant to the parameterisation of the distribution and to order-preserving transformations of $f$.
+
+  \item \textbf{Covariance matrix adaptation (CMA-ES)} extends IGO by separately tracking a global step size $\sigma$ and a shape matrix $\mathbf{C}$. Evolution paths accumulate direction information across iterations, enabling efficient learning of the covariance structure.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{8.10 Exercises}
+\begin{block}{Exercise 8.1}
+We have shown that mixture proposal distributions can better capture multiple minima.
+Why might their use in the cross-entropy method be limited?
+
+\medskip\textit{Solution:} The cross-entropy method must fit distribution parameters with every iteration. Unfortunately, no known analytic solutions for fitting multivariate mixture distributions exist. One commonly uses the iterative expectation-maximisation (EM) algorithm, which itself requires many iterations to converge.
+\end{block}
+
+\begin{block}{Exercise 8.2}
+In the cross-entropy method, what is a potential effect of using an elite sample size that is very close to the total sample size?
+
+\medskip\textit{Solution:} If $m_\text{elite}/m \to 1$, the resulting distribution will closely match the population. There will not be a significant bias towards the best locations for a minimiser, and so convergence will be slow.
+\end{block}
+
+\framebreak
+
+\begin{block}{Exercise 8.3}
+Consider proposal distribution descent with $\calN(\mu, \nu)$, with the mean on the optimum $\mu = x^*$. Show that the update for variance $\nu$ becomes increasingly negative as $\nu \to 0$, and explain why a fixed step factor $\alpha$ poses a numerical risk.
+
+\medskip\textit{Solution:}
+The gradient of $J$ w.r.t.\ $\nu$ at the optimum approximates $f(x) \approx \frac{1}{2}h(x-\mu)^2$,\ $h = f''(\mu) > 0$. Substituting:
+\[
+  \nabla_\nu \Exp[f] \approx \frac{h}{2}\left(-\frac{1}{2\nu}\Exp[z^2] + \frac{1}{2\nu^2}\Exp[z^4]\right) = \frac{h}{2}\left(-\frac{1}{2\nu} + \frac{3}{2\nu}\right) = \frac{h}{2} > 0
+\]
+The gradient is positive (descent reduces $\nu$). As $\nu \to 0$, the term $\partial_\nu \log\calN \propto (x-\mu)^2/(2\nu^2)$ grows as $O(1/\nu)$, so the gradient estimate has large variance. For any fixed $\alpha$, eventually $\nu - \alpha \nabla_\nu J < 0$. Fix: use $\nu = e^\eta$ (reparameterisation).
+\end{block}
+
+\begin{block}{Exercise 8.4}
+Derive the MLE for the cross-entropy method using multivariate normal distributions, obtaining:
+\[
+  \bmu^{(k+1)} = \frac{1}{m}\sum_{i=1}^m \bx^{(i)}, \qquad
+  \bSigma^{(k+1)} = \frac{1}{m}\sum_{i=1}^m (\bx^{(i)}-\bmu^{(k+1)})(\bx^{(i)}-\bmu^{(k+1)})^\top
+\]
+
+\medskip\textit{Solution sketch:} Maximise the log-likelihood
+$\ell(\bmu|\bx^{(1:m)}) = \sum_i \log p(\bx^{(i)}|\bmu,\bSigma)$.
+Taking $\nabla_\mu \ell = 0$ gives $\bmu = \frac{1}{m}\sum_i \bx^{(i)}$.
+Similarly, letting $\bLambda = \bSigma^{-1}$ and maximising $\ell$ w.r.t.\ $\bLambda$ gives $\bSigma = \frac{1}{m}\sum_i (\bx^{(i)}-\bmu)(\bx^{(i)}-\bmu)^\top$.
+\end{block}
+\end{frame}
+
+%%═══════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+%%═══════════════════════════════════════════════════════════════════════════
+
+\begin{frame}{Conclusion \& Key Takeaways}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Chapter 8 in One Slide}
+\begin{enumerate}
+  \item \textbf{Noise is a tool} -- not just a nuisance. Random perturbations help escape local optima.
+  \item \textbf{Temperature as exploration parameter} -- SA shows how to smoothly transition from exploration to exploitation.
+  \item \textbf{Distribution-based methods} (CEM, PDD, IGO, CMA-ES) turn optimisation into inference: find the distribution concentrated at the minimum.
+  \item \textbf{Natural gradient} (IGO, CMA-ES) provides invariance properties essential for robust black-box optimisation.
+  \item \textbf{MeZO} bridges stochastic methods and modern large-scale ML where memory is the bottleneck.
+\end{enumerate}
+\end{block}
+
+\column{0.42\textwidth}
+\begin{block}{Hierarchy of Methods}
+\begin{center}
+\begin{tikzpicture}[
+  every node/.style={draw, rounded corners, align=center, font=\scriptsize},
+  edge from parent/.style={draw, ->},
+  level distance=1.1cm,
+  sibling distance=3.0cm]
+\node {Stochastic\\ Methods}
+  child { node {Gradient\\ Perturb} }
+  child { node {Distribution\\ Evolution}
+    child { node {CEM} }
+    child { node {PDD/IGO/\\ CMA-ES} }
+  };
+\end{tikzpicture}
+\end{center}
+\end{block}
+
+\begin{block}{Next Chapter}
+Chapter 9: Population Methods (Genetic Algorithms, Particle Swarm, etc.) -- extend these ideas to maintain a \emph{diverse population} of solutions.
+\end{block}
+\end{columns}
+\end{frame}
+
+\end{document}

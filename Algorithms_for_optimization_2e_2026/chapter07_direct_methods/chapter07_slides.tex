@@ -1,0 +1,1153 @@
+%======================================================================
+% chapter07_slides.tex
+% Chapter 7: Direct Methods
+% Algorithms for Optimization, 2nd ed. (2026)
+% Kochenderfer & Wheeler
+%======================================================================
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[dvipsnames,svgnames,x11names]{xcolor}
+\definecolor{navy}{rgb}{0.0,0.0,0.5}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+\usepackage{multicol}
+\usepackage{array}
+\usepackage{colortbl}
+
+\graphicspath{{figures/}}
+
+% ── listings style for Python ──────────────────────────────────────
+\lstdefinestyle{python}{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{blue!70!black}\bfseries,
+  commentstyle=\color{green!50!black}\itshape,
+  stringstyle=\color{orange!80!black},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt,
+  frame=single,
+  rulecolor=\color{gray!40},
+  backgroundcolor=\color{gray!7},
+  showstringspaces=false,
+  tabsize=4,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+}
+
+\setbeamertemplate{footline}[frame number]
+\setbeamertemplate{navigation symbols}{}
+
+% ── Title info ─────────────────────────────────────────────────────
+\title[Chapter 7: Direct Methods]%
+      {\textbf{Chapter 7: Direct Methods}}
+\subtitle{Algorithms for Optimization, 2nd Edition (2026)}
+\author{Kochenderfer \& Wheeler}
+\institute{MIT Press}
+\date{}
+
+%======================================================================
+\begin{document}
+%======================================================================
+
+%──────────────────────────────────────────────────────────────────────
+\begin{frame}
+  \titlepage
+\end{frame}
+
+%──────────────────────────────────────────────────────────────────────
+\begin{frame}{Chapter 7 Overview}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+      \tableofcontents[sectionstyle=show,subsectionstyle=show]
+    \column{0.42\textwidth}
+      \begin{block}{What are Direct Methods?}
+        \textbf{Direct methods} (also called \emph{zero-order},
+        \emph{black-box}, \emph{pattern search}, or
+        \emph{derivative-free} methods) rely \textbf{solely on the
+        objective function} $f$.
+        \begin{itemize}
+          \item Do \emph{not} use gradient or Hessian information
+          \item Suitable when derivatives are unavailable or
+                unreliable (e.g.\ simulation outputs)
+          \item Use other criteria to choose the next search
+                direction and to judge convergence
+        \end{itemize}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\AtBeginSection[]{
+  \begin{frame}{Outline}
+    \tableofcontents[currentsection]
+  \end{frame}
+}
+
+%======================================================================
+\section{Cyclic Coordinate Search}
+%======================================================================
+
+\begin{frame}{7.1 Cyclic Coordinate Search — Concept}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Definition}
+        \textbf{Cyclic coordinate search} (coordinate descent /
+        taxicab search) alternates line searches along the \(n\)
+        coordinate directions, optimising one variable at a time
+        while holding the rest fixed.
+      \end{block}
+      \bigskip
+      \textbf{Update equations:}
+      \begin{align}
+        x_2^{(1)} &= \underset{x_2}{\arg\min}\;
+                     f\!\bigl(x_1^{(1)},x_2,x_3^{(1)},\ldots,x_n^{(1)}\bigr)
+                     \tag{7.1} \\[4pt]
+        x_3^{(2)} &= \underset{x_3}{\arg\min}\;
+                     f\!\bigl(x_1^{(1)},x_2^{(1)},x_3,\ldots,x_n^{(1)}\bigr)
+                     \tag{7.2}
+      \end{align}
+      \smallskip
+      This is equivalent to a sequence of line searches along the
+      $n$ \emph{basis vectors}:
+      \[
+        \mathbf{e}^{(i)} \in \mathbb{R}^n,\quad
+        e^{(i)}_k = \begin{cases}1 & k = i \\ 0 & \text{otherwise}\end{cases}
+      \]
+    \column{0.43\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_cyclic_coordinate.pdf}\\
+        {\scriptsize Cyclic coordinate search on Rosenbrock: path
+        alternates between coordinate directions.}
+      \end{center}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{7.1 Cyclic Coordinate Search — Algorithm}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      \begin{alertblock}{Algorithm 7.1 — Cyclic Coordinate Search}
+        \textbf{Input:} $f$, $\mathbf{x}^{(1)}$, tolerance $\epsilon$
+        \begin{enumerate}\setlength\itemsep{2pt}
+          \item Set $\Delta = \infty$, $n = \text{length}(\mathbf{x})$
+          \item \textbf{while} $\Delta > \epsilon$:
+          \item \quad $\mathbf{x}' \leftarrow \mathbf{x}$
+          \item \quad \textbf{for} $i = 1,\ldots,n$:
+          \item \qquad $d \leftarrow \mathbf{e}^{(i)}$
+          \item \qquad $\mathbf{x} \leftarrow \texttt{line\_search}(f,\mathbf{x},d)$
+          \item \quad $\Delta \leftarrow \|\mathbf{x} - \mathbf{x}'\|$
+          \item \textbf{return} $\mathbf{x}$
+        \end{enumerate}
+      \end{alertblock}
+      \begin{block}{Acceleration}
+        Add a step along $\mathbf{x}^{(k+1)} - \mathbf{x}^{(k)}$
+        after each full cycle to exploit momentum:
+        \[
+          \mathbf{x}^{(k+1)} \leftarrow
+          \texttt{line\_search}(f,\,\mathbf{x},\,\mathbf{x}-\mathbf{x}')
+        \]
+      \end{block}
+    \column{0.45\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_cyclic_stuck.pdf}\\
+        {\scriptsize Problem: cyclic search can be very slow on
+        diagonally-oriented valleys — moving diagonally is
+        disallowed.}
+      \end{center}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{7.1 Cyclic Coordinate Search — Python}
+\begin{lstlisting}[style=python, caption={Cyclic coordinate search in Python (NumPy/SciPy)}]
+import numpy as np
+from scipy.optimize import minimize_scalar
+
+def cyclic_coordinate_search(f, x0, eps=1e-6, max_cycles=200):
+    """
+    Cyclic coordinate search (coordinate descent with line search).
+    f  : objective function R^n -> R
+    x0 : initial point (array-like)
+    """
+    x = np.array(x0, dtype=float)
+    n = len(x)
+    for _ in range(max_cycles):
+        x_prev = x.copy()
+        for i in range(n):
+            # Line search along the i-th coordinate direction
+            def fi(t):
+                xc = x.copy()
+                xc[i] = t
+                return f(xc)
+            result = minimize_scalar(fi, bracket=(x[i]-2, x[i]+2),
+                                     method='brent')
+            x[i] = result.x
+        if np.linalg.norm(x - x_prev) < eps:
+            break
+    return x
+
+# Example: Rosenbrock function
+f = lambda v: (1 - v[0])**2 + 100*(v[1] - v[0]**2)**2
+x_opt = cyclic_coordinate_search(f, x0=[-1.2, 1.0])
+print(f"Optimum: {x_opt}")   # -> approx [1.0, 1.0]
+\end{lstlisting}
+\end{frame}
+
+%======================================================================
+\section{Powell's Method}
+%======================================================================
+
+\begin{frame}{7.2 Powell's Method — Motivation}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Key Idea}
+        Powell's method searches along directions that are
+        \textbf{non-orthogonal} and \emph{mutually conjugate} to
+        exploit the geometry of the objective.  Unlike cyclic
+        coordinate search it can move \emph{diagonally}.
+      \end{block}
+      \medskip
+      \textbf{Conjugate directions:} Two directions
+      $\mathbf{u}$ and $\mathbf{v}$ are \emph{conjugate} w.r.t.\
+      $\mathbf{Q}$ if
+      \[
+        \mathbf{u}^\top \mathbf{Q}\, \mathbf{v} = 0
+      \]
+      For a quadratic $f = \tfrac{1}{2}\mathbf{x}^\top\mathbf{Q}\mathbf{x} +
+      \mathbf{b}^\top\mathbf{x}$, Powell's method finds the minimum
+      in at most $n$ iterations.
+    \column{0.43\textwidth}
+      \begin{center}
+        \includegraphics[width=0.9\linewidth]{fig_powell.pdf}\\
+        {\scriptsize Powell's method builds conjugate search
+        directions from coordinate directions.}
+      \end{center}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{7.2 Powell's Method — Algorithm}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      \begin{alertblock}{Algorithm 7.4 — Powell's Method}
+        \textbf{Input:} $f$, start $\mathbf{x}$, tolerance $\epsilon$
+        \begin{enumerate}\setlength\itemsep{1pt}
+          \item $U \leftarrow [\mathbf{e}^{(1)},\ldots,\mathbf{e}^{(n)}]$
+                \quad (basis directions)
+          \item $\Delta \leftarrow \infty$
+          \item \textbf{while} $\Delta > \epsilon$:
+          \item \quad $\mathbf{x}' \leftarrow \mathbf{x}$
+          \item \quad \textbf{for} $i = 1,\ldots,n$:
+          \item \qquad $d \leftarrow U[i]$
+          \item \qquad $\mathbf{x} \leftarrow \texttt{line\_search}(f,\mathbf{x},d)$
+          \item \quad \textbf{for} $i = 1,\ldots,n-1$:
+          \item \qquad $U[i] \leftarrow U[i+1]$
+          \item \quad $U[n] \leftarrow \mathbf{x} - \mathbf{x}'$
+                \quad (new conjugate direction)
+          \item \quad $\mathbf{x} \leftarrow
+                \texttt{line\_search}(f,\mathbf{x}',U[n])$
+          \item \quad $\Delta \leftarrow \|\mathbf{x} - \mathbf{x}'\|$
+          \item \textbf{return} $\mathbf{x}$
+        \end{enumerate}
+      \end{alertblock}
+    \column{0.45\textwidth}
+      \begin{block}{Key Property}
+        A new search direction is formed as:
+        \[
+          \mathbf{d}^{(\text{new})} = \mathbf{x}^{(k+1)} - \mathbf{x}^{(k)}
+        \]
+        This direction tends to be \textbf{conjugate} to all
+        previous search directions, so progress accumulates without
+        re-doing work.
+      \end{block}
+      \begin{block}{Convergence Note}
+        Powell's method automatically adjusts step sizes via
+        line search.  It decreases the step size once no
+        improvements are found ($\Delta < \epsilon$).
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{7.2 Powell's Method — Python}
+\begin{lstlisting}[style=python, caption={Powell's method (Python/SciPy)}]
+import numpy as np
+from scipy.optimize import minimize_scalar, minimize
+
+def powell(f, x0, eps=1e-8, max_iter=200):
+    """
+    Powell's method for unconstrained minimisation.
+    f  : callable  R^n -> R
+    x0 : initial point (1-D array)
+    """
+    x = np.array(x0, dtype=float)
+    n = len(x)
+    U = np.eye(n)   # start with coordinate directions
+
+    for _ in range(max_iter):
+        x_prev = x.copy()
+        for i in range(n):
+            d = U[i]
+            res = minimize_scalar(lambda t: f(x + t * d))
+            x = x + res.x * d
+        # Shift directions and add conjugate direction
+        U[:-1] = U[1:]
+        U[-1] = x - x_prev
+        norm = np.linalg.norm(U[-1])
+        if norm > 1e-12:
+            d = U[-1]
+            res = minimize_scalar(lambda t: f(x_prev + t * d))
+            x = x_prev + res.x * d
+        if np.linalg.norm(x - x_prev) < eps:
+            break
+    return x
+
+# SciPy built-in Powell:
+from scipy.optimize import minimize
+result = minimize(lambda v: (1-v[0])**2 + 100*(v[1]-v[0]**2)**2,
+                  [-1.2, 1.0], method='Powell')
+print(result.x)   # -> [1.0, 1.0]
+\end{lstlisting}
+\end{frame}
+
+%======================================================================
+\section{Hooke-Jeeves Method}
+%======================================================================
+
+\begin{frame}{7.3 Hooke-Jeeves Method — Concept}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Definition}
+        The \textbf{Hooke-Jeeves method} (1961) traverses the search
+        space using small steps in each coordinate direction from an
+        \emph{anchoring point}.  Two-phase iteration:
+        \begin{enumerate}
+          \item \textbf{Exploratory search:} evaluate $f(\mathbf{x})$
+                and $f(\mathbf{x} \pm \alpha\,\mathbf{e}^{(i)})$ for
+                each dimension $i$; keep improvements.
+          \item \textbf{Pattern move:} if the exploratory step
+                improved, take an additional step in the same
+                direction:
+                \[
+                  \mathbf{x}^{(k+1)}_{\text{pattern}} =
+                  \mathbf{x}^{(k+1)} + \bigl(\mathbf{x}^{(k+1)} - \mathbf{x}^{(k)}\bigr)
+                \]
+        \end{enumerate}
+        If no improvement is found, reduce the step size $\alpha
+        \leftarrow \alpha/2$.
+      \end{block}
+      \begin{alertblock}{Cost per Iteration}
+        One step requires $2n$ function evaluations (two probes per
+        dimension). Expensive for large $n$.
+      \end{alertblock}
+    \column{0.43\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_hooke_jeeves.pdf}\\
+        {\scriptsize Hooke-Jeeves on Rosenbrock: starts with large
+        steps, reduces step size when stuck.}
+      \end{center}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{7.3 Hooke-Jeeves Method — Algorithm}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+      \begin{alertblock}{Algorithm 7.5 — Hooke-Jeeves}
+        \textbf{Input:} $f$, $\mathbf{x}$, initial step $\alpha$,
+        tolerance $\epsilon$
+        \begin{enumerate}\setlength\itemsep{1pt}
+          \item \textbf{while} $\alpha > \epsilon$:
+          \item \quad $\mathbf{x}^{(\text{base})} \leftarrow \mathbf{x}$
+          \item \quad \textbf{for} $i = 1,\ldots,n$:
+          \item \qquad Try $\mathbf{x} + \alpha\mathbf{e}^{(i)}$ and
+                $\mathbf{x} - \alpha\mathbf{e}^{(i)}$
+          \item \qquad Keep whichever reduces $f$ most; else keep $\mathbf{x}$
+          \item \quad \textbf{if} improvement found:
+          \item \qquad Pattern step:
+                $\mathbf{x} \mathrel{+}= \mathbf{x} - \mathbf{x}^{(\text{base})}$
+          \item \quad \textbf{else}:
+          \item \qquad $\alpha \leftarrow \alpha / 2$
+          \item \textbf{return} $\mathbf{x}$
+        \end{enumerate}
+      \end{alertblock}
+    \column{0.42\textwidth}
+      \begin{block}{Numerical Example (2D)}
+        Let $f(x_1,x_2) = x_1^2 + 2x_2^2$, start at $\mathbf{x}=[2,1]$,
+        $\alpha = 0.5$:
+        \begin{itemize}
+          \item Try $[2.5,1]$: $f=8.25$ (worse)
+          \item Try $[1.5,1]$: $f=4.25$ (better) $\checkmark$
+          \item Try $[1.5,1.5]$: $f=6.75$ (worse)
+          \item Try $[1.5,0.5]$: $f=2.75$ (better) $\checkmark$
+          \item New point: $[1.5, 0.5]$
+          \item Pattern move: $[1.0, 0.0]$
+        \end{itemize}
+      \end{block}
+      \begin{block}{Convergence}
+        Provably converges to a local minimum on \emph{continuous}
+        functions. Method is susceptible to local minima.
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{7.3 Hooke-Jeeves — Python}
+\begin{lstlisting}[style=python, caption={Hooke-Jeeves method in Python}]
+import numpy as np
+
+def hooke_jeeves(f, x0, alpha=1.0, eps=1e-6):
+    """
+    Hooke-Jeeves (pattern search) method.
+    f     : callable R^n -> R
+    x0    : initial point
+    alpha : initial step size
+    eps   : stopping tolerance (step size)
+    """
+    x = np.array(x0, dtype=float)
+    n = len(x)
+    while alpha > eps:
+        x_base  = x.copy()
+        x_trial = x.copy()
+        improved = False
+        for i in range(n):
+            for sign in (1, -1):
+                x_new = x_trial.copy()
+                x_new[i] += sign * alpha
+                if f(x_new) < f(x_trial):
+                    x_trial = x_new
+                    improved = True
+                    break
+        if improved:
+            # Pattern move: step in same direction
+            x = x_trial + (x_trial - x_base)
+        else:
+            alpha *= 0.5           # reduce step size
+    return x
+
+# Demo
+f = lambda v: v[0]**2 + 2*v[1]**2
+x_opt = hooke_jeeves(f, x0=[2.0, 1.0])
+print(f"Optimum: {x_opt}")   # -> [~0, ~0]
+\end{lstlisting}
+\end{frame}
+
+%======================================================================
+\section{Generalized Pattern Search}
+%======================================================================
+
+\begin{frame}{7.4 Generalized Pattern Search — Overview}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Key Idea}
+        Generalized pattern search (GPS) generalises Hooke-Jeeves by
+        allowing \emph{any} set of directions
+        $\mathcal{D} = \{\mathbf{d}^{(1)},\ldots,\mathbf{d}^{(m)}\}$
+        as long as they form a \textbf{positive spanning set}.
+      \end{block}
+      \begin{block}{Positive Spanning Set}
+        A set $\mathcal{D}$ is a \emph{positive spanning set} for
+        $\mathbb{R}^n$ if every vector in $\mathbb{R}^n$ can be
+        written as a \textbf{non-negative} combination of vectors in
+        $\mathcal{D}$:
+        \[
+          \forall\;\mathbf{v} \in \mathbb{R}^n,\;
+          \exists\; \lambda_i \ge 0:\;
+          \mathbf{v} = \sum_i \lambda_i \mathbf{d}^{(i)}
+        \]
+        Requires $m \ge n+1$ directions.
+      \end{block}
+      \begin{alertblock}{Verification}
+        Build matrix $\mathbf{D}$ (columns = directions). $\mathcal{D}$
+        positively spans $\mathbb{R}^n$ iff $\mathbf{D}$ has full
+        row rank \emph{and} $\mathbf{D}\mathbf{x} = -\mathbf{D}\mathbf{1}$
+        has a solution $\mathbf{x} \ge \mathbf{0}$.
+      \end{alertblock}
+    \column{0.43\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_positive_spanning.pdf}\\
+        {\scriptsize Left: spans only a cone. Centre: spans 1D only.
+        Right: positively spans $\mathbb{R}^2$.}
+      \end{center}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{7.4 Generalized Pattern Search — Algorithm \& Mesh}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      \begin{alertblock}{Algorithm 7.6 — Generalized Pattern Search}
+        \textbf{Input:} $f$, $\mathbf{x}$, initial step $\alpha$,
+        directions $\mathcal{D}$, tolerance $\epsilon$
+        \begin{enumerate}\setlength\itemsep{1pt}
+          \item \textbf{while} $\alpha > \epsilon$:
+          \item \quad \textbf{for} each $\mathbf{d} \in \mathcal{D}$:
+          \item \qquad \textbf{if} $f(\mathbf{x} + \alpha\mathbf{d}) < f(\mathbf{x})$:
+          \item \qquad\quad $\mathbf{x} \leftarrow
+                \mathbf{x} + \alpha\mathbf{d}$; \textbf{break}
+          \item \quad \textbf{if} no improvement:
+          \item \qquad $\alpha \leftarrow \alpha / 2$
+          \item \textbf{return} $\mathbf{x}$
+        \end{enumerate}
+      \end{alertblock}
+      \begin{block}{Mesh Structure}
+        All evaluated points lie on a scaled \emph{lattice} (mesh):
+        \[
+          \mathbf{x}^{(k)} = \mathbf{x}^{(1)} +
+          \alpha^{(k)}\, \mathbf{D}\,\mathbf{z},\quad
+          \mathbf{z} \in \mathbb{Z}^m_{\ge 0}
+        \]
+        The lattice need not be axis-aligned.
+      \end{block}
+    \column{0.45\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_pattern_search.pdf}\\
+        {\scriptsize All previous points in GPS lie on a scaled
+        lattice. The mesh is not explicitly stored.}
+      \end{center}
+      \begin{block}{Convergence Guarantee}
+        Under mild continuity assumptions, GPS is guaranteed to
+        converge to a stationary point. The positive spanning
+        condition ensures that a descent direction will be found
+        whenever one exists in the discretised mesh.
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{7.4 Generalized Pattern Search — Python}
+\begin{lstlisting}[style=python, caption={Generalized pattern search in Python}]
+import numpy as np
+
+def generalized_pattern_search(f, x0, alpha=1.0, eps=1e-6,
+                                directions=None):
+    """
+    GPS with a user-supplied positive spanning set.
+    Defaults to +-e_i (2n coordinate directions).
+    """
+    x = np.array(x0, dtype=float)
+    n = len(x)
+    if directions is None:
+        # Default: coordinate directions + their negatives
+        directions = np.vstack([np.eye(n), -np.eye(n)])
+
+    while alpha > eps:
+        improved = False
+        for d in directions:
+            x_trial = x + alpha * d
+            if f(x_trial) < f(x):
+                x = x_trial
+                improved = True
+                break
+        if not improved:
+            alpha *= 0.5
+    return x
+
+# Example with custom positive spanning set for R^2
+# Minimum of 3 directions needed to span R^2 positively
+custom_dirs = np.array([[1,0],[-1,0],[0,1],[0,-1],
+                         [1,1],[-1,-1]], dtype=float)
+f = lambda v: (v[0]-1)**2 + 2*(v[1]+1)**2
+x_opt = generalized_pattern_search(f, [0.0, 0.0],
+                                    directions=custom_dirs)
+print(f"Optimum: {x_opt}")  # -> [~1.0, ~-1.0]
+\end{lstlisting}
+\end{frame}
+
+%======================================================================
+\section{Nelder-Mead Simplex Method}
+%======================================================================
+
+\begin{frame}{7.5 Nelder-Mead — Simplex Concept}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{What is a Simplex?}
+        A \textbf{simplex} in $\mathbb{R}^n$ has $n+1$ vertices:
+        \begin{itemize}
+          \item $n=1$: line segment (2 points)
+          \item $n=2$: triangle (3 points)
+          \item $n=3$: tetrahedron (4 points)
+        \end{itemize}
+      \end{block}
+      \begin{block}{Notation}
+        Sort simplex vertices by objective value:
+        \[
+          y_l \le y_s \le \cdots \le y_h
+        \]
+        where:
+        \begin{itemize}
+          \item $\mathbf{x}_l$ — \textbf{lowest} (best) vertex
+          \item $\mathbf{x}_s$ — second highest
+          \item $\mathbf{x}_h$ — \textbf{highest} (worst) vertex
+          \item $\bar{\mathbf{x}}$ — centroid of all \emph{except}
+                $\mathbf{x}_h$
+        \end{itemize}
+      \end{block}
+    \column{0.43\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_nelder_mead_ops.pdf}\\
+        {\scriptsize Four Nelder-Mead operations: reflection,
+        expansion, contraction, shrinkage.}
+      \end{center}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{7.5 Nelder-Mead — Four Operations}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Reflection ($\alpha > 0$, typically $\alpha=1$)}
+        \[
+          \mathbf{x}_r = \bar{\mathbf{x}} + \alpha(\bar{\mathbf{x}} - \mathbf{x}_h)
+        \]
+        Reflects worst point over centroid. Moves simplex from high
+        to lower regions.
+      \end{block}
+      \begin{block}{Expansion ($\beta > \max(1,\alpha)$, typically $\beta=2$)}
+        \[
+          \mathbf{x}_e = \bar{\mathbf{x}} + \beta(\mathbf{x}_r - \bar{\mathbf{x}})
+        \]
+        Sends reflected point even further (when reflection was very
+        good: $y_r < y_l$).
+      \end{block}
+      \begin{block}{Contraction ($\gamma \in (0,1)$, typically $\gamma=0.5$)}
+        \[
+          \mathbf{x}_c = \bar{\mathbf{x}} + \gamma(\mathbf{x}_h - \bar{\mathbf{x}})
+        \]
+        Shrinks simplex toward centroid, away from worst point.
+      \end{block}
+    \column{0.43\textwidth}
+      \begin{block}{Shrinkage}
+        All points except $\mathbf{x}_l$ move toward the best point:
+        \[
+          \mathbf{x}^{(i)} \leftarrow
+          \frac{\mathbf{x}^{(i)} + \mathbf{x}_l}{2}, \quad i \ne l
+        \]
+        Used when contraction also fails.
+      \end{block}
+      \bigskip
+      \begin{block}{Convergence Criterion}
+        Stop when standard deviation of function values is small:
+        \[
+          \Delta = \text{std}\!\left(y^{(1)},\ldots,y^{(n+1)}\right) < \epsilon
+        \]
+        High $\Delta$ = curved region (more work needed).
+        Low $\Delta$ = flat region (converged).
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{7.5 Nelder-Mead — Decision Flowchart}
+  \begin{center}
+  \begin{tikzpicture}[
+      node distance=0.7cm and 0.8cm,
+      box/.style={rectangle, draw=navy, rounded corners=2pt,
+                  fill=blue!8, text width=2.8cm, align=center,
+                  font=\scriptsize, minimum height=0.5cm},
+      decision/.style={diamond, draw=navy, fill=yellow!15,
+                       font=\scriptsize, aspect=2.5,
+                       inner sep=1pt, text width=2.0cm, align=center},
+      arr/.style={->, thick, >=stealth, draw=navy!70},
+      ]
+    \node[box] (init) {Sort simplex\\compute $\bar{\mathbf{x}}$\\compute $\mathbf{x}_r$};
+    \node[decision, below=of init] (d1) {$y_r < y_l$?};
+    \node[box, left=1.4cm of d1] (exp) {Compute $\mathbf{x}_e$};
+    \node[decision, below=of d1] (d2) {$y_r \ge y_s$?};
+    \node[decision, right=1.4cm of d2] (d3) {$y_r \ge y_h$?};
+    \node[box, below=of d2] (repl_r2) {Replace $\mathbf{x}_h$\\with $\mathbf{x}_r$};
+    \node[box, below=of d3] (contract) {Compute $\mathbf{x}_c$};
+    \node[decision, below=of contract] (d4) {$y_c > y_h$?};
+    \node[box, right=1.0cm of d4] (shrink) {Shrink all\\toward $\mathbf{x}_l$};
+    \node[box, below=of d4] (repl_c) {Replace $\mathbf{x}_h$\\with $\mathbf{x}_c$};
+    \node[decision, below=1.2cm of repl_r2] (conv) {Converged?};
+    \node[box, right=1.2cm of conv] (ret) {Return\\$\mathbf{x}_l$};
+
+    \draw[arr] (init) -- (d1);
+    \draw[arr] (d1) -- node[left,font=\tiny]{yes} (exp);
+    \draw[arr] (d1) -- node[right,font=\tiny]{no} (d2);
+    \draw[arr] (d2) -- node[right,font=\tiny]{yes} (d3);
+    \draw[arr] (d2) -- node[left,font=\tiny]{no} (repl_r2);
+    \draw[arr] (d3) -- node[right,font=\tiny]{yes} (contract);
+    \draw[arr] (d3.north east) -- ++(0.6,0) |- node[near start,right,font=\tiny]{no: replace $\mathbf{x}_h$ w/ $\mathbf{x}_r$} (repl_r2);
+    \draw[arr] (d4) -- node[right,font=\tiny]{yes} (shrink);
+    \draw[arr] (d4) -- node[left,font=\tiny]{no} (repl_c);
+    \draw[arr] (exp.south) |- (repl_r2.west);
+    \draw[arr] (repl_r2) -- (conv);
+    \draw[arr] (repl_c.south) |- (conv.east);
+    \draw[arr] (shrink.south) |- (conv.east);
+    \draw[arr] (conv) -- node[above,font=\tiny]{yes} (ret);
+    \draw[arr] (conv.west) -- ++(-0.5,0) |- (init.west);
+    \node[font=\tiny,above left=0.01cm of conv] {no};
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+\begin{frame}[fragile]{7.5 Nelder-Mead — Python}
+\begin{lstlisting}[style=python, caption={Nelder-Mead simplex method (pure Python + SciPy)}]
+import numpy as np
+from scipy.optimize import minimize
+
+def nelder_mead(f, simplex, eps=1e-6, alpha=1.0, beta=2.0, gamma=0.5):
+    """
+    Nelder-Mead simplex method.
+    f       : callable R^n -> R
+    simplex : list/array of (n+1) initial vertices, shape (n+1, n)
+    """
+    S = [np.array(s, dtype=float) for s in simplex]
+    while True:
+        y = np.array([f(s) for s in S])
+        p = np.argsort(y)
+        S = [S[i] for i in p]; y = y[p]
+        if np.std(y) < eps:
+            break
+        xl, yl = S[0], y[0]
+        xh, yh = S[-1], y[-1]
+        xs, ys = S[-2], y[-2]
+        xm = np.mean(S[:-1], axis=0)          # centroid
+        xr = xm + alpha * (xm - xh)           # reflection
+        yr = f(xr)
+        if yr < yl:                            # try expansion
+            xe = xm + beta * (xr - xm)
+            S[-1] = xe if f(xe) < yr else xr
+        elif yr >= ys:                         # try contraction
+            if yr < yh: xh, yh = xr, yr; S[-1] = xr
+            xc = xm + gamma * (xh - xm)
+            if f(xc) > yh:                     # shrink
+                for i in range(1, len(S)):
+                    S[i] = (S[i] + xl) / 2
+            else:
+                S[-1] = xc
+        else:
+            S[-1] = xr
+    return S[0]
+
+# SciPy equivalent (recommended for production):
+result = minimize(lambda v: (1-v[0])**2 + 100*(v[1]-v[0]**2)**2,
+                  [-1.2, 1.0], method='Nelder-Mead')
+print(result.x)  # -> [1. 1.]
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{7.5 Nelder-Mead — Iterations Visualised}
+  \begin{center}
+    \includegraphics[width=0.85\linewidth]{fig_nelder_mead_iters.pdf}
+  \end{center}
+  \vspace{-2mm}
+  {\small Nelder-Mead on the Rosenbrock function.  The simplex
+  gradually migrates from the upper-left toward the minimum at
+  $(1,1)$.  Early iterations use reflection/expansion; later
+  iterations rely on contraction and shrinkage as the simplex
+  tightens.}
+\end{frame}
+
+%======================================================================
+\section{Divided Rectangles (DIRECT)}
+%======================================================================
+
+\begin{frame}{7.6 DIRECT — Overview}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Motivation}
+        \textbf{DIRECT} (DIvided RECTangles) is a global optimisation
+        algorithm for \emph{Lipschitz-continuous} functions on a
+        \emph{bounded} domain $[\mathbf{a},\mathbf{b}]$.  It avoids
+        the need to specify the Lipschitz constant $\ell$.
+      \end{block}
+      \begin{block}{Lipschitz Condition}
+        For all $\mathbf{x},\mathbf{y}$ in the domain:
+        \[
+          \bigl|f(\mathbf{x}) - f(\mathbf{y})\bigr|
+          \le \ell\,\|\mathbf{x} - \mathbf{y}\|
+        \]
+        A lower bound at point $\mathbf{c}$ with radius $r$ is:
+        \[
+          f(\mathbf{x}) \ge f(\mathbf{c}) - \ell\,r
+          \quad \text{for all } \mathbf{x} \text{ in interval}
+        \]
+      \end{block}
+      \begin{block}{Optimisation Goal}
+        \[
+          \min_{\mathbf{x}\in[\mathbf{a},\mathbf{b}]} f(\mathbf{x})
+        \]
+        $\mathbf{a}, \mathbf{b} \in \mathbb{R}^n$ are lower and upper
+        bounds on each dimension.
+      \end{block}
+    \column{0.43\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_direct_partitioning.pdf}\\
+        {\scriptsize Left: DIRECT interval partitions on the Branin
+        function. Right: $(r, f(\mathbf{c}))$ scatter with lower
+        convex hull identifying potentially optimal intervals.}
+      \end{center}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{7.6 DIRECT — Potentially Optimal Intervals}
+  \begin{columns}[T]
+    \column{0.54\textwidth}
+      \begin{block}{Key Concept}
+        An interval $I$ with center $\mathbf{c}$ and radius $r$ is
+        \textbf{potentially optimal} if there exists some $\ell \ge 0$
+        such that:
+        \begin{enumerate}
+          \item $f(\mathbf{c}) - \ell\,r \le f(\mathbf{c}') - \ell\,r'$
+                for all other intervals $I'$
+          \item $f(\mathbf{c}) - \ell\,r \le f_{\min} - \epsilon
+                |f_{\min}|$
+        \end{enumerate}
+        This identifies intervals on the \textbf{lower-right convex
+        hull} of the $(r, f(\mathbf{c}))$ scatter plot.
+      \end{block}
+      \begin{block}{Splitting Rule}
+        An interval is split along its \emph{longest} dimension(s)
+        into \textbf{three equal parts}.  The two new center points
+        are evaluated.
+        \[
+          r_{\text{new}} = \frac{r}{3}
+        \]
+        Splits along the axis with \emph{smallest} $f$ value are
+        done first.
+      \end{block}
+    \column{0.43\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_direct_splitting.pdf}\\
+        {\scriptsize DIRECT splits the longest dimension into thirds.
+        Width decreases by factor $1/3$ each split.}
+      \end{center}
+      \begin{block}{Width After $k$ Splits}
+        In $n$ dimensions, after $k$ total splits on dimension $i$
+        ($k_i$ times each):
+        \[
+          r = \sqrt{\sum_{i=1}^n \left(\frac{1}{2}\cdot\frac{1}{3^{d_i}}\right)^{\!2}}
+        \]
+        where $d_i$ is the number of splits along dimension $i$.
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{7.6 DIRECT — Algorithm}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+      \begin{alertblock}{Algorithm 7.8 — DIRECT}
+        \textbf{Input:} $f$, bounds $\mathbf{a}$, $\mathbf{b}$,
+        max iterations $k_{\max}$, min radius $r_{\min}$
+        \begin{enumerate}\setlength\itemsep{1pt}
+          \item Normalise: $g(\mathbf{x}') = f(\mathbf{x}' \cdot
+                (\mathbf{b}-\mathbf{a}) + \mathbf{a})$
+          \item Initialise single interval centered at
+                $\mathbf{c} = [0.5,\ldots,0.5]$
+          \item Evaluate $g(\mathbf{c})$,
+                $r = \sqrt{n}\cdot 0.5$
+          \item \textbf{for} $k = 1,\ldots,k_{\max}$:
+          \item \quad Find \emph{potentially optimal} intervals
+                $\mathcal{S}_{\text{split}}$
+          \item \quad Remove them from $\mathcal{S}$
+          \item \quad \textbf{for} each interval in
+                $\mathcal{S}_{\text{split}}$:
+          \item \qquad Split and evaluate new centers
+          \item \qquad Add sub-intervals to $\mathcal{S}$
+          \item \quad Update best $\mathbf{c}_{\text{best}}$
+          \item \textbf{return} $\mathbf{c}_{\text{best}} \cdot
+                (\mathbf{b}-\mathbf{a}) + \mathbf{a}$
+        \end{enumerate}
+      \end{alertblock}
+    \column{0.42\textwidth}
+      \begin{block}{DirectRectangle Data Structure}
+        Each interval stores:
+        \begin{itemize}
+          \item $\mathbf{c}$: center point (in $[0,1]^n$)
+          \item $y = g(\mathbf{c})$: center function value
+          \item $\mathbf{d} \in \mathbb{Z}^n$: number of divisions
+                per dimension
+          \item $r$: radius (half-diagonal)
+        \end{itemize}
+      \end{block}
+      \begin{block}{Implementation Note}
+        Efficient implementation uses a priority queue (min-heap)
+        per distinct radius value $r$, sorted by $f(\mathbf{c})$.
+        This allows $O(\log N)$ access to the best interval
+        for each radius.
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{7.6 DIRECT --- Python}
+\begin{lstlisting}[style=python, caption={DIRECT algorithm in Python}]
+import numpy as np
+from dataclasses import dataclass, field
+from typing import List
+
+@dataclass
+class Rect:
+    c: np.ndarray        # center in unit hypercube
+    y: float             # f(c)
+    d: np.ndarray        # number of splits per dimension
+    r: float             # half-diagonal radius
+
+def direct(f, a, b, k_max=20, r_min=1e-4):
+    """DIRECT algorithm for global optimisation over [a, b]."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    n = len(a)
+    # Map to unit hypercube
+    g = lambda xp: f(xp * (b - a) + a)
+    c = np.full(n, 0.5)
+    rects = [Rect(c.copy(), g(c), np.zeros(n, int),
+                  np.sqrt(n) * 0.5)]
+    c_best = c.copy()
+    for _ in range(k_max):
+        # Find potentially optimal intervals (lower convex hull)
+        to_split = _potentially_optimal(rects, r_min)
+        new_rects = []
+        for rect in to_split:
+            rects.remove(rect)
+            new_rects.extend(_split_rect(rect, g))
+        rects.extend(new_rects)
+        c_best = min(rects, key=lambda r: r.y).c
+    return c_best * (b - a) + a
+
+def _split_rect(rect, g):
+    """Split along longest dimension, trisect."""
+    d = rect.d.copy(); c = rect.c.copy()
+    j = np.argmin(d)           # split least-split axis
+    delta = 3.0**(-d[j] - 1)
+    subs = []
+    for sign in (+1, -1):
+        cn = c.copy(); cn[j] += sign * delta
+        dn = d.copy(); dn[j] += 1
+        rn = np.sqrt(np.sum((0.5 / 3**dn)**2))
+        subs.append(Rect(cn, g(cn), dn, rn))
+    rect.d[j] += 1
+    rect.r = np.sqrt(np.sum((0.5 / 3**rect.d)**2))
+    return [rect] + subs
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{7.6 DIRECT --- Worked Example}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+      \begin{exampleblock}{Example 7.1 — Flower Function on $[-1,3]\times[-2,1]$}
+        Normalised: $f(x_1',x_2') = \text{flower}(4x_1'-1,\;3x_2'-2)$
+        \medskip
+
+        \textbf{Iteration 0:} Sample at $[0.5, 0.5]$ $\to$ $f = 0.158$
+        \medskip
+
+        After first split:
+        \begin{center}
+        \small
+        \begin{tabular}{@{}ccccc@{}}
+          \toprule
+          Int. & Center & Side lengths & $r$ & $f(\mathbf{c})$ \\
+          \midrule
+          1 & $[1/6,\;3/6]$ & $[1/3,1]$ & 0.527 & 0.500 \\
+          2 & $[5/6,\;3/6]$ & $[1/3,1]$ & 0.527 & 1.231 \\
+          3 & $[3/6,\;3/6]$ & $[1/3,1/3]$ & 0.236 & 0.158 \\
+          4 & $[3/6,\;1/6]$ & $[1/3,1/3]$ & 0.236 & 2.029 \\
+          5 & $[3/6,\;5/6]$ & $[1/3,1/3]$ & 0.236 & 1.861 \\
+          \bottomrule
+        \end{tabular}
+        \end{center}
+        Next split: intervals 1 and 3 (on lower convex hull).
+      \end{exampleblock}
+    \column{0.42\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth]{fig_direct_partitioning.pdf}\\
+        {\scriptsize After several DIRECT iterations on Branin: left
+        shows partitions, right shows $(r, f(\mathbf{c}))$ with lower
+        convex hull in red.}
+      \end{center}
+  \end{columns}
+\end{frame}
+
+%======================================================================
+\section{Summary \& Exercises}
+%======================================================================
+
+\begin{frame}[allowframebreaks]{7.7 Summary}
+  \begin{block}{Summary of Direct Methods}
+    \begin{itemize}
+      \item \textbf{Direct methods} rely solely on the objective
+            function $f$ — no derivatives required.
+    \end{itemize}
+  \end{block}
+
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \begin{block}{Cyclic Coordinate Search}
+        \begin{itemize}
+          \item Optimises one coordinate at a time
+          \item Simple but slow on diagonal valleys
+          \item Acceleration: add $\mathbf{x}^{(k+1)}-\mathbf{x}^{(k)}$
+                step after each cycle
+        \end{itemize}
+      \end{block}
+      \begin{block}{Powell's Method}
+        \begin{itemize}
+          \item Builds conjugate search directions
+          \item Faster convergence than cyclic search
+          \item Quadratic convergence on quadratic objectives
+          \item May lose conjugacy on non-quadratic $f$
+        \end{itemize}
+      \end{block}
+      \begin{block}{Hooke-Jeeves}
+        \begin{itemize}
+          \item Exploratory search + pattern move
+          \item $2n$ evaluations per step
+          \item Provably convergent for continuous $f$
+        \end{itemize}
+      \end{block}
+    \column{0.48\textwidth}
+      \begin{block}{Generalized Pattern Search}
+        \begin{itemize}
+          \item Generalises Hooke-Jeeves to arbitrary positive
+                spanning sets $\mathcal{D}$
+          \item Points lie on a scaled lattice
+          \item Convergence guaranteed under mild conditions
+        \end{itemize}
+      \end{block}
+      \begin{block}{Nelder-Mead}
+        \begin{itemize}
+          \item Maintains and deforms a simplex of $n+1$ points
+          \item Four operations: reflection, expansion,
+                contraction, shrinkage
+          \item Widely used in practice (SciPy default for
+                derivative-free optimisation)
+          \item No formal convergence guarantee in general
+        \end{itemize}
+      \end{block}
+      \begin{block}{DIRECT}
+        \begin{itemize}
+          \item Global optimisation via recursive interval splitting
+          \item Lipschitz lower bounds guide which intervals to split
+          \item Avoids specifying $\ell$; uses convex hull selection
+          \item Guaranteed to find global minimum as $k \to \infty$
+        \end{itemize}
+      \end{block}
+  \end{columns}
+
+  \framebreak
+
+  \begin{center}
+    \includegraphics[width=0.6\linewidth]{fig_convergence_comparison.pdf}\\
+    {\small Convergence on Rosenbrock: Nelder-Mead and Powell
+    converge faster than cyclic coordinate search.}
+  \end{center}
+
+  \begin{block}{Method Comparison}
+    \centering
+    \small
+    \begin{tabular}{lcccc}
+      \toprule
+      Method & Global? & Evals/iter & Memory & Best for \\
+      \midrule
+      Cyclic coord. & No & $n$ & $O(n)$ & Separable $f$ \\
+      Powell        & No & $n \cdot (\text{ls})$ & $O(n^2)$ & Smooth $f$ \\
+      Hooke-Jeeves  & No & $2n$ & $O(n)$ & General $f$ \\
+      GPS           & No & $|\mathcal{D}|$ & $O(n|\mathcal{D}|)$ & Constrained lattice \\
+      Nelder-Mead   & No & $1$--$n+1$ & $O(n^2)$ & Low-dim, smooth $f$ \\
+      DIRECT        & Yes & $2n$ & $O(3^k)$ & Bounded, Lipschitz $f$ \\
+      \bottomrule
+    \end{tabular}
+  \end{block}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{7.8 Exercises}
+  \begin{exampleblock}{Exercise 7.1}
+    Design an objective function $f$ and starting point such that
+    Hooke-Jeeves fails to reduce the objective function.  What does
+    this imply about the algorithm's guarantees?
+    \medskip
+
+    \textit{Hint: Consider a function whose minimum lies in a region
+    that is never reached by coordinate-aligned steps of size
+    $\alpha$.}
+  \end{exampleblock}
+
+  \begin{exampleblock}{Exercise 7.2}
+    Explain why cyclic coordinate search guarantees improvement after
+    each full cycle provided the current point is not a minimum.
+    What condition on $f$ breaks this guarantee?
+    \medskip
+
+    \textit{Hint: Think about a non-differentiable objective or one
+    with flat regions.  Moving in only increasing $f$ would mean the
+    method is at a local minimum.}
+  \end{exampleblock}
+
+  \begin{exampleblock}{Exercise 7.3}
+    Give an example of a 2D objective function for which cyclic
+    coordinate search with the standard $\pm\mathbf{e}_i$ directions
+    will stall at a non-optimal point.  Describe how GPS with a
+    richer direction set $\mathcal{D}$ would succeed.
+  \end{exampleblock}
+
+  \framebreak
+
+  \begin{exampleblock}{Exercise 7.4}
+    Explain the difference between the divided rectangles algorithm
+    (DIRECT) and the Nelder-Mead simplex method.  Approximate how
+    many function evaluations DIRECT requires for a 2-dimensional
+    problem with 5 iterations.
+    \medskip
+
+    \textit{Solution:} Each iteration of DIRECT evaluates
+    $2n = 4$ points per split.  After $k=5$ iterations the total
+    number of rectangles grows at most as $O(3^k)$, though in
+    practice far fewer are split each iteration.
+  \end{exampleblock}
+
+  \begin{exampleblock}{Exercise 7.5 — Computational}
+    Find the optimal point of
+    \[
+      f(x_1, x_2) = \sin\!\bigl(\tfrac{1}{2}x_1^2 - \tfrac{1}{4}x_2^2 + 3\bigr)
+      \cos(2x_1 + 1 - e^{x_2})
+    \]
+    over $x_1, x_2 \in [-2, 2]$ using:
+    \begin{enumerate}[(a)]
+      \item Nelder-Mead (from three different starting simplices)
+      \item DIRECT (with \texttt{scipy.optimize.direct})
+    \end{enumerate}
+    Compare the solutions found.  Which method is more reliable for
+    this multimodal function?
+
+    \textit{Hint:} Use \texttt{scipy.optimize.minimize(f, x0,
+    method='Nelder-Mead')} and \newline
+    \texttt{scipy.optimize.direct(f, bounds=[(-2,2),(-2,2)])}.
+  \end{exampleblock}
+\end{frame}
+
+%──────────────────────────────────────────────────────────────────────
+\begin{frame}{References}
+  \begin{thebibliography}{9}
+    \bibitem{kw2026}
+      M.~J. Kochenderfer and T.~A. Wheeler,
+      \emph{Algorithms for Optimization}, 2nd ed.,
+      MIT Press, 2026.
+    \bibitem{hookejeeves}
+      R.~Hooke and T.~A. Jeeves,
+      ``Direct Search Solution of Numerical and Statistical
+      Problems,''
+      \emph{Journal of the ACM}, vol.~8, no.~2, pp.~212--229, 1961.
+    \bibitem{nelder1965}
+      J.~A. Nelder and R.~Mead,
+      ``A Simplex Method for Function Minimization,''
+      \emph{The Computer Journal}, vol.~7, no.~4,
+      pp.~308--313, 1965.
+    \bibitem{jones1993}
+      D.~R. Jones, C.~D. Perttunen, and B.~E. Stuckman,
+      ``Lipschitzian Optimization Without the Lipschitz Constant,''
+      \emph{Journal of Optimization Theory and Applications},
+      vol.~79, no.~1, pp.~157--181, 1993.
+    \bibitem{regis2016}
+      R.~G. Regis,
+      ``On the Properties of Positive Spanning Sets and Positive
+      Bases,''
+      \emph{Optimization and Engineering}, vol.~17, no.~1,
+      pp.~229--262, 2016.
+  \end{thebibliography}
+\end{frame}
+
+%──────────────────────────────────────────────────────────────────────
+\end{document}

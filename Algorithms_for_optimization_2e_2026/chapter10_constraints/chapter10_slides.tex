@@ -1,0 +1,1031 @@
+% ============================================================
+%  Chapter 10 --- Constraints
+%  Algorithms for Optimization, 2nd ed., Kochenderfer & Wheeler (2026)
+%  Beamer slides  ---  aspectratio 16:9, Madrid/Seahorse theme
+% ============================================================
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+
+% -- packages ----------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{hyperref}
+
+\graphicspath{{figures/}}
+
+% -- listings style ----------------------------------------
+\lstdefinestyle{pycode}{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  frame=single,
+  backgroundcolor=\color{gray!7},
+  keywordstyle=\color{blue!70!black}\bfseries,
+  commentstyle=\color{green!50!black}\itshape,
+  stringstyle=\color{red!70!black},
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+  captionpos=b,
+}
+
+% -- footline ----------------------------------------------
+\setbeamertemplate{footline}[frame number]
+
+% -- macros ------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\bA}{\mathbf{A}}
+\newcommand{\bb}{\mathbf{b}}
+\newcommand{\bQ}{\mathbf{Q}}
+\newcommand{\bL}{\mathbf{L}}
+\newcommand{\by}{\mathbf{y}}
+\newcommand{\blambda}{\bm{\lambda}}
+\newcommand{\bmu}{\bm{\mu}}
+\newcommand{\Lagr}{\mathcal{L}}
+\DeclareMathOperator*{\minimize}{minimize}
+
+% -- title info --------------------------------------------
+\title[Ch.10 Constraints]{\textbf{Chapter 10: Constraints}}
+\subtitle{Algorithms for Optimization, 2\textsuperscript{nd} Ed.\\
+          Kochenderfer \& Wheeler (2026)}
+\author{Lecture Slides}
+\date{}
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+% -- Title slide --------------------------------------------------------------
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% -- Table of contents --------------------------------------------------------
+\begin{frame}{Chapter Outline}
+  \tableofcontents
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Constrained Optimization}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Constrained Optimization --- Motivation}
+  \begin{columns}
+    \begin{column}{0.52\textwidth}
+      \textbf{Previous chapters} assumed:
+      \[\bx \in \R^n\quad\text{(unconstrained)}\]
+
+      \textbf{Reality:} design variables are often restricted.
+      \medskip
+
+      \begin{exampleblock}{Engineering examples}
+        \begin{itemize}
+          \item Aircraft: structural load limits ($\sigma \le \sigma_{\max}$)
+          \item Portfolio: budget constraint ($\sum w_i = 1$)
+          \item Robot: joint angle bounds $(\theta_{\min}\le\theta\le\theta_{\max})$
+        \end{itemize}
+      \end{exampleblock}
+
+      \medskip
+      Constraints \textbf{restrict} the feasible set $\mathcal{X}\subset\R^n$.\\
+      They \emph{may or may not} change the optimal solution.
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \includegraphics[width=\linewidth]{constraint_effect.pdf}
+      \begin{center}
+        \scriptsize Constraints can change the solution (right)\\
+        or leave it unchanged (middle).
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{General Constrained Optimization Problem}
+  \begin{block}{Standard Form (Eq.~10.2)}
+    \[
+      \minimize_{\bx}\; f(\bx) \qquad
+      \begin{array}{ll}
+        \text{subject to} & h_i(\bx) = 0, \quad i = 1,\ldots,\ell \\
+                          & g_j(\bx) \le 0, \quad j = 1,\ldots,m
+      \end{array}
+    \]
+  \end{block}
+
+  \begin{columns}
+    \begin{column}{0.50\textwidth}
+      \begin{itemize}
+        \item $f:\R^n\to\R$ --- \textbf{objective function}
+        \item $h_i:\R^n\to\R$ --- \textbf{equality constraints}
+        \item $g_j:\R^n\to\R$ --- \textbf{inequality constraints} ($\le 0$)
+        \item Set-membership $\bx\in\mathcal{X}$ can be cast as\\
+              $h(\bx) = (\bx \notin \mathcal{X})$
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{alertblock}{Greater-than conversion}
+        $g(\bx) \ge 0 \;\Longleftrightarrow\; -g(\bx) \le 0$
+      \end{alertblock}
+      \begin{exampleblock}{Numerical example}
+        Minimize $x_1^2 + x_2^2$\\
+        s.t.\ $x_1 + x_2 = 1$ (equality)\\
+        \phantom{s.t.\ }$x_1 \ge 0,\; x_2 \ge 0$ (inequality)
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Constraint Types}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Constraint Types}
+  \begin{columns}
+    \begin{column}{0.50\textwidth}
+      \begin{block}{1. Equality constraints}
+        $h(\bx) = 0$\\[4pt]
+        Restricts $\bx$ to a \textbf{surface} (manifold) of dimension $n-\ell$.
+      \end{block}
+
+      \begin{block}{2. Inequality constraints}
+        $g(\bx) \le 0$\\[4pt]
+        Restricts $\bx$ to a \textbf{half-space} or curved feasible region.
+      \end{block}
+
+      \begin{block}{3. Bound constraints (special case)}
+        $a \le x_i \le b$\\[4pt]
+        Can be written as $g_1(x_i) = x_i - b \le 0$\\
+        and $g_2(x_i) = a - x_i \le 0$.
+      \end{block}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{tabular}{ll}
+        \toprule
+        Type & Form\\
+        \midrule
+        Equality & $h(\bx)=0$\\
+        Inequality & $g(\bx)\le 0$\\
+        Bound & $a\le x_i \le b$\\
+        Box & $\bx \in [\mathbf{a},\mathbf{b}]$\\
+        Set-membership & $\bx \in \mathcal{X}$\\
+        \bottomrule
+      \end{tabular}
+      \vspace{8pt}
+
+      \begin{alertblock}{Key insight}
+        Any constraint type can be converted to equality or inequality form --- giving a \emph{unified} framework.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Transformations to Remove Constraints}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Removing Bound Constraints via Variable Transformation}
+  \begin{columns}
+    \begin{column}{0.55\textwidth}
+      For $a \le x \le b$, define the \textbf{sigmoid transform}:
+      \[
+        x = t_{a,b}(\hat{x}) = a + (b-a)\frac{2\hat{x}}{1+\hat{x}^2}
+        \quad\text{(sinusoidal variant)}
+      \]
+
+      More commonly:
+      \[
+        t_{a,b}(\hat x) = a + (b-a)\cdot\sin^2(\hat x)
+      \]
+      \begin{itemize}
+        \item $\hat{x}\in\R$ is \textbf{unconstrained}
+        \item $t_{a,b}$ maps $\R \to (a,b)$
+        \item Substitute into $f$ to get an unconstrained problem
+        \item Apply \emph{any} unconstrained solver
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \includegraphics[width=\linewidth]{bound_transform_ex10_1.pdf}
+      \begin{center}
+        \scriptsize\textbf{Example 10.1:} $\min x\sin(x)$, $x\in[2,6]$\\
+        Right: two minima at $\hat x\approx 0.242$ and $4.139$,\\
+        both map to $x\approx 4.914$.
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Bound-Constrained Minimization via Transform}
+  \begin{lstlisting}[style=pycode,caption={Example 10.1 in Python --- bound-constrained minimization}]
+import numpy as np
+from scipy.optimize import minimize
+
+a, b = 2.0, 6.0
+
+def t(xhat):
+    """Sigmoid transform: maps R -> (a, b)."""
+    return a + (b - a) * np.sin(xhat)**2
+
+def f_transformed(xhat):
+    x = t(xhat)
+    return x * np.sin(x)
+
+# Solve unconstrained problem
+results = []
+for x0 in np.linspace(-6, 6, 20):
+    res = minimize(f_transformed, x0, method='L-BFGS-B')
+    results.append((res.fun, t(res.x[0])))
+
+# Best solution in original space
+best = min(results, key=lambda r: r[0])
+print(f"f* = {best[0]:.4f},  x* = {best[1]:.4f}")
+# Output: f* = -4.8141,  x* = 4.9136
+  \end{lstlisting}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Removing Affine Equality Constraints}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Removing Affine Equality Constraints}
+  \begin{columns}
+    \begin{column}{0.55\textwidth}
+      \textbf{Setting:} $\bA\bx = \bb$ with $\bA\in\R^{m\times n}$, $\text{rank}(\bA)=m < n$.
+
+      \medskip
+      \textbf{LQ decomposition} of $\bA$:
+      \begin{block}{Eq.~10.6}
+        \[
+          \bA = \begin{bmatrix}\bL & \mathbf{0}\end{bmatrix}\bQ
+        \]
+        $\bL\in\R^{m\times m}$ lower-triangular, $\bQ\in\R^{n\times n}$ orthogonal.
+      \end{block}
+
+      Apply change of variables $\bQ\bx = \by$:
+      \[
+        \by = \begin{bmatrix}\by_{1:m}\\\by_{(m+1):n}\end{bmatrix}
+      \]
+      Constraint satisfied when $\by_{1:m}^* = \bL^{-1}\bb$.
+
+      \medskip
+      Free variables $\by_{(m+1):n}$ can be optimized without constraint.
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \includegraphics[width=\linewidth]{affine_equality.pdf}
+      \begin{center}
+        \scriptsize Affine constraint $x_1+2x_2=4$ restricts\\
+        optimum to the line; constrained $\bx^* = (4/5,\,8/5)$.
+      \end{center}
+
+      \begin{exampleblock}{Example 10.2}
+        Constraint $h(\bx)=c_1x_1+\cdots+c_nx_n=0$:\\
+        Solve for $x_n = \tfrac{1}{c_n}(-c_1x_1-\cdots-c_{n-1}x_{n-1})$\\
+        and substitute into $f$.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Affine Equality Constraint via Substitution}
+  \begin{lstlisting}[style=pycode,caption={Minimize $x_1^3+x_2^2+x_3$ subject to $x_1+2x_2+3x_3=6$}]
+import numpy as np
+from scipy.optimize import minimize
+
+# Constraint: x1 + 2*x2 + 3*x3 = 6  =>  x1 = 6 - 2*x2 - 3*x3
+def f_reduced(y):
+    """y = [x2, x3]; x1 is determined by the constraint."""
+    x2, x3 = y
+    x1 = 6.0 - 2*x2 - 3*x3
+    return x2**2 + x3 - (2*x2 + 3*x3 - 6)**3
+
+x0 = [1.0, 1.0]
+res = minimize(f_reduced, x0, method='L-BFGS-B')
+x2_opt, x3_opt = res.x
+x1_opt = 6.0 - 2*x2_opt - 3*x3_opt
+
+print(f"x* = ({x1_opt:.4f}, {x2_opt:.4f}, {x3_opt:.4f})")
+print(f"Constraint satisfied: {np.isclose(x1_opt + 2*x2_opt + 3*x3_opt, 6)}")
+  \end{lstlisting}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Projected Iterative Methods}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Projected Gradient Descent}
+  \begin{columns}
+    \begin{column}{0.52\textwidth}
+      \textbf{Idea:} Run unconstrained descent, then \textbf{project} back to the feasible set.
+
+      \begin{block}{Algorithm 10.1 --- Projected Descent}
+        \begin{enumerate}
+          \item Start at feasible $\bx^{(1)}$
+          \item Compute gradient step: $\tilde{\bx} \leftarrow \bx^{(k)} - \alpha\nabla f(\bx^{(k)})$
+          \item \textbf{Project:} $\bx^{(k+1)} \leftarrow \arg\min_{\bx\in\mathcal{X}}\|\bx - \tilde\bx\|$
+          \item Repeat until convergence
+        \end{enumerate}
+      \end{block}
+
+      \textbf{Projection} onto a convex set $\mathcal{X}$:
+      \[
+        \Pi_\mathcal{X}(\tilde\bx) = \arg\min_{\bx\in\mathcal{X}}\|\bx-\tilde\bx\|_2
+      \]
+      \begin{itemize}
+        \item Box $[\mathbf{a},\mathbf{b}]$: componentwise clip
+        \item Halfspace $\{\bx:\mathbf{c}^\top\bx\le d\}$: closed-form shift
+        \item General convex $\mathcal{X}$: solve a QP
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \includegraphics[width=\linewidth]{projected_descent.pdf}
+      \begin{center}
+        \scriptsize Orange arrows: unconstrained gradient steps.\\
+        Red path: projected iterates walking along the boundary.
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Projected Gradient Descent}
+  \begin{lstlisting}[style=pycode,caption={Projected gradient descent onto a half-space $x_1+x_2 \le 3$}]
+import numpy as np
+
+def project_halfspace(x, a, b_val):
+    """Project x onto {x : a^T x <= b_val}."""
+    violation = a @ x - b_val
+    if violation > 0:
+        x = x - violation * a / (a @ a)
+    return x
+
+def f(x):      return (x[0]-3)**2 + (x[1]-3)**2
+def grad_f(x): return np.array([2*(x[0]-3), 2*(x[1]-3)])
+
+a = np.array([1.0, 1.0])
+b_val = 3.0
+x = np.array([2.5, 2.0])    # infeasible start
+alpha = 0.1
+
+for _ in range(50):
+    x_new = x - alpha * grad_f(x)
+    x = project_halfspace(x_new, a, b_val)
+
+print(f"x* = {x},  constraint satisfied: {a @ x <= b_val + 1e-8}")
+# x* ~= [1.5, 1.5],  constraint satisfied: True
+  \end{lstlisting}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Lagrange Multipliers \& KKT Conditions}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Lagrange Multipliers --- Equality Constraints}
+  \begin{columns}
+    \begin{column}{0.55\textwidth}
+      \textbf{Optimality condition:} at a constrained minimum $\bx^*$,
+      the gradient of $f$ is \emph{perpendicular} to the constraint surface,
+      i.e.\ parallel to $\nabla h$:
+      \begin{block}{Eq.~10.15}
+        \[
+          \nabla f(\bx) = \lambda\,\nabla h(\bx)
+        \]
+        $\lambda\in\R$ is the \textbf{Lagrange multiplier}.
+      \end{block}
+
+      Define the \textbf{Lagrangian}:
+      \begin{block}{Eq.~10.16}
+        \[
+          \Lagr(\bx,\lambda) = f(\bx) - \lambda\,h(\bx)
+        \]
+      \end{block}
+
+      Setting $\nabla\Lagr = \mathbf{0}$ gives both conditions simultaneously:
+      \[\nabla_\bx\Lagr = \mathbf{0} \;\Rightarrow\; \nabla f = \lambda\nabla h\]
+      \[\nabla_\lambda\Lagr = 0 \;\Rightarrow\; h(\bx) = 0\]
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \includegraphics[width=\linewidth]{lagrange_contour.pdf}
+      \begin{center}
+        \scriptsize At $\bx^*\approx[1.358,1.165]$:\\
+        contour of $f$ is \emph{tangent} to $h(\bx)=0$,\\
+        so $\nabla f \parallel \nabla h$.
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Multiple Equality Constraints}
+  \begin{block}{Generalized Lagrangian --- Multiple Equalities}
+    \[
+      \Lagr(\bx,\blambda) = f(\bx) - \sum_{i=1}^{\ell} \lambda_i\,h_i(\bx)
+    \]
+    Setting $\nabla\Lagr=\mathbf{0}$ requires all $\ell+1$ conditions:
+    \[
+      \nabla f(\bx) = \sum_{i=1}^{\ell}\lambda_i\,\nabla h_i(\bx), \qquad h_i(\bx)=0\;\forall i
+    \]
+  \end{block}
+
+  \medskip
+  \begin{exampleblock}{Example 10.4 --- Numerical Solution}
+    Problem: $\min -\exp\!\bigl(-(x_1x_2-\tfrac{3}{2})^2-(x_2-\tfrac{3}{2})^2\bigr)$
+    subject to $x_1 - x_2^2 = 0$.
+
+    \medskip
+    Lagrangian: $\Lagr = -\exp(\cdots) - \lambda(x_1 - x_2^2)$
+
+    \medskip
+    Setting partial derivatives to zero and solving yields:
+    \[\bx^* \approx [1.358,\;1.165], \quad \lambda^* \approx 0.170\]
+  \end{exampleblock}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Method of Lagrange Multipliers}
+  \begin{lstlisting}[style=pycode,caption={Solving the system $\nabla\mathcal{L}=0$ numerically (Example 10.4)}]
+import numpy as np
+from scipy.optimize import fsolve
+
+def f(x):
+    return -np.exp(-((x[0]*x[1] - 1.5)**2 + (x[1] - 1.5)**2))
+
+def grad_L(vars):
+    x1, x2, lam = vars
+    fval = f([x1, x2])
+    # dL/dx1 = 2*x2*f*(x1*x2 - 3/2) - lam
+    dLdx1 = 2*x2*fval*(x1*x2 - 1.5) - lam
+    # dL/dx2 = f*(2*lam*x2 - 2*x1*(x1*x2-3/2) - 2*(x2-3/2))
+    dLdx2 = 2*lam*x2*fval + fval*(-2*x1*(x1*x2-1.5) - 2*(x2-1.5))
+    # dL/dlambda = -(x2^2 - x1)  (constraint)
+    dLdlam = -(x2**2 - x1)
+    return [dLdx1, dLdx2, dLdlam]
+
+x0 = [1.0, 1.0, 0.1]
+sol = fsolve(grad_L, x0, full_output=True)
+x1s, x2s, lams = sol[0]
+print(f"x* = [{x1s:.4f}, {x2s:.4f}],  lambda* = {lams:.4f}")
+# x* = [1.3580, 1.1650],  lambda* = 0.1700
+  \end{lstlisting}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Inequality Constraints \& KKT Conditions}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{KKT Conditions for Inequality Constraints}
+  \begin{columns}
+    \begin{column}{0.55\textwidth}
+      Extend to $g_j(\bx)\le 0$ using the \textbf{Generalized Lagrangian}:
+      \[
+        \Lagr(\bx,\blambda,\bmu) = f(\bx) - \sum_i\lambda_i h_i(\bx) - \sum_j\mu_j g_j(\bx)
+      \]
+
+      \begin{block}{KKT Necessary Conditions}
+        \begin{enumerate}
+          \item \textbf{Stationarity:} $\nabla_\bx\Lagr = \mathbf{0}$
+          \item \textbf{Primal feasibility:} $h_i(\bx^*)=0$,\; $g_j(\bx^*)\le 0$
+          \item \textbf{Dual feasibility:} $\mu_j \ge 0$
+          \item \textbf{Complementary slackness:}\\
+                $\mu_j g_j(\bx^*) = 0$ for all $j$
+        \end{enumerate}
+      \end{block}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \includegraphics[width=\linewidth]{kkt_conditions.pdf}
+      \begin{center}
+        \scriptsize At a boundary optimum $\bx^*$:\\
+        $-\nabla f$ and $\nabla g$ must be aligned ($\mu>0$).\\
+        Interior optimum: $\mu=0$ (constraint inactive).
+      \end{center}
+
+      \begin{alertblock}{Complementary slackness}
+        Either $\mu_j=0$ (inactive constraint)\\
+        or $g_j(\bx^*)=0$ (active/tight constraint),\\
+        but \emph{not} both in general.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Active vs.\ Inactive Constraints}
+  \begin{columns}
+    \begin{column}{0.50\textwidth}
+      \begin{block}{Inactive constraint ($g(\bx^*) < 0$)}
+        \begin{itemize}
+          \item $\bx^*$ is in the \emph{interior} of feasible region
+          \item KKT: $\mu_j = 0$ (constraint has no effect)
+          \item Effectively an unconstrained problem locally
+        \end{itemize}
+      \end{block}
+
+      \begin{block}{Active constraint ($g(\bx^*) = 0$)}
+        \begin{itemize}
+          \item $\bx^*$ lies on the \emph{boundary}
+          \item KKT: $\mu_j > 0$ (constraint is binding)
+          \item Gradient of $f$ has a component into infeasible region
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \includegraphics[width=\linewidth]{inequality_region.pdf}
+      \begin{center}
+        \scriptsize Left: optimum in interior (inactive).\\
+        Right: optimum on boundary (active).
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Slack Variables}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Slack Variables}
+  \begin{columns}
+    \begin{column}{0.52\textwidth}
+      \textbf{Convert} inequality $g(\bx)\le 0$ to equality by adding a \textbf{slack variable} $s\ge 0$:
+      \[
+        g(\bx) \le 0 \;\Longleftrightarrow\; g(\bx) + s = 0, \quad s \ge 0
+      \]
+      Use $s = t^2$ to enforce $s\ge 0$ automatically:
+      \[
+        g(\bx) + t^2 = 0 \qquad (t\in\R,\text{ unconstrained})
+      \]
+
+      \begin{block}{Transformed Problem}
+        \[\minimize_{\bx,t}\;f(\bx)\]
+        \[\text{s.t.}\; g(\bx)+t^2=0\]
+        Now an \textbf{equality}-constrained problem.
+      \end{block}
+
+      \textbf{Generalizes:} for $m$ inequalities introduce $t_1,\ldots,t_m$.
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \includegraphics[width=\linewidth]{slack_variable.pdf}
+      \begin{center}
+        \scriptsize Slack $s=t^2\ge 0$ converts\\
+        the inequality into an equality.
+      \end{center}
+
+      \begin{exampleblock}{Numerical example}
+        $g(x) = x-5 \le 0$\\
+        Add $s=t^2$: $x - 5 + t^2 = 0$\\
+        $\Rightarrow x = 5 - t^2 \le 5$\checkmark
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Penalty Methods}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Penalty Methods --- Overview}
+  \begin{columns}
+    \begin{column}{0.52\textwidth}
+      \textbf{Idea:} add a penalty term $\rho\,p(\bx)$ to the objective that is \emph{zero} when feasible, \emph{positive} when infeasible:
+      \[
+        \minimize_{\bx}\; f(\bx) + \rho\,p(\bx)
+      \]
+
+      \begin{block}{Common penalty functions}
+        \begin{itemize}
+          \item \textbf{Count:} $p(\bx) = \sum_j (g_j(\bx)>0)$
+          \item \textbf{Quadratic:} $p(\bx) = \sum_j \max(g_j(\bx),0)^2$
+          \item \textbf{For equality:} $p(\bx) = \sum_i h_i(\bx)^2$
+        \end{itemize}
+      \end{block}
+
+      \textbf{Strategy:} solve a sequence with increasing $\rho$:
+      \[\rho_1 < \rho_2 < \cdots \to \infty\]
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \includegraphics[width=\linewidth]{penalty_functions.pdf}
+      \begin{center}
+        \scriptsize Different penalty functions as a\\
+        function of constraint value $g(\bx)$.
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Penalty Method --- Convergence and Limitation}
+  \begin{columns}
+    \begin{column}{0.52\textwidth}
+      \includegraphics[width=\linewidth]{penalty_method_rho.pdf}
+      \begin{center}
+        \scriptsize Penalized objective for $\min x$, $x\ge 5$.\\
+        Minimum $x^*=5-\tfrac{1}{2\rho}$ approaches 5 as $\rho\to\infty$.
+      \end{center}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{alertblock}{Key limitation (Example 10.5)}
+        For $\min x$ subject to $x\ge 5$:\\
+        penalized unconstrained minimum is
+        \[x^* = 5 - \frac{1}{2\rho}\]
+        which only \emph{approaches} 5 --- never equals it!\\
+        \textbf{Requires $\rho\to\infty$ for feasibility.}
+      \end{alertblock}
+
+      \begin{block}{Large $\rho$ issues}
+        \begin{itemize}
+          \item Ill-conditioned Hessian
+          \item Slow convergence
+          \item Numerical instability
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Quadratic Penalty Method}
+  \begin{lstlisting}[style=pycode,caption={Penalty method for equality-constrained minimization}]
+import numpy as np
+from scipy.optimize import minimize
+
+def quadratic_penalty_method(f, h, x0, k_max=20, rho=1.0, gamma=2.0):
+    """
+    f    : objective function
+    h    : equality constraint function (vector-valued)
+    x0   : initial point
+    k_max: number of penalty iterations
+    rho  : initial penalty parameter
+    gamma: penalty growth factor (> 1)
+    """
+    x = np.array(x0, dtype=float)
+    for k in range(k_max):
+        def penalized(xv):
+            hv = h(xv)
+            return f(xv) + (rho / 2.0) * np.sum(hv**2)
+        res = minimize(penalized, x, method='L-BFGS-B')
+        x = res.x
+        rho *= gamma
+    return x
+
+# Example: min x1^2+x2^2  s.t.  x1+x2=1
+f  = lambda x: x[0]**2 + x[1]**2
+h  = lambda x: np.array([x[0] + x[1] - 1.0])
+x_opt = quadratic_penalty_method(f, h, [0.5, 0.5])
+print(f"x* = {x_opt}")   # x* ~= [0.5, 0.5]
+  \end{lstlisting}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Method of Multipliers (Augmented Lagrangian)}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Method of Multipliers --- Augmented Lagrangian}
+  \begin{columns}
+    \begin{column}{0.55\textwidth}
+      Combines \textbf{Lagrange multipliers} + \textbf{quadratic penalty}:
+      \begin{block}{Augmented Lagrangian (Eq.~10.37)}
+        \[
+          \Lagr_\rho(\bx,\blambda) = f(\bx) + \frac{\rho}{2}\|\mathbf{h}(\bx)\|^2 + \blambda^\top\mathbf{h}(\bx)
+        \]
+      \end{block}
+
+      \begin{block}{Algorithm 10.3 --- Method of Multipliers}
+        \begin{enumerate}
+          \item Initialize $\blambda \leftarrow \mathbf{0}$, $\rho>0$
+          \item \textbf{Inner minimize:}\\
+                $\bx \leftarrow \arg\min_{\bx}\;[f(\bx)+\tfrac{\rho}{2}\|\mathbf{h}(\bx)\|^2+\blambda^\top\mathbf{h}(\bx)]$
+          \item \textbf{Multiplier update:}\\
+                $\blambda \leftarrow \blambda + \rho\,\mathbf{h}(\bx)$
+          \item Increase $\rho \leftarrow \gamma\rho$
+          \item Repeat until $\|\mathbf{h}(\bx)\|\le\varepsilon$
+        \end{enumerate}
+      \end{block}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \textbf{Advantage over pure penalty:}
+      \begin{itemize}
+        \item Can achieve \emph{exact feasibility} at finite $\rho$
+        \item Multiplier update drives constraint to zero
+        \item Better conditioned sub-problems
+      \end{itemize}
+
+      \includegraphics[width=\linewidth]{method_of_multipliers_conv.pdf}
+      \begin{center}
+        \scriptsize Left: $\lambda^{(k)}\to\lambda^*$. Right: constraint violation $\to 0$.
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Method of Multipliers (Augmented Lagrangian)}
+  \begin{lstlisting}[style=pycode,caption={Method of Multipliers (Algorithm 10.3) in Python}]
+import numpy as np
+from scipy.optimize import minimize
+
+def method_of_multipliers(f, h, x0, k_max=20, rho=1.0, gamma=2.0):
+    """
+    Augmented Lagrangian method for equality constraints h(x) = 0.
+    """
+    x = np.array(x0, dtype=float)
+    lam = np.zeros(len(h(x)))       # Lagrange multipliers
+    for k in range(k_max):
+        def aug_lagrangian(xv):
+            hv = h(xv)
+            return f(xv) + (rho / 2.0) * np.dot(hv, hv) + np.dot(lam, hv)
+        res = minimize(aug_lagrangian, x, method='L-BFGS-B')
+        x   = res.x
+        lam = lam + rho * h(x)      # multiplier update
+        rho *= gamma
+        if np.linalg.norm(h(x)) < 1e-8:
+            break
+    return x, lam
+
+# Example: min x1^2+x2^2  s.t.  x1+x2=1
+f  = lambda x: x[0]**2 + x[1]**2
+h  = lambda x: np.array([x[0] + x[1] - 1.0])
+x_opt, lam_opt = method_of_multipliers(f, h, [2.0, 0.0])
+print(f"x* = {x_opt},  lambda* = {lam_opt}")
+# x* ~= [0.5, 0.5],  lambda* ~= [-1.0]
+  \end{lstlisting}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Interior Point Methods}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Interior Point Methods --- Barrier Functions}
+  \begin{columns}
+    \begin{column}{0.52\textwidth}
+      \textbf{Idea:} instead of penalizing infeasibility, add a \textbf{barrier} that $\to+\infty$ as $\bx$ approaches the boundary from \emph{inside}:
+
+      \begin{block}{Log Barrier for $g_j(\bx)\le 0$}
+        \[
+          p(\bx) = -\sum_j \ln(-g_j(\bx))
+        \]
+        Defined only when $g_j(\bx)<0$ (interior).
+      \end{block}
+
+      \begin{block}{Penalized Objective}
+        \[
+          \minimize_{\bx}\; f(\bx) + \frac{1}{\rho}\,p(\bx)
+        \]
+      \end{block}
+
+      Start with small $\rho$, increase gradually.\\
+      The barrier shrinks, pushing solution to boundary.
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \includegraphics[width=\linewidth]{interior_point_barrier.pdf}
+      \begin{center}
+        \scriptsize Left: log barrier blows up at boundary.\\
+        Right: as $\rho$ increases, minimizer $\to$ boundary.
+      \end{center}
+
+      \begin{block}{Other barrier functions}
+        \begin{itemize}
+          \item \textbf{Inverse:} $p(\bx) = -\sum_j \frac{1}{g_j(\bx)}$
+          \item Stays strictly in interior
+          \item Requires strictly feasible $\bx^{(0)}$
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Interior Point Method --- Algorithm and Properties}
+  \begin{columns}
+    \begin{column}{0.55\textwidth}
+      \begin{block}{Algorithm 10.4 --- Interior Point Method}
+        \begin{enumerate}
+          \item Start from \textbf{strictly feasible} $\bx^{(0)}$\\
+                (all $g_j(\bx^{(0)})<0$)
+          \item Set $\delta\leftarrow\infty$
+          \item \textbf{While} $\delta > \varepsilon$:
+          \begin{enumerate}
+            \item $\bx' \leftarrow \arg\min_{\bx}\bigl[f(\bx)+p(\bx)/\rho\bigr]$
+            \item $\delta \leftarrow \|\bx'-\bx\|$
+            \item $\bx \leftarrow \bx'$
+            \item $\rho \leftarrow \gamma\rho$
+          \end{enumerate}
+          \item Return $\bx$
+        \end{enumerate}
+      \end{block}
+
+      \textbf{Finding initial feasible point:} solve auxiliary problem
+      \[
+        \minimize_{\bx,s}\;s \quad\text{s.t.}\quad \mathbf{g}(\bx)\le s\mathbf{1}
+      \]
+      Start with any $\bx^{(0)}$ and $s^{(0)} > \max_j g_j(\bx^{(0)})$.
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \begin{itemize}
+        \item \textbf{Pro:} every iterate is feasible
+        \item \textbf{Pro:} well-suited for convex programs (LP, QP, SOCP)
+        \item \textbf{Con:} needs strictly feasible start
+        \item \textbf{Con:} barrier becomes ill-conditioned as $\rho\to\infty$
+      \end{itemize}
+
+      \begin{exampleblock}{Feasibility subproblem}
+        $\minimize\; s$ s.t.\ $\mathbf{g}(\bx)\le s\mathbf{1}$\\
+        Feasible pair $(\bx,s)$ with $s<0$\\
+        implies $\bx$ is interior to the original feasible set.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Python: Interior Point Method}
+  \begin{lstlisting}[style=pycode,caption={Interior point method with log barrier}]
+import numpy as np
+from scipy.optimize import minimize
+
+def interior_point_method(f, g_list, x0, rho=1.0, gamma=2.0, eps=1e-6):
+    """
+    f       : objective  f(x)
+    g_list  : list of inequality constraint functions g_j(x) <= 0
+    x0      : strictly feasible initial point
+    """
+    x = np.array(x0, dtype=float)
+    delta = np.inf
+    while delta > eps:
+        def penalized(xv):
+            barriers = [-np.log(-g(xv)) for g in g_list]
+            if any(np.isnan(b) or np.isinf(b) for b in barriers):
+                return 1e20
+            return f(xv) + sum(barriers) / rho
+        res = minimize(penalized, x, method='Nelder-Mead',
+                       options={'xatol': 1e-9, 'fatol': 1e-9, 'maxiter': 5000})
+        delta = np.linalg.norm(res.x - x)
+        x = res.x
+        rho *= gamma
+    return x
+
+# Example: min (x-3)^2  s.t.  x >= 1  (i.e.,  1-x <= 0)
+f = lambda x: (x[0] - 3)**2
+g = [lambda x: 1.0 - x[0]]         # g(x) = 1 - x <= 0
+x_opt = interior_point_method(f, g, [1.5])
+print(f"x* = {x_opt[0]:.4f}")      # x* = 3.0000
+  \end{lstlisting}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Comparison of Methods}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Method Comparison}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{lllll}
+    \toprule
+    \textbf{Method} & \textbf{Constraint} & \textbf{Feasibility} & \textbf{Key parameter} & \textbf{Note}\\
+    \midrule
+    Substitution & Equality & Exact & --- & Reduces dim.\\
+    Projection & Convex set & Always feasible & Step size $\alpha$ & QP sub-problem\\
+    Penalty & Any & Approximate & $\rho\to\infty$ & Ill-cond.\ for large $\rho$\\
+    Aug.\ Lagrangian & Equality & Exact at finite $\rho$ & $\rho,\;\blambda$ & More robust\\
+    Interior Point & Inequality & Always feasible & $\rho$ (barrier) & Needs strict interior\\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{10pt}
+  \begin{columns}
+    \begin{column}{0.49\textwidth}
+      \begin{block}{When to use each}
+        \begin{itemize}
+          \item \textbf{Simple bounds/affine:} substitution or projection
+          \item \textbf{Black-box $f$:} penalty or augmented Lagrangian
+          \item \textbf{Convex / LP / QP:} interior point (IPOPT, CVXPY)
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \begin{exampleblock}{SciPy interface}
+        \texttt{scipy.optimize.minimize} supports:\\
+        \texttt{method='SLSQP'} --- sequential QP\\
+        \texttt{method='trust-constr'} --- trust-region\\
+        Both accept \texttt{constraints=} dicts for $h$, $g$.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Python: scipy.optimize with Constraints}
+  \begin{lstlisting}[style=pycode,caption={Using scipy.optimize.minimize with equality and inequality constraints}]
+import numpy as np
+from scipy.optimize import minimize
+
+# Minimize f(x) = (x1-1)^2 + (x2-2.5)^2
+# s.t.   h(x) = x1 + x2 - 3 = 0   (equality)
+#        g(x) = x1 - x2 + 1 <= 0  (inequality)
+
+f = lambda x: (x[0]-1)**2 + (x[1]-2.5)**2
+
+constraints = [
+    {'type': 'eq',   'fun': lambda x: x[0] + x[1] - 3.0},       # h(x) = 0
+    {'type': 'ineq', 'fun': lambda x: -(x[0] - x[1] + 1.0)},    # -g(x) >= 0
+]
+bounds = [(0, None), (0, None)]    # x1, x2 >= 0
+
+res = minimize(f, [0.5, 2.0], method='SLSQP',
+               constraints=constraints, bounds=bounds)
+print(f"x* = {res.x}")
+print(f"Equality constraint: {res.x[0]+res.x[1]-3:.2e}")
+# x* ~= [1.4, 1.7],  equality satisfied to machine precision
+  \end{lstlisting}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\section{Summary \& Exercises}
+% -----------------------------------------------------------------------------
+
+\begin{frame}{Chapter 10 --- Summary}
+  \begin{columns}
+    \begin{column}{0.50\textwidth}
+      \begin{block}{Key concepts}
+        \begin{itemize}
+          \item Constraints restrict design space to feasible set $\mathcal{X}$
+          \item Two fundamental types: \textbf{equality} $h(\bx)=0$ and \textbf{inequality} $g(\bx)\le 0$
+          \item Variable \textbf{transformations} eliminate constraints entirely
+          \item \textbf{LQ decomposition} removes affine equality constraints, reducing dimension
+          \item \textbf{Projected gradient} always stays feasible; projection is a QP
+          \item \textbf{Lagrange multipliers}: $\nabla f = \lambda\nabla h$ at equality-constrained optima
+          \item \textbf{KKT conditions}: first-order necessary conditions for constrained optima (equality + inequality)
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{block}{Practical methods}
+        \begin{itemize}
+          \item \textbf{Slack variables} convert inequalities to equalities ($s=t^2$)
+          \item \textbf{Penalty methods}: add $\rho\,p(\bx)$; increase $\rho$ for feasibility, but condition worsens
+          \item \textbf{Augmented Lagrangian} (method of multipliers): exact feasibility at finite $\rho$ by updating $\blambda$
+          \item \textbf{Interior point}: log/inverse barrier keeps iterates strictly feasible; $\rho\to\infty$ pushes to boundary
+        \end{itemize}
+      \end{block}
+
+      \begin{alertblock}{Key formula}
+        Augmented Lagrangian update:
+        $\blambda^{(k+1)} = \blambda^{(k)} + \rho\,\mathbf{h}(\bx^{(k+1)})$
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Selected Exercises}
+  \begin{block}{Exercise 10.1}
+    Solve $\min_x\; x$ subject to $x\ge 0$.\\
+    \textit{Solution:} $x^*=0$ (boundary of feasible set).
+  \end{block}
+
+  \begin{block}{Exercise 10.5}
+    What is the advantage of the method of multipliers over the quadratic penalty method?\\
+    \textit{Solution:} It does \emph{not} require $\rho\to\infty$ to achieve a feasible solution; the multiplier update $\blambda^{(k+1)}=\blambda^{(k)}+\rho\mathbf{h}(\bx)$ drives the constraint to zero at finite $\rho$.
+  \end{block}
+
+  \begin{block}{Exercise 10.6}
+    When would you use the barrier (interior point) method instead of the penalty method?\\
+    \textit{Solution:} When all iterates must remain feasible --- e.g., $f$ or constraints are undefined outside the feasible region.
+  \end{block}
+
+  \begin{block}{Exercise 10.12}
+    Minimize $x_1^3 + x_2^2 + x_3$ s.t.\ $x_1+2x_2+3x_3=6$.\\
+    \textit{Solution:} Rearrange: $x_1=6-2x_2-3x_3$ and substitute.\\
+    Unconstrained: $\min_{x_2,x_3}\; x_2^2 + x_3 - (2x_2+3x_3-6)^3$.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Selected Exercises (continued)}
+  \begin{block}{Exercise 10.11}
+    Give a quadratic objective with two variables where adding a linear constraint changes the optimum.\\
+    \textit{Solution:} $\min x_1^2+x_2^2$ subject to $x_1\ge 1$.\\
+    Unconstrained: $\bx^*=(0,0)$. Constrained: $\bx^*=(1,0)$.
+  \end{block}
+
+  \begin{block}{Exercise 10.7}
+    Find a smooth problem where, for any $\rho>0$, there exists a starting point from which steepest descent diverges.\\
+    \textit{Solution:} $\min x^3$ s.t.\ $x\ge 0$.\\
+    Penalized: $\min_x x^3+\rho(\min(x,0))^2$.\\
+    For $x\ll 0$: $x^3\approx x^3$ dominates and drives $x\to-\infty$.
+  \end{block}
+
+  \begin{block}{Exercise 10.16}
+    Why can Lagrange multipliers fail for $\min f(\bx)$ s.t.\ $c^2(\bx)=0$?\\
+    \textit{Solution:} The constraint gradient is $\nabla[c^2]=2c\nabla c=\mathbf{0}$ at all feasible points, so $\nabla f = \lambda\cdot\mathbf{0}$ gives no information on $\lambda$. Use the equivalent constraint $c(\bx)=0$ instead.
+  \end{block}
+\end{frame}
+
+% -- Final slide ---------------------------------------------------------------
+\begin{frame}{}
+  \begin{center}
+    \vspace{2em}
+    {\Large\textbf{End of Chapter 10}}\\[1em]
+    {\large Constraints}\\[2em]
+    \textit{Algorithms for Optimization, 2\textsuperscript{nd} ed.}\\
+    Kochenderfer \& Wheeler (2026)
+  \end{center}
+\end{frame}
+
+\end{document}

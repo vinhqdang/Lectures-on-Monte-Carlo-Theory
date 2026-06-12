@@ -1,0 +1,1140 @@
+%% chapter09_slides.tex
+%% Chapter 9: Population Methods
+%% Algorithms for Optimization, 2nd ed. (2026) --- Kochenderfer & Wheeler
+%% Compile: pdflatex -interaction=nonstopmode chapter09_slides.tex  (run twice)
+
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\setbeamertemplate{footline}[frame number]
+\setbeamertemplate{navigation symbols}{}
+
+%% Packages
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{microtype}
+\usepackage{multicol}
+
+\graphicspath{{figures/}}
+
+%% Python listings style
+\lstdefinestyle{python}{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{blue!80!black}\bfseries,
+  commentstyle=\color{green!50!black}\itshape,
+  stringstyle=\color{orange!80!black},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  numbersep=4pt,
+  frame=single,
+  backgroundcolor=\color{gray!7},
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+  captionpos=b,
+}
+
+%% Maths shortcuts
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\bv}{\mathbf{v}}
+\newcommand{\ba}{\mathbf{a}}
+\newcommand{\bb}{\mathbf{b}}
+\newcommand{\bc}{\mathbf{c}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+
+%% Title info
+\title[Ch.\ 9: Population Methods]{Chapter 9: Population Methods}
+\subtitle{Algorithms for Optimization, 2nd Edition (2026)}
+\author{Kochenderfer \& Wheeler}
+\institute{Adapted for Lecture Slides}
+\date{2026}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\begin{document}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\begin{frame}{Chapter Outline}
+  \tableofcontents
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\section{Population Iteration}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}{Motivation: Why Populations?}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{block}{Key Idea}
+        Previous chapters focused on methods where a \emph{single design
+        point} is iterated toward a minimum.\\[4pt]
+        \textbf{Population methods} maintain a \emph{collection} of
+        candidate designs $\bx^{(1)},\ldots,\bx^{(m)}$ and evolve them
+        collectively.
+      \end{block}
+      \vspace{4pt}
+      \textbf{Advantages:}
+      \begin{itemize}
+        \item Information at different points can be \emph{shared}
+        \item Better escape from \emph{local minima}
+        \item Naturally \emph{parallelisable}
+        \item Population diversity supports global exploration
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \includegraphics[width=\linewidth]{fig_population_iteration.pdf}
+      \vspace{4pt}
+      \footnotesize
+      The basic population loop: initialise, evaluate, generate new
+      population, check convergence.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Population Iteration: Algorithm Template}
+  \begin{block}{General Population Method (Alg.\ 9.1)}
+    \begin{enumerate}
+      \item \textbf{Initialise} population
+            $\mathcal{P} = \{\bx^{(1)},\ldots,\bx^{(m)}\}$, typically
+            by sampling uniformly in the design space.
+      \item For $k = 1, 2, \ldots, k_{\max}$:
+        \begin{enumerate}[(a)]
+          \item Evaluate $f(\bx^{(i)})$ for all individuals.
+          \item \textbf{Generate} a new population using a
+                method-specific rule (selection, mutation, etc.).
+        \end{enumerate}
+      \item Return $\bx^* = \arg\min_i f(\bx^{(i)})$.
+    \end{enumerate}
+  \end{block}
+
+\begin{lstlisting}[style=python, caption={Population method skeleton (Python)}]
+import numpy as np
+
+def population_method(f, bounds, pop_size=50, k_max=100, rng=None):
+    """Generic population loop.  Subclass and override `step`."""
+    rng = rng or np.random.default_rng()
+    lo, hi = np.array(bounds).T
+    population = rng.uniform(lo, hi, (pop_size, len(lo)))
+    for _ in range(k_max):
+        y = np.array([f(x) for x in population])
+        population = step(population, y, rng)   # method-specific
+    y = np.array([f(x) for x in population])
+    return population[np.argmin(y)]
+\end{lstlisting}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\section{Genetic Algorithms}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}{Genetic Algorithms: Overview}
+  \begin{columns}[T]
+    \begin{column}{0.58\textwidth}
+      \begin{block}{Biological Inspiration (Alg.\ 9.2)}
+        Inspired by natural evolution. Each individual is a
+        \emph{chromosome} (a design vector $\bx \in \R^n$).
+        Each generation applies three operators:
+        \begin{enumerate}
+          \item \textbf{Selection} --- choose parents based on fitness
+          \item \textbf{Crossover} --- combine parent chromosomes
+          \item \textbf{Mutation} --- randomly perturb offspring
+        \end{enumerate}
+      \end{block}
+      \vspace{4pt}
+      \textbf{Fitness} of individual $i$:
+      \[
+        \text{fitness}_i = \max\bigl\{f(\bx^{(1)}),\ldots,f(\bx^{(m)})\bigr\}
+                           - f(\bx^{(i)})
+      \]
+      Higher fitness $\Rightarrow$ more likely to be selected as a parent.
+    \end{column}
+    \begin{column}{0.40\textwidth}
+      \includegraphics[width=\linewidth]{fig_ga_evolution.pdf}
+      \footnotesize
+      Four generations of a genetic algorithm optimising
+      $f(\bx)=\|\bx\|$ (populations converging toward the origin).
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --------- 9.2.1 Selection ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\begin{frame}{9.2.1 Selection}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \textbf{Goal:} Choose parent pairs that produce fit offspring.
+
+      \medskip
+      \begin{block}{Truncation Selection}
+        Keep only the top $k$ individuals (by objective value). Sample
+        pairs uniformly from this elite set.\\
+        \textit{Simple, fast; may reduce diversity.}
+      \end{block}
+
+      \begin{block}{Tournament Selection}
+        For each parent slot: sample $k$ individuals at random, pick
+        the one with the best objective value.\\
+        \textit{Controllable selection pressure.}
+      \end{block}
+
+      \begin{block}{Roulette-Wheel (Fitness-Proportional) Selection}
+        Assign probability proportional to fitness:
+        \[
+          P(\text{select } i) = \frac{\text{fitness}_i}
+                                     {\sum_j \text{fitness}_j}
+        \]
+        \textit{Worst individual has zero probability.}
+      \end{block}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \includegraphics[width=\linewidth]{fig_selection_methods.pdf}
+      \footnotesize
+      \textbf{Left}: Truncation selects top 3 (red border).
+      \textbf{Centre}: Tournament selects winner of a random subset.
+      \textbf{Right}: Roulette wheel --- bar heights show selection
+      likelihood.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Selection: Python Implementation}
+\begin{lstlisting}[style=python, caption={Three selection methods (Python / NumPy)}]
+import numpy as np
+
+def truncation_select(y, k, rng):
+    """Return list of parent-index pairs from top-k individuals."""
+    parents = np.argsort(y)[:k]           # k lowest objective values
+    pairs = rng.choice(parents, (len(y), 2))
+    return pairs
+
+def tournament_select(y, k, rng):
+    """Tournament selection: k random competitors per parent slot."""
+    def pick_one():
+        contenders = rng.choice(len(y), k, replace=False)
+        return contenders[np.argmin(y[contenders])]
+    return [(pick_one(), pick_one()) for _ in range(len(y))]
+
+def roulette_select(y, rng):
+    """Fitness-proportional (roulette wheel) selection."""
+    fitness = np.max(y) - y               # invert: lower y => higher fitness
+    fitness = np.maximum(fitness, 0)
+    if fitness.sum() == 0:
+        fitness = np.ones_like(fitness)
+    probs = fitness / fitness.sum()
+    idx = rng.choice(len(y), (len(y), 2), p=probs)
+    return idx
+\end{lstlisting}
+\end{frame}
+
+% --------- 9.2.2 Crossover ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\begin{frame}{9.2.2 Crossover}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \textbf{Goal:} Combine the genetic material of two parents to create
+      offspring chromosomes.
+
+      \medskip
+      \begin{block}{Single-Point Crossover}
+        One crossover point $i$ drawn uniformly. Child inherits
+        $\bx_a[1{:}i]$ then $\bx_b[i{+}1{:}n]$.
+      \end{block}
+
+      \begin{block}{Two-Point Crossover}
+        Two crossover points $i<j$. Child: $\bx_a[1{:}i]$,
+        $\bx_b[i{+}1{:}j]$, $\bx_a[j{+}1{:}n]$.
+      \end{block}
+
+      \begin{block}{Uniform Crossover}
+        Each gene inherited from parent~A with probability $p$ and from
+        parent~B with probability $1-p$.  Typically $p=0.5$.
+      \end{block}
+
+      \begin{block}{Interpolation Crossover (Eq.\ 9.1)}
+        \[
+          \bx \leftarrow (1-\lambda)\,\bx_a + \lambda\,\bx_b,
+          \qquad \lambda \approx 0.5
+        \]
+        Useful for continuous design spaces.
+      \end{block}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \includegraphics[width=\linewidth]{fig_crossover_schemes.pdf}
+      \footnotesize
+      Blue = parent~A genes; red = parent~B genes. \\
+      \textbf{Top}: single-point. \textbf{Centre}: two-point.
+      \textbf{Bottom}: uniform.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Crossover: Python Implementation}
+\begin{lstlisting}[style=python, caption={Crossover operators (Python / NumPy)}]
+import numpy as np
+
+def single_point_crossover(a, b, rng):
+    """Single-point crossover of two real-valued vectors."""
+    i = rng.integers(1, len(a))          # crossover point in [1, n-1]
+    return np.concatenate([a[:i], b[i:]])
+
+def two_point_crossover(a, b, rng):
+    n = len(a)
+    i, j = sorted(rng.choice(n, 2, replace=False))
+    return np.concatenate([a[:i], b[i:j], a[j:]])
+
+def uniform_crossover(a, b, p, rng):
+    """Each gene from parent a with prob p, else from b."""
+    mask = rng.random(len(a)) < p
+    return np.where(mask, a, b)
+
+def interpolation_crossover(a, b, lam=0.5):
+    """Convex combination of two parents."""
+    return (1 - lam) * a + lam * b
+\end{lstlisting}
+\end{frame}
+
+% --------- 9.2.3 Mutation ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\begin{frame}[fragile]{9.2.3 Mutation}
+  \begin{columns}[T]
+    \begin{column}{0.58\textwidth}
+      \begin{block}{Why Mutation?}
+        Without mutation, traits absent from the initial population can
+        \emph{never} appear. Crossover alone cannot escape local
+        saturation. Mutation enables \emph{exploration}.
+      \end{block}
+
+      \medskip
+      \textbf{Distribution Mutation (Alg.\ 9.5):}
+      \begin{itemize}
+        \item Mutation rate: $\lambda \in (0,1)$, typically $\lambda = 1/m$
+              where $m$ = chromosome length.
+        \item Each gene $v$ mutated with probability $\lambda$:
+              \[
+                v \leftarrow v + \varepsilon, \quad
+                \varepsilon \sim \mathcal{D}
+              \]
+        \item \textbf{Gaussian mutation}:
+              $\mathcal{D} = \mathcal{N}(0, \sigma^2)$
+        \item Binary chromosomes: use \emph{bit-flip} mutation.
+      \end{itemize}
+      \textbf{Typical}: $\lambda = 1/m$, yielding on average \emph{one}
+      mutation per child chromosome.
+    \end{column}
+    \begin{column}{0.40\textwidth}
+      \begin{block}{Gaussian Mutation (Python)}
+        \footnotesize
+        \begin{verbatim}
+def gaussian_mutate(child, sigma,
+                    lam=None, rng=None):
+    rng = rng or np.random.default_rng()
+    m = len(child)
+    lam = lam or 1.0 / m
+    mask = rng.random(m) < lam
+    noise = rng.normal(0, sigma, m)
+    return child + mask * noise
+        \end{verbatim}
+      \end{block}
+      \vspace{6pt}
+      \footnotesize
+      $\lambda = 1/m$ ensures on average exactly one gene is perturbed
+      per offspring, balancing exploration and exploitation.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Genetic Algorithm: Full Python Example}
+\begin{lstlisting}[style=python, caption={GA optimising $f(\bx)=\|\bx\|$ (Python / NumPy)}]
+import numpy as np
+
+def genetic_algorithm(f, bounds, pop_size=100, k_max=10,
+                      k_trunc=10, sigma=0.5, rng=None):
+    rng = rng or np.random.default_rng(0)
+    lo, hi = np.array(bounds).T
+    n = len(lo)
+    # Initialise
+    pop = rng.uniform(lo, hi, (pop_size, n))
+    for _ in range(k_max):
+        y = np.array([f(x) for x in pop])
+        # Truncation selection: keep top k_trunc
+        parents = pop[np.argsort(y)[:k_trunc]]
+        new_pop = []
+        while len(new_pop) < pop_size:
+            a_idx, b_idx = rng.choice(k_trunc, 2, replace=False)
+            # Single-point crossover
+            cp = rng.integers(1, n)
+            child = np.concatenate([parents[a_idx, :cp],
+                                    parents[b_idx, cp:]])
+            # Gaussian mutation (rate = 1/n)
+            mask = rng.random(n) < (1.0 / n)
+            child += mask * rng.normal(0, sigma, n)
+            child = np.clip(child, lo, hi)
+            new_pop.append(child)
+        pop = np.array(new_pop)
+    y = np.array([f(x) for x in pop])
+    return pop[np.argmin(y)]
+
+# Example: minimise ||x||  on [-3,3]^2
+f = np.linalg.norm
+result = genetic_algorithm(f, [(-3,3), (-3,3)])
+print(result)   # approx [0, 0]
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{Genetic Algorithm: Complexity \& Notes}
+  \begin{columns}[T]
+    \begin{column}{0.54\textwidth}
+      \begin{block}{Per-Generation Complexity}
+        \begin{tabular}{ll}
+          \toprule
+          Step      & Cost \\
+          \midrule
+          Evaluate  & $O(m \cdot T_f)$ \\
+          Sort/select & $O(m \log m)$ \\
+          Crossover & $O(m \cdot n)$ \\
+          Mutation  & $O(m \cdot n)$ \\
+          \midrule
+          \textbf{Total/gen} & $O(m(T_f + n\log m))$ \\
+          \bottomrule
+        \end{tabular}\\[4pt]
+        $m$ = population size, $n$ = dimension, $T_f$ = cost of $f$.
+      \end{block}
+      \vspace{4pt}
+      \begin{block}{Running Example (from book)}
+        Minimise $f(\bx) = \|\bx\|$ on $[-3,3]^2$:\\
+        $m=100$, $k_{\max}=10$, $k_{\text{trunc}}=10$, $\sigma=0.5$\\
+        Result: $\bx \approx [-0.0351,\; 0.0376]$
+      \end{block}
+    \end{column}
+    \begin{column}{0.44\textwidth}
+      \textbf{Design choices:}
+      \begin{itemize}
+        \item \textbf{Selection pressure}: large $k$ (truncation)
+              $\Rightarrow$ faster convergence but less diversity.
+        \item \textbf{Mutation rate} $\lambda = 1/m$ is a good default
+              for real-valued problems; increase if stuck in local min.
+        \item \textbf{Elitism}: always carry over the current best
+              individual unchanged.
+        \item \textbf{Population size}: larger $m$ explores better but
+              costs more evaluations per generation.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\section{Differential Evolution}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}{Differential Evolution (DE)}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \begin{block}{Core Idea (Alg.\ 9.6)}
+        DE perturbs each individual $\bx$ using the \emph{difference}
+        of two other randomly-chosen population members.
+      \end{block}
+
+      \medskip
+      \textbf{DE/rand/1/bin Algorithm:}
+      \begin{enumerate}
+        \item For each individual $\bx$, sample $\ba, \bb, \bc$ from
+              population (all distinct, $\neq \bx$).
+        \item Form an \emph{interim design}:
+              \[
+                \mathbf{z} = \ba + w(\bb - \bc)
+              \]
+        \item Apply uniform crossover with probability $p$:
+              \[
+                x'_i =
+                \begin{cases}
+                  z_i & \text{if } r_i < p \\
+                  x_i & \text{otherwise}
+                \end{cases}
+              \]
+              (at least one dimension always uses $z_i$)
+        \item Accept $\bx'$ if $f(\bx') < f(\bx)$ (greedy).
+      \end{enumerate}
+
+      \textbf{Parameters}: crossover rate $p \in [0,1]$,
+      differential weight $w > 0$.
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \includegraphics[width=\linewidth]{fig_differential_evolution.pdf}
+      \footnotesize
+      DE on Ackley's function ($p=0.5$, $w=0.5$). Population
+      progressively concentrates near the global minimum.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Differential Evolution: Python}
+\begin{lstlisting}[style=python, caption={Differential Evolution (Python / NumPy)}]
+import numpy as np
+
+def differential_evolution(f, bounds, pop_size=20, k_max=200,
+                            p=0.5, w=0.5, rng=None):
+    rng = rng or np.random.default_rng()
+    lo, hi = np.array(bounds).T
+    n = len(lo)
+    pop = rng.uniform(lo, hi, (pop_size, n))
+
+    for _ in range(k_max):
+        new_pop = pop.copy()
+        for i in range(pop_size):
+            # Pick 3 distinct indices != i
+            choices = [j for j in range(pop_size) if j != i]
+            a, b, c = pop[rng.choice(choices, 3, replace=False)]
+            # Interim design
+            interim = a + w * (b - c)
+            # Uniform crossover (at least one dimension crossed)
+            mask = rng.random(n) < p
+            if not mask.any():
+                mask[rng.integers(n)] = True
+            child = np.where(mask, interim, pop[i])
+            child = np.clip(child, lo, hi)
+            # Greedy acceptance
+            if f(child) < f(pop[i]):
+                new_pop[i] = child
+        pop = new_pop
+
+    y = np.array([f(x) for x in pop])
+    return pop[np.argmin(y)]
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{DE: Parameter Analysis}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
+      \includegraphics[width=\linewidth]{fig_de_variants.pdf}
+      \footnotesize
+      DE variants on Ackley's function (1000 trials, pop=20, 2D).
+      Mean $\pm$ 1 std over iterations.
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{block}{Key Findings (Exercise 9.4)}
+        \begin{itemize}
+          \item $w=0$ (no differential): stuck --- cannot generate new
+                gene values outside current population.
+          \item $\ba=\bx$ (perturbation around self): biased toward
+                local exploration, hard to escape local minima.
+          \item Standard $p=0.5, w=0.5$: balanced global/local search.
+          \item High crossover $p=0.9$: nearly as good as guaranteed.
+          \item \textbf{Guaranteed crossover} $p=1.0$: best performance
+                --- always fully replaces with interim design.
+        \end{itemize}
+      \end{block}
+      \textbf{Role of components:}
+      \begin{itemize}
+        \item $w(\bb-\bc)$: perturbation for exploration
+        \item $\ba$: anchor point to escape local regions
+        \item Crossover: control replacement extent
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\section{Particle Swarm Optimization}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}{Particle Swarm Optimization (PSO)}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \begin{block}{Inspiration}
+        Mimics the social behaviour of bird flocks and fish schools.
+        Each particle has a \emph{position} $\bx$, a \emph{velocity}
+        $\bv$, and a \emph{personal best} $\bx_{\text{best}}$.
+      \end{block}
+
+      \medskip
+      \textbf{Update Equations (Alg.\ 9.7):}
+      \begin{align}
+        \bv &\leftarrow w\,\bv
+              + c_1 r_1 \odot (\bx_{\text{best}} - \bx)
+              + c_2 r_2 \odot (\bx^* - \bx) \label{eq:pso_v}\\
+        \bx &\leftarrow \bx + \bv
+      \end{align}
+
+      \begin{block}{Symbol Guide}
+        \begin{tabular}{ll}
+          $w$   & inertia weight \\
+          $c_1$ & cognitive coefficient (personal best) \\
+          $c_2$ & social coefficient (global best) \\
+          $r_1, r_2$ & random vectors $\sim \mathcal{U}[0,1]^n$ \\
+          $\bx^*$ & best position found by \emph{any} particle \\
+        \end{tabular}
+      \end{block}
+
+      Typical values: $w=0.1$, $c_1=0.25$, $c_2=2.0$ (or
+      $w=0.9$, $c_1=c_2=2$).
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \includegraphics[width=\linewidth]{fig_pso_evolution.pdf}
+      \footnotesize
+      PSO on Wheeler's Ridge. Red star = global best.
+      Particles converge toward two modes.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{PSO: Python Implementation}
+\begin{lstlisting}[style=python, caption={Particle Swarm Optimization (Python / NumPy)}]
+import numpy as np
+
+def particle_swarm(f, bounds, n_particles=30, k_max=100,
+                   w=0.1, c1=0.25, c2=2.0, rng=None):
+    rng = rng or np.random.default_rng()
+    lo, hi = np.array(bounds).T
+    n = len(lo)
+    # Initialise positions & velocities
+    pos = rng.uniform(lo, hi, (n_particles, n))
+    vel = rng.normal(0, 0.5, (n_particles, n))
+    x_best = pos.copy()
+    y_best = np.array([f(p) for p in pos])
+    g_best = x_best[np.argmin(y_best)].copy()
+
+    for _ in range(k_max):
+        r1 = rng.random((n_particles, n))
+        r2 = rng.random((n_particles, n))
+        vel = (w * vel
+               + c1 * r1 * (x_best - pos)
+               + c2 * r2 * (g_best  - pos))
+        pos = np.clip(pos + vel, lo, hi)
+        y   = np.array([f(p) for p in pos])
+        # Update personal bests
+        improved = y < y_best
+        x_best[improved] = pos[improved]
+        y_best[improved] = y[improved]
+        # Update global best
+        g_best = x_best[np.argmin(y_best)].copy()
+
+    return g_best
+
+# Example: minimise ||x||^2 on [-5,5]^2
+f = lambda x: np.sum(x**2)
+print(particle_swarm(f, [(-5,5), (-5,5)]))   # approx [0, 0]
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{PSO: Intuition \& Convergence}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \textbf{Three forces on each particle:}
+      \begin{enumerate}
+        \item \textbf{Inertia} ($w\bv$): keeps moving in current
+              direction --- prevents premature stopping.
+        \item \textbf{Cognitive} ($c_1 r_1 (\bx_{\text{best}}-\bx)$):
+              pulls toward own best --- individual memory.
+        \item \textbf{Social} ($c_2 r_2 (\bx^*-\bx)$):
+              pulls toward swarm best --- collective knowledge.
+      \end{enumerate}
+
+      \medskip
+      \textbf{Convergence control:}
+      \begin{itemize}
+        \item Large $w$ $\Rightarrow$ more exploration
+        \item Large $c_2$ $\Rightarrow$ faster convergence to swarm best
+        \item If PSO converges too fast to a non-global min:
+              increase $n$ or increase $c_1$
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{block}{Complexity}
+        Per iteration: $O(m \cdot T_f + m \cdot n)$\\
+        Storage: $O(m \cdot n)$ (positions, velocities, bests)
+      \end{block}
+
+      \begin{block}{PSO vs.\ Genetic Algorithms}
+        \begin{tabular}{lll}
+          \toprule
+          & GA & PSO \\
+          \midrule
+          Memory & no & yes (velocity) \\
+          Crossover & yes & no \\
+          Mutation & yes & via inertia \\
+          Social info & parents & global best \\
+          \bottomrule
+        \end{tabular}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\section{Firefly Algorithm}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}{Firefly Algorithm}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \begin{block}{Inspiration (Yang, 2009)}
+        Fireflies attract each other based on their \emph{brightness}
+        (inversely related to objective value). A less bright firefly
+        moves \emph{toward} a brighter one.
+      \end{block}
+
+      \textbf{Update Rule (Alg.\ 9.8):}
+      \begin{enumerate}
+        \item For each pair $(i,j)$ with $f(\bx^{(j)}) < f(\bx^{(i)})$:
+          \begin{itemize}
+            \item Compute distance: $r = \norm{\bx^{(i)} - \bx^{(j)}}$
+            \item Attraction: $\beta(r) = \beta_0 e^{-\gamma r^2}$
+            \item Move:
+                  \[
+                    \bx^{(i)} \leftarrow \bx^{(i)}
+                    + \beta(r)\bigl(\bx^{(j)} - \bx^{(i)}\bigr)
+                    + \alpha\,\boldsymbol{\varepsilon}
+                  \]
+          \end{itemize}
+      \end{enumerate}
+
+      \begin{block}{Symbol Guide}
+        \begin{tabular}{ll}
+          $\beta_0$ & max attractiveness (at $r=0$) \\
+          $\gamma$  & light absorption coefficient \\
+          $\alpha$  & random walk step size \\
+          $\boldsymbol{\varepsilon}$ & random vector $\sim\mathcal{N}(0,1)^n$ \\
+        \end{tabular}
+      \end{block}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \includegraphics[width=\linewidth]{fig_firefly_evolution.pdf}
+      \footnotesize
+      Firefly algorithm on $f(\bx)=\|\bx\|^2$.
+      Dot size encodes brightness. Fireflies concentrate near origin.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Firefly Algorithm: Python}
+\begin{lstlisting}[style=python, caption={Firefly Algorithm (Python / NumPy)}]
+import numpy as np
+
+def firefly(f, bounds, n=20, k_max=100,
+            alpha=0.3, beta0=1.0, gamma=1.0, rng=None):
+    rng = rng or np.random.default_rng()
+    lo, hi = np.array(bounds).T
+    dim = len(lo)
+    pop = rng.uniform(lo, hi, (n, dim))
+
+    for _ in range(k_max):
+        y = np.array([f(p) for p in pop])
+        new_pop = pop.copy()
+        for i in range(n):
+            for j in range(n):
+                if y[j] < y[i]:              # j is brighter
+                    r = np.linalg.norm(pop[i] - pop[j])
+                    beta = beta0 * np.exp(-gamma * r**2)
+                    new_pop[i] = (new_pop[i]
+                                  + beta * (pop[j] - new_pop[i])
+                                  + alpha * rng.normal(0, 1, dim))
+        pop = np.clip(new_pop, lo, hi)
+
+    y = np.array([f(p) for p in pop])
+    return pop[np.argmin(y)]
+
+# Complexity: O(n^2 * T_f) per iteration --- quadratic in population
+f = lambda x: np.sum(x**2)
+print(firefly(f, [(-5,5), (-5,5)]))
+\end{lstlisting}
+  \begin{block}{Note on Complexity}
+    The inner double-loop is $O(n^2)$ per iteration, making the firefly
+    algorithm more expensive than PSO or DE for large populations.
+  \end{block}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\section{Cuckoo Search}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}{Cuckoo Search}
+  \begin{columns}[T]
+    \begin{column}{0.58\textwidth}
+      \begin{block}{Biological Inspiration (Yang \& Deb, 2009)}
+        Named after cuckoos that lay eggs in other birds' nests.
+        \begin{enumerate}
+          \item Each cuckoo lays one egg in a randomly chosen nest.
+          \item Best nests (lowest $f$) carry over to next generation.
+          \item A host bird discovers a foreign egg with probability
+                $p_a$ and abandons it.
+        \end{enumerate}
+      \end{block}
+
+      \textbf{Algorithm (Alg.\ 9.9):}
+      \begin{enumerate}
+        \item For each of $m_s$ nests, choose a random nest $j$ and
+              a \emph{Cauchy flight} step $\bx' = \bx^{(j)} +
+              \text{Cauchy}(r)$; replace $j$ if $f(\bx') < f(\bx^{(j)})$.
+        \item Sort nests by $f$.
+        \item Abandon $\lfloor m \cdot p_a \rfloor$ worst nests;
+              replace by uniform random samples.
+      \end{enumerate}
+      \textbf{Parameters}: population $m$, search fraction $m_s/m$,
+      abandonment probability $p_a$, Cauchy scale $r$.
+    \end{column}
+    \begin{column}{0.40\textwidth}
+      \includegraphics[width=\linewidth]{fig_cuckoo_search.pdf}
+      \footnotesize
+      Cuckoo search on Rosenbrock's function. Nests (white dots)
+      progressively concentrate near $(1,1)$.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Cuckoo Search: Python}
+\begin{lstlisting}[style=python, caption={Cuckoo Search (Python / NumPy)}]
+import numpy as np
+
+def cuckoo_search(f, bounds, pop_size=25, k_max=100,
+                  p_a=0.25, m_search_frac=1.0, r=0.01, rng=None):
+    rng = rng or np.random.default_rng()
+    lo, hi = np.array(bounds).T
+    n = len(lo)
+    m_search = max(1, int(m_search_frac * pop_size))
+    m_abandon = max(1, int(p_a * pop_size))
+
+    # Initialise: list of (x, y) sorted by y
+    pop = [(x, f(x)) for x in rng.uniform(lo, hi, (pop_size, n))]
+    pop.sort(key=lambda t: t[1])
+
+    for _ in range(k_max):
+        # Levy-flight step (approximated by Cauchy)
+        for i in range(m_search):
+            j = rng.integers(pop_size)
+            step = rng.standard_cauchy(n) * r * (hi - lo)
+            x_new = np.clip(pop[j][0] + step, lo, hi)
+            y_new = f(x_new)
+            if y_new < pop[i][1]:
+                pop[i] = (x_new, y_new)
+        # Sort and abandon worst nests
+        pop.sort(key=lambda t: t[1])
+        for i in range(pop_size - m_abandon, pop_size):
+            x_new = rng.uniform(lo, hi, n)
+            pop[i] = (x_new, f(x_new))
+        pop.sort(key=lambda t: t[1])
+
+    return pop[0][0]   # best nest
+
+# Example: Rosenbrock minimum at (1,1)
+f = lambda x: (1-x[0])**2 + 100*(x[1]-x[0]**2)**2
+print(cuckoo_search(f, [(-2,2), (-1,3)]))
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{Cuckoo Search: Key Points}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \textbf{Levy / Cauchy Flights:}
+      \begin{itemize}
+        \item Cauchy distribution has heavier tails than Gaussian
+        \item Enables occasional \emph{long jumps} --- better global
+              exploration
+        \item Short steps dominate most iterations (local refinement)
+        \item Balance: scale parameter $r$ controls step magnitude
+      \end{itemize}
+      \vspace{4pt}
+      \begin{block}{Nest Abandonment as Restart}
+        Abandoning $p_a$ fraction of the worst nests with new random
+        samples is equivalent to a \emph{partial restart}, helping
+        escape local minima while preserving elite solutions.
+      \end{block}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{block}{Algorithm Complexity}
+        \begin{tabular}{ll}
+          \toprule
+          Step & Cost \\
+          \midrule
+          $m_s$ Levy flights & $O(m_s \cdot T_f)$ \\
+          Sort nests & $O(m \log m)$ \\
+          Abandon/replace & $O(m_a \cdot T_f)$ \\
+          \midrule
+          Total/iter & $O(m \cdot T_f)$ \\
+          \bottomrule
+        \end{tabular}
+      \end{block}
+      \vspace{4pt}
+      \begin{block}{Parameters Summary}
+        \begin{tabular}{lll}
+          \toprule
+          Param & Meaning & Typical \\
+          \midrule
+          $m$ & population & 15--50 \\
+          $p_a$ & abandon rate & 0.25 \\
+          $r$ & Cauchy scale & 0.01 \\
+          \bottomrule
+        \end{tabular}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\section{Hybrid Methods}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}{9.7 Hybrid Methods}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{block}{Motivation}
+        Pure population methods excel globally but can be slow to
+        \emph{refine} near a minimum. Pure local search is fast but
+        gets trapped. \textbf{Hybrid methods} combine both.
+      \end{block}
+
+      \medskip
+      Two philosophies for embedding local search:
+
+      \begin{block}{Lamarckian Learning}
+        Perform local search on each individual; the individual
+        \emph{physically moves} to the local minimum it found.\\
+        \textit{Pro}: fast convergence near local min.\\
+        \textit{Con}: population clusters prematurely --- may miss
+        global optimum.
+      \end{block}
+
+      \begin{block}{Baldwinian Learning}
+        Perform local search to \emph{evaluate} each individual;
+        but the individual \emph{stays at its original position}.\\
+        The local-search objective value is used in the selection step.\\
+        \textit{Pro}: maintains population diversity.\\
+        \textit{Con}: slower than Lamarckian.
+      \end{block}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \includegraphics[width=\linewidth]{fig_hybrid_methods.pdf}
+      \footnotesize
+      \textbf{Left (Lamarckian):} individuals moved to local min near
+      $x=0$ --- miss global min near $x=3$.\\
+      \textbf{Right (Baldwinian):} original positions preserved
+      (filled dots); local-search evaluations shown as open circles
+      with arrows.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Baldwinian Hybrid: Python Example}
+\begin{lstlisting}[style=python, caption={Baldwinian hybrid GA with local refinement (Python / SciPy)}]
+import numpy as np
+from scipy.optimize import minimize
+
+def baldwinian_ga(f, bounds, pop_size=30, k_max=50,
+                  k_trunc=8, sigma=0.3, rng=None):
+    rng = rng or np.random.default_rng()
+    lo, hi = np.array(bounds).T
+    n = len(lo)
+    pop = rng.uniform(lo, hi, (pop_size, n))
+
+    for _ in range(k_max):
+        # Baldwinian: use local search value, keep original position
+        def local_val(x):
+            res = minimize(f, x, method='Nelder-Mead',
+                           options={'maxiter': 20, 'xatol': 1e-4})
+            return res.fun   # use improved value for selection
+
+        y = np.array([local_val(x) for x in pop])
+
+        # Truncation selection + crossover + mutation (standard GA)
+        parents = pop[np.argsort(y)[:k_trunc]]
+        new_pop = []
+        while len(new_pop) < pop_size:
+            a, b = parents[rng.choice(k_trunc, 2, replace=False)]
+            cp = rng.integers(1, n)
+            child = np.concatenate([a[:cp], b[cp:]])
+            child += rng.normal(0, sigma, n) * (rng.random(n) < 1/n)
+            child = np.clip(child, lo, hi)
+            new_pop.append(child)
+        pop = np.array(new_pop)
+
+    y = np.array([f(x) for x in pop])
+    return pop[np.argmin(y)]
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{Lamarckian vs.\ Baldwinian: Comparison}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
+      \begin{block}{Example 9.2 (book)}
+        $f(x) = -e^{-x^2} - 2e^{-(x-3)^2}$, population near $x=0$.\\[4pt]
+        \textbf{Lamarckian}: individuals move to local min near $x=0$;
+        future search unlikely to discover global optimum at $x\approx3$.\\[4pt]
+        \textbf{Baldwinian}: individuals stay at original positions;
+        selection uses local-search values, but diversity preserved.
+      \end{block}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{block}{Method Comparison Table}
+        \footnotesize
+        \begin{tabular}{lll}
+          \toprule
+          Property & Lamarckian & Baldwinian \\
+          \midrule
+          Exploits local & Yes (strongly) & Yes (weakly) \\
+          Preserves diversity & No & Yes \\
+          Convergence speed & Fast locally & Moderate \\
+          Global reach & Low (premature) & Higher \\
+          Extra cost & $O(T_\text{local})$ & $O(T_\text{local})$ \\
+          \bottomrule
+        \end{tabular}
+      \end{block}
+      \vspace{4pt}
+      \textbf{Rule of thumb:} use Baldwinian when the landscape has
+      many local minima and you suspect the global minimum is far from
+      the initial population.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\section{Summary \& Exercises}
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+\begin{frame}{Chapter 9 Summary}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
+      \textbf{Population Methods at a glance:}
+      \begin{itemize}
+        \item Maintain $m$ candidates; evolve collectively.
+        \item Enable \emph{information sharing} across design space.
+        \item Generally \emph{derivative-free}; work on black-box $f$.
+      \end{itemize}
+
+      \medskip
+      \textbf{Genetic Algorithms (GA):}
+      \begin{itemize}
+        \item Selection + Crossover + Mutation
+        \item Flexible selection (truncation, tournament, roulette)
+        \item Many crossover schemes for continuous/discrete $\bx$
+      \end{itemize}
+
+      \textbf{Differential Evolution (DE):}
+      \begin{itemize}
+        \item Uses population \emph{differences} for perturbation
+        \item Greedy acceptance; parameter-efficient
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Particle Swarm Optimization (PSO):}
+      \begin{itemize}
+        \item Velocity memory; cognitive + social forces
+        \item Fast convergence; simple implementation
+      \end{itemize}
+
+      \textbf{Firefly Algorithm:}
+      \begin{itemize}
+        \item Pairwise attraction by brightness; $O(m^2)$
+      \end{itemize}
+
+      \textbf{Cuckoo Search:}
+      \begin{itemize}
+        \item Levy/Cauchy flights for long-range jumps
+        \item Nest abandonment as partial restart
+      \end{itemize}
+
+      \textbf{Hybrid Methods:}
+      \begin{itemize}
+        \item Lamarckian: move individuals to local min
+        \item Baldwinian: score by local min, keep position
+        \item Baldwinian preferred for diversity
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Method Comparison}
+  \begin{block}{Algorithm Complexity Summary}
+    \footnotesize
+    \begin{tabular}{llll}
+      \toprule
+      Method & Per-iteration cost & Key params & Best for \\
+      \midrule
+      Genetic Algorithm & $O(m(T_f + n\log m))$ & $m$, $k$, $\lambda$, $\sigma$ & discrete + continuous \\
+      Differential Evol. & $O(m \cdot T_f)$ & $m$, $p$, $w$ & continuous, multi-modal \\
+      PSO & $O(m \cdot T_f)$ & $m$, $w$, $c_1$, $c_2$ & continuous, fast conv. \\
+      Firefly & $O(m^2 T_f)$ & $m$, $\alpha$, $\beta_0$, $\gamma$ & multi-modal, small $m$ \\
+      Cuckoo Search & $O(m \cdot T_f)$ & $m$, $p_a$, $r$ & continuous, rugged \\
+      \bottomrule
+    \end{tabular}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Practical Guidance}
+    \begin{itemize}
+      \item \textbf{Unknown landscape}: start with PSO or DE --- few
+            parameters, fast, robust.
+      \item \textbf{Mixed integer / combinatorial}: GA with
+            appropriate crossover and mutation.
+      \item \textbf{Highly multi-modal}: cuckoo search (long Cauchy
+            flights) or firefly (pairwise attraction).
+      \item \textbf{Need local refinement}: wrap any method with
+            Baldwinian hybrid.
+      \item \textbf{Budget constraint}: population size $m$ is the
+            primary knob --- larger $m$ costs more per iteration but
+            improves coverage.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Selected Exercises}
+  \begin{enumerate}
+    \item[\textbf{9.1}] \textit{What is the motivation behind the
+      selection operation in genetic algorithms?}\\
+      \textit{Solution}: to bias survival toward fitter individuals
+      (lower objective), driving the population toward promising regions.
+
+    \item[\textbf{9.2}] \textit{Why does mutation play a fundamental
+      role? How should $\lambda$ be set if a better optimum is
+      suspected?}\\
+      \textit{Solution}: Mutation drives exploration. Without it, the
+      GA can only recombine existing traits. If a better solution
+      exists further away, \emph{increase} $\lambda$.
+
+    \item[\textbf{9.3}] \textit{PSO converges to a non-global minimum.
+      How to adjust parameters?}\\
+      \textit{Solution}: increase population size $m$ or the personal-best
+      coefficient $c_1$ to reduce premature social pull.
+
+    \item[\textbf{9.4}] \textit{Compare five DE variants on Ackley's
+      function.}\\
+      \textit{Solution}: $p=1.0, w=0.5$ performs best (guaranteed
+      crossover). $w=0$ performs worst (no new gene values can be
+      generated outside existing population).
+  \end{enumerate}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\begin{frame}{References}
+  \begin{itemize}
+    \item M.\ J.\ Kochenderfer \& T.\ A.\ Wheeler,
+          \textit{Algorithms for Optimization}, 2nd ed., MIT Press, 2026.
+          Chapter 9.
+    \item J.\ H.\ Holland, \textit{Adaptation in Natural and Artificial
+          Systems}, MIT Press, 1992. (Genetic Algorithms)
+    \item R.\ Storn \& K.\ Price, ``Differential Evolution -- a simple
+          and efficient heuristic for global optimization,''
+          \textit{J.\ Global Optim.}, 11(4):341--359, 1997.
+    \item J.\ Kennedy \& R.\ Eberhart, ``Particle Swarm Optimization,''
+          \textit{Proc.\ ICNN}, pp.\ 1942--1948, 1995.
+    \item X.-S.\ Yang, ``Firefly Algorithms for Multimodal
+          Optimization,'' \textit{Stochastic Algorithms: Foundations
+          and Applications}, LNCS 5792, 2009.
+    \item X.-S.\ Yang \& S.\ Deb, ``Cuckoo Search via Levy Flights,''
+          \textit{World Congress on Nature \& Biologically Inspired
+          Computing}, 2009.
+  \end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+\end{document}
