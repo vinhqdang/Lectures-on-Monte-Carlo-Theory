@@ -627,6 +627,39 @@ def fig_od_matrix():
 
 
 # -------------------------------------------------------------------------
+# Figure 09b: Graph sizes by hierarchy level (fig09_graph_sizes.pdf)
+# -------------------------------------------------------------------------
+def fig_graph_sizes():
+    """Bar chart: number of nodes in each level of the hierarchical graph."""
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+
+    levels = ['Full Graph\n(all roads)', 'Level 0\n(Motorway/Trunk)', 'Level 1\n(Primary-Tertiary)', 'Level 2\n(Unclassified/\nResidential)']
+    # Approximate values based on the book (Scotland dataset, Table 8.5 context)
+    node_counts = [542133, 27107, 108400, 406626]
+    pcts = [100, 5, 20, 75]
+    colors = ['#888888', '#4e79a7', '#f28e2b', '#59a14f']
+
+    bars = ax.bar(levels, node_counts, color=colors, edgecolor='white',
+                  linewidth=1.2, width=0.55)
+    ax.set_ylabel('Approximate node count', fontsize=11)
+    ax.set_title('Hierarchical Graph: Node Counts per Level (Scotland road network)\n'
+                 'Level 0 contains only ~5% of total nodes -- crucial for fast routing',
+                 fontsize=10)
+    ax.yaxis.grid(True, alpha=0.4)
+    ax.set_axisbelow(True)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    for bar, val, pct in zip(bars, node_counts, pcts):
+        ax.text(bar.get_x() + bar.get_width()/2, val + 8000,
+                f'{val:,}\n({pct}%)', ha='center', va='bottom', fontsize=9,
+                fontweight='bold')
+
+    plt.tight_layout()
+    savefig("fig09_graph_sizes.pdf")
+
+
+# -------------------------------------------------------------------------
 # Figure 14: Crop from PDF (optional, requires PyMuPDF)
 # -------------------------------------------------------------------------
 def fig_crop_from_pdf():
@@ -684,5 +717,6 @@ if __name__ == '__main__':
     fig_sirmione_results()
     fig_edinburgh_scatter()
     fig_od_matrix()
+    fig_graph_sizes()
     fig_crop_from_pdf()
     print("\nAll figures generated successfully.")
