@@ -1,0 +1,941 @@
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\usefonttheme{professionalfonts}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+%% Python style
+\lstdefinestyle{python}{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{blue!80!black}\bfseries,
+  stringstyle=\color{orange!80!black},
+  commentstyle=\color{green!50!black}\itshape,
+  numberstyle=\tiny\color{gray},
+  numbers=left, stepnumber=1,
+  frame=single, breaklines=true,
+  showstringspaces=false, tabsize=4,
+  backgroundcolor=\color{gray!7},
+  literate={\_}{\_}1,
+}
+
+\title[MC Theory -- Ch.1]{Lectures on Monte Carlo Theory}
+\subtitle{Chapter 1: Introduction}
+\author{Based on Leskel\"{a} \& Vihola}
+\date{}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+
+\begin{document}
+
+% ------------------------------------------------------------------ title
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ------------------------------------------------------------------ TOC
+\begin{frame}{Chapter Outline}
+  \tableofcontents
+\end{frame}
+
+\section{1.1 About the Book}
+\section{1.2 Monte Carlo: Simple Probabilistic Tasks}
+\section{1.3 Quasi-Monte Carlo Methods}
+\section{1.4 MC vs Quasi-MC: Comparison}
+\section{1.5 Bibliographical Notes}
+
+%% ==================================================================
+%%  SECTION 1.1
+%% ==================================================================
+\begin{frame}[allowframebreaks]{1.1 About the Book}
+
+  \begin{block}{What is Monte Carlo (MC)?}
+    \textbf{Monte Carlo methods} are computational algorithms that use
+    \emph{random (or pseudo-random) numbers} to solve mathematical and
+    statistical problems: numerical integration, optimisation, simulation
+    of stochastic systems, and statistical inference.
+  \end{block}
+
+  \textbf{Historical origin:} Developed in the 1940s at Los Alamos by
+  von~Neumann, Ulam, and Metropolis; named after the Monte Carlo casino.
+
+  \bigskip
+  \textbf{Why randomness helps:}
+  \begin{itemize}
+    \item High-dimensional integrals --- grid methods cost $n^d$ (exponential in $d$).
+    \item NP-hard combinatorial problems (TSP, knapsack).
+    \item Complex stochastic systems without closed-form solutions.
+    \item Bayesian posterior distributions.
+  \end{itemize}
+
+  \framebreak
+
+  \textbf{Book contents:}
+  \begin{enumerate}
+    \item \textbf{Ch.1} Introduction: motivating examples
+    \item \textbf{Ch.2} Theory of random number generators and statistical tests
+    \item \textbf{Ch.3} Generating random variables
+    \item \textbf{Ch.4} Output analysis: confidence intervals, estimators
+    \item \textbf{Ch.5} Variance reduction (stratification, antithetic, IS, CE)
+    \item \textbf{Ch.6} Markov Chain MC (Metropolis, Gibbs, CFTP)
+    \item \textbf{Ch.7} Stochastic optimisation (SA, cross-entropy)
+    \item \textbf{Ch.8} Simulation of queues and related processes
+  \end{enumerate}
+
+  \begin{alertblock}{Key distinction: MC vs Quasi-MC}
+    \textbf{Monte Carlo} uses \emph{pseudo-random} sequences (deterministic
+    but statistically random-looking).
+    \textbf{Quasi-Monte Carlo (QMC)} uses carefully designed
+    \emph{low-discrepancy} sequences that fill $[0,1]^d$ more evenly.
+  \end{alertblock}
+
+\end{frame}
+
+\begin{frame}[fragile]{1.1 Pseudorandom Numbers in Python}
+
+  \begin{block}{NumPy recommended API}
+    Use \texttt{default\_rng} with an explicit seed for reproducibility.
+  \end{block}
+
+\begin{lstlisting}[style=python, caption={Initialising a PRNG (Book, Sec.~1.2 intro)}]
+import numpy as np
+from numpy.random import PCG64, default_rng
+
+# Recommended: default_rng with explicit seed
+rng = np.random.default_rng(seed=1234)
+
+# Generate 10 uniform samples on [0, 1)
+u = rng.random(10)
+
+# Underlying generator can be specified
+rng2 = default_rng(PCG64(seed=1234))
+
+# Successive calls produce statistically i.i.d.-looking numbers
+u1 = rng2.random(5)
+u2 = rng2.random(5)   # different values, same stream
+\end{lstlisting}
+
+  \textit{Successive pseudorandom numbers mimic i.i.d.\ Uniform$[0,1]$
+  random variables, but are entirely deterministic given the seed.}
+
+\end{frame}
+
+%% ==================================================================
+%%  SECTION 1.2
+%% ==================================================================
+\begin{frame}[allowframebreaks]{1.2 Monte Carlo: Simple Probabilistic Tasks}
+
+  \begin{block}{Section overview}
+    Three motivating examples, each easy to \emph{simulate} but hard
+    (or impossible) to solve analytically at scale:
+    \begin{enumerate}
+      \item Simple Symmetric Random Walk (SSRW)
+      \item Travelling Salesman Problem (TSP)
+      \item Computing multidimensional integrals
+    \end{enumerate}
+  \end{block}
+
+  \bigskip
+  \textbf{Python generator for these examples (Listing 1.1 in book):}
+  \[
+    \texttt{rng = np.random.default\_rng(PCG64(seed=1234))}
+  \]
+  The \texttt{PCG64} generator is the default in NumPy $\ge 1.17$; it passes
+  all standard statistical tests and has a period of $2^{128}$.
+
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}[allowframebreaks]{1.2.1 Simple Symmetric Random Walk: Setup}
+
+  \textbf{Motivating game (Feller, Ch.~III):}
+  Players A and B bet on coin tosses. A wins $+1$ on heads, $-1$ on tails.
+  Starting fortune $S_0 = 0$; consider $2N$ tosses.
+
+  \begin{block}{Definition -- Simple Symmetric Random Walk (SSRW)}
+    Let $X_1, X_2, \ldots$ be i.i.d.\ with
+    $\mathbb{P}(X_j = +1) = \mathbb{P}(X_j = -1) = \tfrac{1}{2}$.
+    \[
+      S_0 = 0, \qquad S_n \;=\; \sum_{j=1}^{n} X_j, \quad n \ge 1.
+    \]
+    The sequence $S_0, S_1, \ldots$ is the \emph{simple symmetric random walk}.
+  \end{block}
+
+  \textbf{Geometric interpretation:} A line segment connects
+  $(i-1, S_{i-1})$ to $(i, S_i)$. A segment lies \emph{above} the
+  $x$-axis if $S_{i-1} \ge 0$ or $S_i \ge 0$.
+
+  \framebreak
+
+  \textbf{Four questions about the realization $(S_n)_{n=0,\ldots,2N}$:}
+
+  \begin{description}
+    \item[Q1] \textbf{Last tie:} Let
+      $L_{2N} = \max\{i : S_i = 0\}$. What is its distribution?
+    \item[Q2] \textbf{Winning fraction:} What is the probability
+      $P(\alpha,\beta)$ (for $0 \le \alpha < \beta \le 1$) that
+      player~A is winning between fractions $\alpha$ and $\beta$ of the time?
+    \item[Q3] \textbf{Oscillations:} How do the fluctuations of
+      $(S_n)_{0\le n\le 2N}$ grow?
+    \item[Q4] \textbf{Dominance:} What is the probability that one
+      player is \emph{always} winning?
+  \end{description}
+
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}[allowframebreaks]{1.2.1 Key Quantities of the SSRW}
+
+  \begin{block}{Last time at zero}
+    \[
+      L_{2n} \;=\; \sup\{m \le 2n : S_m = 0\}
+    \]
+  \end{block}
+
+  \begin{block}{Steps spent above zero}
+    \[
+      L^+_{2n} \;=\; \#\{j = 1, \ldots, 2n :
+        S_{j-1} \ge 0 \;\text{or}\; S_j \ge 0\}
+    \]
+  \end{block}
+
+  \begin{block}{Total time player A is strictly winning}
+    \[
+      W_{2N} = \#\{1 \le k \le 2N : S_k > 0\}
+    \]
+  \end{block}
+
+  \framebreak
+
+  \textbf{Surprising fact:}
+  Intuitively, by symmetry $L^+_{2n}/(2n) \approx 1/2$.
+  The \textbf{Arcsine Law} shows the opposite: the limiting density
+  is U-shaped, with most mass near $0$ and $1$. The walk tends to
+  spend \emph{almost all} its time on one side.
+
+  \begin{exampleblock}{Monte Carlo estimate of the distribution of $L^+_{2n}/(2n)$}
+    Run $R$ independent replications, record
+    $\bigl(L^+_{2n,(r)}/(2n)\bigr)_{r=1}^R$, and plot a histogram.
+    Compare to the arcsine density $p(x) = (\pi\sqrt{x(1-x)})^{-1}$.
+  \end{exampleblock}
+
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}[fragile]{1.2.1 Python: Simulating the SSRW (Listing 1.1)}
+
+\begin{lstlisting}[style=python, caption={Simple symmetric random walk simulation}]
+import numpy as np
+import matplotlib.pyplot as plt
+from numpy.random import default_rng
+
+rng = default_rng(seed=31415)
+N   = 1000
+
+# +1 or -1 with equal probability
+steps = 1 - 2 * rng.integers(0, high=2, size=N)
+S     = np.concatenate([[0], steps.cumsum()])
+
+plt.figure(figsize=(9, 4))
+plt.plot(S, lw=0.8)
+plt.axhline(0, color='k', lw=0.5, ls='--')
+plt.xlabel('Step $n$')
+plt.ylabel('$S_n$')
+plt.title(f'Simple Symmetric Random Walk, $N={N}$')
+plt.tight_layout()
+plt.show()
+\end{lstlisting}
+
+  A sample realization for $N = 1000$ is shown in Book Fig.~1.1.
+
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}[allowframebreaks]{1.2.1 Law of the Iterated Logarithm}
+
+  \begin{block}{Law of the Iterated Logarithm (LIL)}
+    \[
+      \mathbb{P}\!\left(
+        \liminf_{n \to \infty} \frac{S_n}{\sqrt{2n\log\log n}} = -1
+      \right)
+      \;=\;
+      \mathbb{P}\!\left(
+        \limsup_{n \to \infty} \frac{S_n}{\sqrt{2n\log\log n}} = +1
+      \right) = 1.
+    \]
+    \emph{Source: [100]; cf.\ Chapter~VIII.5 in Feller [52].}
+  \end{block}
+
+  \textbf{Three scales for $S_n$:}
+  \begin{center}
+  \begin{tabular}{lll}
+    \toprule
+    Scale & Result & Verdict \\
+    \midrule
+    $S_n / n$ & $\to 0$ (LLN) & too strong \\
+    $S_n / \sqrt{n}$ & oscillates, amplitude $\to\infty$ & too weak \\
+    $S_n / \sqrt{2n\log\log n}$ & $\limsup = +1$, $\liminf = -1$ a.s. & \textbf{exact} \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+
+  \framebreak
+
+  \textbf{Book Fig.~1.2:} 500 independent trajectories of length $2^{30}$.
+  The paths stay within the LIL envelope $\pm\sqrt{2n\log\log n}$ (blue
+  band) and touch it infinitely often; the red curves show $\pm\sqrt{n}$.
+
+  \vspace{0.5em}
+  \textbf{Simulation insight:} Even for very long walks, the envelope is
+  never permanently exceeded --- but the walk \emph{will} return to it
+  eventually (almost surely).
+
+\end{frame}
+
+\begin{frame}[fragile]{1.2.1 Python: LIL Envelope Visualization}
+
+\begin{lstlisting}[style=python, caption={Plot random walk trajectories with LIL envelope}]
+import numpy as np
+import matplotlib.pyplot as plt
+
+rng, R, N = np.random.default_rng(0), 50, 2**18
+n_arr    = np.arange(1, N + 1)
+envelope = np.sqrt(2 * n_arr * np.log(np.log(n_arr + 2)))
+
+plt.figure(figsize=(10, 4))
+for _ in range(R):
+    steps = 1 - 2 * rng.integers(0, 2, N)
+    S = np.concatenate([[0], steps.cumsum()])
+    plt.plot(S, lw=0.3, alpha=0.4, color='gray')
+
+plt.plot(n_arr,  envelope, 'b-', lw=2, label=r'$\pm\sqrt{2n\log\log n}$')
+plt.plot(n_arr, -envelope, 'b-', lw=2)
+plt.plot(n_arr,  np.sqrt(n_arr), 'r--', lw=1, label=r'$\pm\sqrt{n}$')
+plt.plot(n_arr, -np.sqrt(n_arr), 'r--', lw=1)
+plt.xlabel('Step $n$')
+plt.ylabel('$S_n$')
+plt.title(f'LIL envelope -- {R} trajectories, $N=2^{{18}}$')
+plt.legend()
+plt.tight_layout()
+plt.show()
+\end{lstlisting}
+
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}[allowframebreaks]{1.2.1 The Arcsine Law}
+
+  \begin{block}{Arcsine Law (Feller [52] p.~82; Durrett [43] p.~198)}
+    For $0 \le \alpha < \beta \le 1$:
+    \[
+      \mathbb{P}\!\left(
+        \alpha \;\le\; \frac{L^+_{2n}}{2n} \;\le\; \beta
+      \right)
+      \;\xrightarrow{n \to \infty}\;
+      \int_{\alpha}^{\beta}
+      \frac{1}{\pi\,\sqrt{x(1-x)}}\,dx.
+      \tag{1.2.1}
+    \]
+    A similar result holds for $L_{2n}$; see Durrett [43] p.~197.
+  \end{block}
+
+  \textbf{Why ``arcsine''?}
+  \[
+    \int_{0}^{\beta} \frac{dx}{\pi\sqrt{x(1-x)}}
+    \;=\; \frac{2}{\pi}\arcsin\!\bigl(\sqrt{\beta}\bigr).
+  \]
+
+  \framebreak
+
+  \textbf{Shape of the arcsine density:}
+  \[
+    p(x) = \frac{1}{\pi\sqrt{x(1-x)}}, \quad x \in (0,1).
+  \]
+  \begin{itemize}
+    \item \textbf{U-shaped}: density $\to\infty$ at both $x=0$ and $x=1$.
+    \item \textbf{Meaning:} $L^+_{2n}/(2n)$ concentrates near $0$ or $1$,
+      not near $1/2$.
+    \item \textbf{Counterintuitive:} the walk spends most of its time
+      \emph{entirely above} or \emph{entirely below} zero.
+  \end{itemize}
+
+  \textbf{Book Fig.~1.3:} Histograms of $L^+_{2n}/(2n)$ from
+  $R = 10^4$ replications with $n = 500$, overlaid with the arcsine
+  density. Empirical histogram closely matches theory.
+
+\end{frame}
+
+\begin{frame}[fragile]{1.2.1 Python: Verifying the Arcsine Law}
+
+\begin{lstlisting}[style=python, caption={Arcsine law: simulation vs theory}]
+import numpy as np
+import matplotlib.pyplot as plt
+
+def fraction_positive(n, R=10_000, seed=0):
+    rng   = np.random.default_rng(seed)
+    steps = 1 - 2 * rng.integers(0, 2, (R, 2 * n))
+    S     = np.hstack([np.zeros((R, 1)), steps.cumsum(axis=1)])
+    # L+: step j counted if S_{j-1} >= 0 OR S_j >= 0
+    above = (S[:, :-1] >= 0) | (S[:, 1:] >= 0)
+    return above.sum(axis=1) / (2 * n)
+
+fracs = fraction_positive(n=500)
+
+x   = np.linspace(0.01, 0.99, 400)
+pdf = 1.0 / (np.pi * np.sqrt(x * (1 - x)))
+
+plt.figure(figsize=(7, 4))
+plt.hist(fracs, bins=60, density=True, alpha=0.6, label='Simulated')
+plt.plot(x, pdf, 'r-', lw=2, label='Arcsine density')
+plt.xlabel(r'$L^+_{2n}/(2n)$')
+plt.ylabel('Density')
+plt.legend()
+plt.title('Arcsine Law: simulation vs theory ($n=500$, $R=10^4$)')
+plt.tight_layout()
+plt.show()
+\end{lstlisting}
+
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}[allowframebreaks]{1.2.2 Travelling Salesman Problem}
+
+  \begin{block}{Problem statement}
+    Given $n$ cities with pairwise distances $d(c_i, c_j)$, find the
+    permutation $\pi^*$ that minimises the total tour length:
+    \[
+      \pi^* = \arg\min_{\pi \in S_n}
+      \sum_{i=1}^{n} d\!\bigl(c_{\pi(i)},\, c_{\pi(i+1)}\bigr),
+      \quad c_{\pi(n+1)} \coloneqq c_{\pi(1)}.
+    \]
+  \end{block}
+
+  \textbf{Computational hardness:}
+  \begin{itemize}
+    \item \textbf{NP-complete}: no polynomial-time algorithm is known.
+    \item Search space: $n!$ tours.
+      $n=10$: $3.6\times10^6$;\quad $n=20$: $2.4\times10^{18}$.
+    \item Exact methods feasible only for $n \lesssim 50$.
+  \end{itemize}
+
+  \textbf{MC heuristics (explored in later chapters):}
+  \begin{itemize}
+    \item Random restart: sample many permutations, keep the shortest.
+    \item 2-opt local search with random restarts.
+    \item \textbf{Simulated Annealing} (Ch.~7): accept worse solutions
+      probabilistically to escape local optima.
+    \item \textbf{Cross-Entropy method} (Chs.~5, 7): fit and resample.
+  \end{itemize}
+
+  \textbf{Book Fig.~1.4:} 115 USA cities from the TSPLIB benchmark.
+  MC-based heuristics find near-optimal tours in seconds.
+
+\end{frame}
+
+\begin{frame}[fragile]{1.2.2 Python: Random Tour Search for TSP}
+
+\begin{lstlisting}[style=python, caption={Baseline random search for TSP}]
+import numpy as np
+
+def tour_length(cities, perm):
+    shifted = np.roll(perm, -1)
+    return np.linalg.norm(cities[perm] - cities[shifted], axis=1).sum()
+
+def random_tour_search(cities, R=10_000, seed=42):
+    rng = np.random.default_rng(seed)
+    n   = len(cities)
+    best_len, best_tour = np.inf, None
+    for _ in range(R):
+        perm = rng.permutation(n)
+        L    = tour_length(cities, perm)
+        if L < best_len:
+            best_len, best_tour = L, perm.copy()
+    return best_tour, best_len
+
+rng    = np.random.default_rng(0)
+cities = rng.random((20, 2))       # 20 random 2-D cities
+tour, length = random_tour_search(cities, R=5_000)
+print(f"Best random tour length (R=5000): {length:.4f}")
+# This is a weak baseline; SA and CE methods (Ch.7) do much better.
+\end{lstlisting}
+
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}[allowframebreaks]{1.2.3 Computing Integrals with Monte Carlo}
+
+  \textbf{Goal:} Estimate $I = \mathbb{E}[f(\mathbf{U})]$ where
+  $\mathbf{U} \sim \mathrm{Uniform}[0,1]^d$:
+  \[
+    I = \int_{[0,1]^d} f(\mathbf{u})\,d\mathbf{u}.
+  \]
+
+  \begin{block}{Monte Carlo Estimator}
+    Let $\mathbf{U}_1, \ldots, \mathbf{U}_R \overset{\mathrm{i.i.d.}}{\sim}
+    \mathrm{Uniform}[0,1]^d$. Define $Z_i = f(\mathbf{U}_i)$. Then:
+    \[
+      \hat{I}_R \;=\; \frac{1}{R}\sum_{i=1}^{R} Z_i
+      \;\xrightarrow{R\to\infty}\; I
+      \quad\text{(SLLN)}.
+    \]
+  \end{block}
+
+  \begin{block}{Variance}
+    \[
+      \mathrm{Var}(\hat{I}_R) = \frac{\sigma^2}{R}, \qquad
+      \sigma^2 = \mathrm{Var}(Z_1) = \mathrm{Var}(f(\mathbf{U})).
+    \]
+    Chebyshev bound:
+    $\mathbb{P}(|\hat{I}_R - I| > \varepsilon) \le \sigma^2 / (R\varepsilon^2)$.
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Central Limit Theorem for MC}
+    \[
+      \sqrt{R}\,(\hat{I}_R - I)
+      \;\xrightarrow{d}\; \mathcal{N}(0,\sigma^2).
+    \]
+    \textbf{RMSE} $= \sigma/\sqrt{R} = \mathcal{O}(R^{-1/2})$,
+    \emph{regardless of the dimension $d$}.
+  \end{block}
+
+  \textbf{Dimension-free convergence:}
+  \begin{center}
+  \begin{tabular}{lll}
+    \toprule
+    Method & Error & Cost ($\varepsilon=10^{-2}$, $d=10$) \\
+    \midrule
+    Grid ($n^d$ pts) & $\mathcal{O}(n^{-2/d})$ & $\sim 10^{20}$ \\
+    MC               & $\mathcal{O}(R^{-1/2})$ & $\sim 10^{4}$ \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+
+  \textbf{For $d \ge 5$}, MC is typically preferred over grid quadrature.
+
+  \framebreak
+
+  \textbf{Discrepancy:} The key quantity controlling QMC error:
+  \[
+    D(\mathbf{x}_1, \ldots, \mathbf{x}_n)
+    = \sup_{B \subseteq [0,1]^d}
+      \left|\frac{\#\{i : \mathbf{x}_i \in B\}}{n} - \lambda(B)\right|,
+  \]
+  where the sup is over all axis-aligned boxes and $\lambda(B)$ is the volume.
+
+  \begin{itemize}
+    \item For i.i.d.\ uniform: $D \approx \mathcal{O}(n^{-1/2})$.
+    \item For low-discrepancy sequences: $D = \mathcal{O}((\log n)^d / n)$.
+  \end{itemize}
+
+  \textbf{Koksma--Hlawka inequality:}
+  \[
+    \left|\hat{I}_n - I\right| \;\le\; V(f)\cdot D(\mathbf{x}_1,\ldots,\mathbf{x}_n),
+  \]
+  where $V(f)$ is the Hardy--Krause variation of $f$.
+
+\end{frame}
+
+\begin{frame}[fragile]{1.2.3 Python: Estimating $\pi$ with MC}
+
+\begin{lstlisting}[style=python, caption={Classic pi estimation via MC}]
+import numpy as np
+
+def estimate_pi(R, seed=0):
+    rng    = np.random.default_rng(seed)
+    U      = rng.random((R, 2))         # uniform on [0,1]^2
+    inside = (U**2).sum(axis=1) <= 1.0  # inside unit quarter-circle
+    return 4.0 * inside.mean()          # area = pi/4 -> multiply by 4
+
+for R in [100, 1_000, 10_000, 100_000, 1_000_000]:
+    pi_hat = estimate_pi(R)
+    error  = abs(pi_hat - np.pi)
+    se     = np.sqrt(pi_hat * (4.0 - pi_hat) / R)
+    print(f"R={R:>9,}  pi_hat={pi_hat:.5f}  "
+          f"|error|={error:.5f}  SE={se:.5f}")
+# Expected: error ~ sigma/sqrt(R), shrinks 10x per 100x more samples
+\end{lstlisting}
+
+  \begin{exampleblock}{Convergence rate}
+    Every $10\times$ increase in $R$ reduces the error by a factor of
+    $\approx\!\sqrt{10} \approx 3.16$.
+  \end{exampleblock}
+
+\end{frame}
+
+%% ==================================================================
+%%  SECTION 1.3
+%% ==================================================================
+\begin{frame}[allowframebreaks]{1.3 Quasi-Monte Carlo (QMC) Methods}
+
+  \begin{block}{Idea}
+    Replace i.i.d.\ random points with a \textbf{deterministic,
+    well-spread} sequence that covers $[0,1]^d$ more uniformly
+    than random sampling.
+  \end{block}
+
+  \begin{block}{Low-discrepancy sequences}
+    Several constructive sequences achieve:
+    \[
+      D(\mathbf{x}_1, \ldots, \mathbf{x}_n)
+      \;\le\; C_d\,\frac{(\log n)^d}{n}
+      + \mathcal{O}\!\left(\frac{(\log n)^{d-1}}{n}\right).
+    \]
+    Available in Python via \texttt{scipy.stats.qmc}:
+  \end{block}
+
+  \begin{description}
+    \item[Halton] Van der Corput sequences with different prime bases per
+      dimension. Simple; mild correlations for large primes.
+    \item[Sobol'] Constructed via bit operations. Excellent uniformity in
+      $d \ge 2$; best for $n = 2^k$.
+    \item[Faure] Permuted base-$p$ sequences. Proven theoretical bounds.
+    \item[LatinHypercube] Stratified: each row/column of the grid has
+      exactly one sample. Good but not strictly low-discrepancy.
+  \end{description}
+
+  \textbf{Book Fig.~1.5:} $n = 1024$ PCG64 points (left) vs Sobol' (right)
+  in $[0,1]^2$. The QMC points are visibly more uniform.
+
+  \framebreak
+
+  \begin{block}{Golden-ratio (Steinhaus) sequence -- 1D}
+    \[
+      x_n = \{n\alpha\}, \qquad
+      \alpha = \frac{\sqrt{5}-1}{2} \approx 0.618
+      \quad\text{(golden ratio)},
+    \]
+    where $\{x\}$ denotes the fractional part of $x$. $\alpha$ solves
+    $z^2 + z - 1 = 0$ and has the continued-fraction expansion
+    $\alpha = \cfrac{1}{1+\cfrac{1}{1+\cdots}}$.
+    This makes $\alpha$ the ``most irrational'' number, ensuring maximal
+    spread of $\{n\alpha\}$ across $[0,1)$.
+  \end{block}
+
+  \begin{block}{Kronecker sequences}
+    $x_n = \{n\beta\}$ has low discrepancy whenever the partial quotients
+    in $\beta = 1/(b_1 + 1/(b_2 + \cdots))$ are bounded, $b_j \le M$.
+    Multidimensional Kronecker sequences $(\{n\beta_1\},\ldots,\{n\beta_d\})$
+    are believed to have low discrepancy (open problem), supported by
+    numerical evidence.
+  \end{block}
+
+  \framebreak
+
+  \textbf{QMC vs MC error rate comparison:}
+  \begin{center}
+  \begin{tabular}{lll}
+    \toprule
+    Method & Error & When it wins \\
+    \midrule
+    MC & $\mathcal{O}(R^{-1/2})$ & High $d$, non-smooth $f$ \\
+    QMC & $\mathcal{O}((\log R)^d / R)$ & Smooth $f$, moderate $d$ \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+
+  \textbf{Caveat:} The constant $C_d$ grows with $d$, so for very large
+  $d$ the QMC advantage may not appear unless $n$ is huge.
+
+\end{frame}
+
+\begin{frame}[fragile]{1.3 Python: QMC Sequences with \texttt{scipy.stats.qmc}}
+
+\begin{lstlisting}[style=python, caption={Comparing MC and QMC for pi estimation}]
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats.qmc import Sobol, Halton, LatinHypercube
+
+def pi_from(U):
+    return 4.0 * ((U**2).sum(1) <= 1).mean()
+
+Rs      = [2**k for k in range(5, 15)]   # 32 ... 16384
+mc_err  = []
+sob_err = []
+hal_err = []
+
+for R in Rs:
+    rng = np.random.default_rng(0)
+    mc_err.append( abs(pi_from(rng.random((R, 2))) - np.pi))
+    sob_err.append(abs(pi_from(Sobol(2, scramble=True, seed=0).random(R)) - np.pi))
+    hal_err.append(abs(pi_from(Halton(2, scramble=True, seed=0).random(R)) - np.pi))
+
+plt.loglog(Rs, mc_err,  'b-o', label='MC (PCG64)')
+plt.loglog(Rs, sob_err, 'r-s', label="Sobol'")
+plt.loglog(Rs, hal_err, 'g-^', label='Halton')
+ref = [Rs[0]**0.5 / r**0.5 * mc_err[0] for r in Rs]
+plt.loglog(Rs, ref, 'k--', label=r'$O(R^{-1/2})$')
+plt.xlabel('R'); plt.ylabel('|error|')
+plt.grid(True); plt.legend()
+plt.title('MC vs QMC convergence to $\pi$')
+plt.tight_layout(); plt.show()
+\end{lstlisting}
+
+\end{frame}
+
+%% ==================================================================
+%%  SECTION 1.4
+%% ==================================================================
+\begin{frame}[allowframebreaks]{1.4 MC vs Quasi-MC: Comparison Examples}
+
+  \begin{block}{Remark 1.4.2 -- Discrepancy in multidimensions}
+    Grouping consecutive numbers from a 1-D low-discrepancy sequence
+    into $d$-dimensional vectors \textbf{does not} preserve the
+    low-discrepancy property.  Each dimension of the $d$-vector must be
+    constructed simultaneously (as done by \texttt{scipy.stats.qmc}).
+  \end{block}
+
+  \textbf{Estimating $\pi$ (book p.~10):}
+  With $R = 2^{10}$ Sobol' points the error is typically
+  $10\text{--}50\times$ smaller than MC. The advantage is largest for
+  smooth integrands and moderate $d$.
+
+  \framebreak
+
+  \begin{block}{Example 1.4.2 -- Winning Probability in a 2-D Game}
+    \small
+    Grid: $\{0,\ldots,N_1\}\times\{0,\ldots,N_2\}$. Starting from
+    $(i_1,i_2)$:
+    \begin{itemize}
+      \item Any coordinate hits $0$ $\Rightarrow$ \textbf{LOSE}.
+      \item Both coordinates reach $N_j$ $\Rightarrow$ \textbf{WIN}.
+    \end{itemize}
+    Transitions from $(i_1,i_2)$:
+    \[
+      (i_1,i_2)\to
+      \begin{cases}
+        (i_1+1,i_2) & \text{prob. } p_1(i_1),\\
+        (i_1-1,i_2) & \text{prob. } q_1(i_1),\\
+        (i_1,i_2+1) & \text{prob. } p_2(i_2),\\
+        (i_1,i_2-1) & \text{prob. } q_2(i_1),\\
+        (i_2,i_2)   & \text{prob. } 1-(p_1+q_1+p_2+q_2).
+      \end{cases}
+    \]
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Exact winning probability (Formula 1.4.1)}
+    \[
+      \rho(i_1, i_2) \;=\;
+      \frac{\displaystyle
+        \prod_{j=1}^{2}\!\left(
+          \sum_{n_j=1}^{i_j}\prod_{r=1}^{n_j-1}
+          \tfrac{q_j(r)}{p_j(r)}
+        \right)}
+      {\displaystyle
+        \prod_{j=1}^{2}\!\left(
+          \sum_{n_j=1}^{N_j}\prod_{r=1}^{n_j-1}
+          \tfrac{q_j(r)}{p_j(r)}
+        \right)},
+    \]
+    where empty products equal 1.
+  \end{block}
+
+  \textbf{Symmetric example:}
+  $N_1 = N_2 = 4$,
+  $q_j(i_j) = p_j(i_j) = \tfrac{1}{4}$ for all $j, i_j$.
+  Formula gives:
+  \[
+    \rho(2,3) = \frac{3}{8} = 0.375.
+  \]
+
+  \framebreak
+
+  \textbf{Simulation algorithm -- one game from $(i_1,i_2)$:}
+
+  Use two independent uniforms $U_1, U_2 \in [0,1)$ at each step:
+  \begin{enumerate}
+    \item Decide \emph{which coordinate} changes with $U_1$:
+      \begin{itemize}
+        \item Change coord.~1 if $U_1 \in [0,\ p_1(i_1)+q_1(i_1))$;
+        \item Change coord.~2 if $U_1 \in [p_1+q_1,\ p_1+q_1+p_2+q_2)$;
+        \item No change otherwise.
+      \end{itemize}
+    \item Decide \emph{direction} with $U_2$:
+      \begin{itemize}
+        \item Coord.~1 up if $U_2 < p_1(i_1)/(p_1(i_1)+q_1(i_1))$, else down.
+        \item Coord.~2 up if $U_2 < p_2(i_2)/(p_2(i_2)+q_2(i_1))$, else down.
+      \end{itemize}
+    \item Stop if any coord hits 0 (LOSE) or all coords reach $N_j$ (WIN).
+  \end{enumerate}
+
+  \textbf{Estimator:}
+  $\hat{Y}_R^{A_i} = \frac{1}{R}\sum_{j=1}^{R} Y_j^{A_i}$,
+  where $Y_j^{A_i}\in\{0,1\}$ and
+  $A_1=\text{PCG64}$, $A_2=\text{LatHyp}$, $A_3=\text{Sobol}$,
+  $A_4=\text{Halton}$.
+
+  \framebreak
+
+  \begin{block}{Book Table~1.2 -- estimates of $\rho(2,3) = 0.375$}
+    \centering
+    \begin{tabular}{rcccc}
+      \toprule
+      Avg.\ steps & PCG64 & LatHyp & Sobol & Halton \\
+      \midrule
+      1\,000 & 0.3760 & 0.3686 & 0.3715 & 0.3750 \\
+      5\,000 & 0.3748 & 0.3762 & 0.3748 & 0.3750 \\
+      \bottomrule
+    \end{tabular}
+  \end{block}
+
+  \textbf{Observations (Book Fig.~1.7):}
+  \begin{itemize}
+    \item All four generators converge to $0.375$.
+    \item Sobol and Halton are more accurate for small $R$.
+    \item The error curves for QMC are smoother (less variance).
+  \end{itemize}
+
+  \textbf{Structured points -- Book Fig.~1.9:}
+  Scatter-plots of $(U_1^{(i)}, U_1^{(i+1)})$ for Sobol/Halton reveal
+  clear \emph{linear structure} (``stratification lines''), unlike the
+  uniform scatter of PCG64. This can cause artifacts for integrands
+  aligned with these patterns.
+
+  \begin{alertblock}{Practical rule of thumb}
+    Use \textbf{QMC} for smooth, low-dimensional integrands.
+    For $d \gtrsim 10$, non-smooth $f$, or Markov-chain-based algorithms,
+    use plain \textbf{MC}.
+  \end{alertblock}
+
+\end{frame}
+
+\begin{frame}[fragile]{1.4 Python: 2-D Game Simulation -- MC vs QMC}
+
+\begin{lstlisting}[style=python, caption={Winning probability: MC vs Sobol estimation}]
+import numpy as np
+from scipy.stats.qmc import Sobol
+
+N1, N2, p_val = 4, 4, 0.25
+
+def play_one_game(stream):
+    """stream: iterator yielding (U1, U2) pairs."""
+    i1, i2 = 2, 3
+    for U1, U2 in stream:
+        thr1 = 2 * p_val                 # p1 + q1
+        thr2 = thr1 + 2 * p_val          # + p2 + q2
+        if U1 < thr1:
+            i1 += 1 if U2 < 0.5 else -1
+        elif U1 < thr2:
+            i2 += 1 if U2 < 0.5 else -1
+        if i1 == 0 or i2 == 0:  return 0
+        if i1 == N1 and i2 == N2: return 1
+    return 0
+
+def mc_estimate(R, seed=0):
+    rng  = np.random.default_rng(seed)
+    wins = sum(play_one_game(iter(rng.random((500, 2)))) for _ in range(R))
+    return wins / R
+
+print(f"MC  (R=2000): {mc_estimate(2000):.4f}")
+print(f"True value : 0.3750")
+\end{lstlisting}
+
+\end{frame}
+
+%% ==================================================================
+%%  SECTION 1.5
+%% ==================================================================
+\begin{frame}[allowframebreaks]{1.5 Bibliographical Notes}
+
+  \textbf{Origins of Monte Carlo:}
+  \begin{itemize}
+    \item Developed at Los Alamos in the 1940s by von~Neumann, Ulam,
+      and Metropolis for nuclear weapons simulation.
+    \item Named after the Monte Carlo casino (Metropolis \& Ulam, 1949).
+  \end{itemize}
+
+  \textbf{Pseudorandom number generation:}
+  \begin{itemize}
+    \item \textbf{Knuth [75]}, Vol.~2, Ch.~3: comprehensive classical reference.
+    \item L'Ecuyer [82]; Niederreiter [101].
+  \end{itemize}
+
+  \textbf{Random walks and arcsine law:}
+  \begin{itemize}
+    \item \textbf{Feller [52]}, Chapters~III, XIV: arcsine law, ballot problem.
+    \item \textbf{Durrett [43]}: modern probability, random walk results.
+    \item Law of the iterated logarithm: [100].
+  \end{itemize}
+
+  \textbf{Quasi-Monte Carlo:}
+  \begin{itemize}
+    \item \textbf{Niederreiter [101]}: \textit{Random Number Generation and
+      Quasi-Monte Carlo Methods} --- foundational monograph.
+    \item Halton [60]; Sobol' [119]; Faure [50].
+    \item Tezuka [124]: scrambling and randomisation.
+    \item \textbf{Glasserman [55]}: QMC in finance.
+    \item Python: \texttt{scipy.stats.qmc} (SciPy $\ge$ 1.7).
+  \end{itemize}
+
+  \textbf{Travelling Salesman Problem:}
+  \begin{itemize}
+    \item \textbf{Applegate et al.\ [4]}: \textit{The Traveling Salesman Problem}.
+    \item Simulated annealing: Kirkpatrick, Gelatt \& Vecchi [74] (1983).
+  \end{itemize}
+
+\end{frame}
+
+%% ==================================================================
+%%  SUMMARY
+%% ==================================================================
+\begin{frame}[allowframebreaks]{Chapter 1 Summary}
+
+  \begin{block}{Core concepts introduced}
+    \begin{enumerate}
+      \item \textbf{Monte Carlo estimator}:
+        $\hat{I}_R = \frac{1}{R}\sum_{i=1}^R f(U_i)$,
+        RMSE $= \mathcal{O}(R^{-1/2})$, \emph{dimension-free}.
+
+      \item \textbf{SSRW} $S_n = \sum_{j=1}^n X_j$:
+        \begin{itemize}
+          \item \emph{LIL}: fluctuations scale as $\pm\sqrt{2n\log\log n}$.
+          \item \emph{Arcsine law}: $L^+_{2n}/(2n)$ has U-shaped arcsine
+            distribution, not uniform on $[0,1]$.
+        \end{itemize}
+
+      \item \textbf{TSP}: NP-hard; MC heuristics (SA, CE) find
+        near-optimal tours efficiently.
+
+      \item \textbf{Quasi-MC}: low-discrepancy sequences (Sobol', Halton,
+        golden-ratio) achieve $\mathcal{O}((\log R)^d/R)$ error for smooth $f$.
+
+      \item \textbf{MC vs QMC}: QMC wins for smooth, low-$d$ problems;
+        MC is more robust for high-$d$, discontinuous, or Markov-chain
+        applications.
+    \end{enumerate}
+  \end{block}
+
+  \framebreak
+
+  \textbf{Key Python tools:}
+  \begin{itemize}
+    \item \texttt{numpy.random.default\_rng(seed)} --- reproducible PRNG
+    \item \texttt{rng.random(n)}, \texttt{rng.integers(0, 2, n)} --- sampling
+    \item \texttt{scipy.stats.qmc.Sobol}, \texttt{.Halton},
+      \texttt{.LatinHypercube} --- QMC sequences
+  \end{itemize}
+
+  \bigskip
+  \textbf{Looking ahead:}
+  \begin{itemize}
+    \item \textbf{Chapter~2:} How are pseudorandom numbers constructed,
+      and how do we test their quality?
+    \item \textbf{Chapter~3:} How to sample from arbitrary distributions
+      (not just Uniform)?
+    \item \textbf{Chapter~4:} Rigorous statistical analysis of simulation
+      output -- confidence intervals and error estimation.
+  \end{itemize}
+
+\end{frame}
+
+\end{document}
