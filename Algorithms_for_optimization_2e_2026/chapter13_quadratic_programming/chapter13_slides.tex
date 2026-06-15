@@ -1,7 +1,7 @@
 % ============================================================
 %  Chapter 13: Quadratic Programming
 %  Algorithms for Optimization, 2nd ed. (Kochenderfer & Wheeler, 2026)
-%  Beamer slides --- Python equivalents of all Julia code
+%  Beamer slides — reader-friendly, self-contained lecture notes
 % ============================================================
 \documentclass[aspectratio=169,10pt]{beamer}
 
@@ -19,7 +19,7 @@
 
 \graphicspath{{figures/}}
 
-% -- Python listing style ------------------------------------------------------
+% -- Python listing style --------------------------------------------------
 \definecolor{codegreen}{rgb}{0.0,0.5,0.2}
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
 \definecolor{codepurple}{rgb}{0.5,0.0,0.5}
@@ -32,7 +32,7 @@
   frame=single,
   backgroundcolor=\color{gray!7},
   keywordstyle=\color{blue}\bfseries,
-  commentstyle=\color{codegreen},
+  commentstyle=\color{codegreen}\itshape,
   stringstyle=\color{codepurple},
   breaklines=true,
   showstringspaces=false,
@@ -43,11 +43,11 @@
 \setbeamertemplate{footline}[frame number]
 \setbeamertemplate{navigation symbols}{}
 
-% -- Math operators ------------------------------------------------------------
+% -- Math operators --------------------------------------------------------
 \DeclareMathOperator*{\minimize}{minimize}
 \DeclareMathOperator*{\maximize}{maximize}
 
-% -- Macros --------------------------------------------------------------------
+% -- Macros ----------------------------------------------------------------
 \newcommand{\bx}{\mathbf{x}}
 \newcommand{\bq}{\mathbf{q}}
 \newcommand{\bb}{\mathbf{b}}
@@ -68,7 +68,7 @@
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\norm}[1]{\left\|#1\right\|}
 
-% =============================================================================
+% =========================================================================
 \title[Ch.~13: Quadratic Programming]{Chapter 13: Quadratic Programming}
 \subtitle{Algorithms for Optimization, 2nd Edition}
 \author{Kochenderfer \& Wheeler (2026)}
@@ -81,7 +81,7 @@
   \titlepage
 \end{frame}
 
-% -- Outline -------------------------------------------------------------------
+% -- Outline ---------------------------------------------------------------
 \begin{frame}{Chapter Overview}
   \tableofcontents
 \end{frame}
@@ -92,189 +92,409 @@
   \end{frame}
 }
 
-% =============================================================================
+% =========================================================================
 \section{13.1 Problem Formulation}
-% =============================================================================
+% =========================================================================
 
-\begin{frame}{What Is a Quadratic Program?}
-  \begin{block}{Quadratic Program (General Form) --- Eq.~(13.1)}
+\begin{frame}[allowframebreaks]{What Is a Quadratic Program?}
+
+  A \textbf{quadratic program} (QP) is an optimization problem in which the
+  \emph{objective function is quadratic} (it contains squared or cross-product
+  terms in the decision variables) and all \emph{constraints are linear}.
+  Quadratic programs arise whenever you fit a model to data, control a physical
+  system with energy costs, or solve a step of Newton's method inside a
+  constrained setting.
+
+  \begin{block}{Quadratic Program --- General Form (Eq.~13.1)}
     \[
       \minimize_{\bx}\quad \frac{1}{2}\bx^{\top}\bQ\bx + \bq^{\top}\bx
       \quad\text{subject to}\quad
       \bC_{\text{LE}}\bx \leq \bd_{\text{LE}},\quad
       \bC_{\text{EQ}}\bx = \bd_{\text{EQ}}
     \]
-    \medskip
+  \end{block}
+
+  \begin{block}{Notation}
     \begin{tabular}{ll}
-      $\bQ \in \R^{n\times n}$ & symmetric cost matrix (Hessian of objective)\\
-      $\bq \in \R^n$           & linear cost vector (gradient term)\\
-      $\bC_{\text{LE}},\bd_{\text{LE}}$ & linear inequality constraints\\
-      $\bC_{\text{EQ}},\bd_{\text{EQ}}$ & linear equality constraints\\
+      $\bx \in \R^n$ & the \textbf{decision vector} (what we optimise over); $n$ is the number of variables\\
+      $\bQ \in \R^{n\times n}$ & the \textbf{cost matrix} (symmetric); it encodes how pairs of variables interact\\
+      $\bq \in \R^n$ & the \textbf{linear cost vector}; it shifts the minimum away from the origin\\
+      $\bC_{\text{LE}} \in \R^{p\times n},\; \bd_{\text{LE}} \in \R^p$ & define $p$ \textbf{inequality} constraints $\bC_{\text{LE}}\bx \leq \bd_{\text{LE}}$\\
+      $\bC_{\text{EQ}} \in \R^{c\times n},\; \bd_{\text{EQ}} \in \R^c$ & define $c$ \textbf{equality} constraints $\bC_{\text{EQ}}\bx = \bd_{\text{EQ}}$\\
+      $\top$ & the \textbf{transpose} operator (flips a column vector into a row vector)\\
     \end{tabular}
   \end{block}
 
-  \begin{itemize}
-    \item $\frac{1}{2}\bx^{\top}\bQ\bx$ contributes quadratic components
-          $\tfrac{1}{2}Q_{ii}x_i^2$ and product components
-          $(\tfrac{1}{2}Q_{ij}+\tfrac{1}{2}Q_{ji})x_ix_j$ for $i<j$
-    \item \textbf{Connection to Newton's method:} second-order Taylor approximation
-          about $\bx_{\text{ref}}$ gives $\bQ = \nabla^2 f(\bx_{\text{ref}})$,
-          $\bq = \nabla f(\bx_{\text{ref}})$
-    \item QP = Newton's method subject to linear constraints
-  \end{itemize}
+  \begin{alertblock}{How to Read the Objective}
+    The term $\tfrac{1}{2}\bx^{\top}\bQ\bx$ is a \emph{bowl-shaped} (or saddle-shaped)
+    surface in $n$ dimensions.  When $\bQ$ is \textbf{positive definite} (all eigenvalues
+    strictly positive) the bowl opens upward and has a unique lowest point.
+    The term $\bq^{\top}\bx$ is a tilted plane that shifts that lowest point.
+    Together they form an \emph{elliptic paraboloid}: the contour lines are ellipses
+    centred at the unconstrained minimiser $\bx^* = -\bQ^{-1}\bq$.
+  \end{alertblock}
+
+  \framebreak
+
+  \textbf{Why the factor of $\tfrac{1}{2}$?}  Taking the gradient of
+  $\tfrac{1}{2}\bx^{\top}\bQ\bx + \bq^{\top}\bx$ gives $\bQ\bx + \bq$, which is
+  clean and matches Newton's method.  Without the $\tfrac{1}{2}$ the gradient would
+  carry an extra factor of $2$.
+
+  \textbf{Expanding the quadratic term.}  Each entry of $\bQ$ contributes to the
+  objective as follows.  The diagonal entry $Q_{ii}$ contributes
+  $\tfrac{1}{2}Q_{ii}x_i^2$ (a pure squared term), while the off-diagonal entries
+  $Q_{ij}$ and $Q_{ji}$ together contribute
+  $\tfrac{1}{2}(Q_{ij}+Q_{ji})x_ix_j$ (a cross-product term coupling variable $i$ to
+  variable $j$).  Since $\bQ$ is symmetric, $Q_{ij} = Q_{ji}$, so the coupling
+  coefficient simplifies to $Q_{ij}x_ix_j$.
+
+  \textbf{Connection to Newton's method.}  The second-order Taylor expansion of any
+  smooth function $f$ around a reference point $\bx_{\text{ref}}$ is
+  \[
+    f(\bx) \approx f(\bx_{\text{ref}})
+      + \nabla f(\bx_{\text{ref}})^{\top}(\bx - \bx_{\text{ref}})
+      + \tfrac{1}{2}(\bx-\bx_{\text{ref}})^{\top}\nabla^2 f(\bx_{\text{ref}})(\bx-\bx_{\text{ref}})
+  \]
+  where $\nabla$ (nabla, the gradient/del operator) denotes the vector of partial
+  derivatives and $\nabla^2$ (nabla-squared) denotes the matrix of second derivatives
+  (the Hessian).  If we drop the constant term and write $\bx' = \bx - \bx_{\text{ref}}$,
+  this matches the QP objective with $\bQ = \nabla^2 f(\bx_{\text{ref}})$ and
+  $\bq = \nabla f(\bx_{\text{ref}})$.  In other words, \emph{a single Newton step
+  subject to linear constraints is exactly a quadratic program}.
+
+  \begin{alertblock}{Key Takeaway}
+    Quadratic programs are the natural model whenever costs are quadratic and
+    constraints are linear.  They include unconstrained quadratics, constrained
+    least-squares problems, and Newton sub-problems as special cases.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{Convex QP $\Leftrightarrow$ Least-Squares Problem}
-  \begin{block}{Conversion via Cholesky --- Eq.~(13.2)}
-    When $\bQ$ is \textbf{positive definite}, factor $\bQ = \bU^{\top}\bU$ (Cholesky).
-    Then the QP becomes the \emph{least-squares problem}:
+\begin{frame}[allowframebreaks]{Convex QP and Its Equivalent Least-Squares Form}
+
+  When the cost matrix $\bQ$ is \textbf{positive definite} (meaning all eigenvalues
+  $\lambda$ (lambda) are strictly positive, so the objective bowl has no flat or
+  downward directions), the QP is called \emph{convex}.  Convex QPs are particularly
+  attractive because every local minimum is also a global minimum.
+
+  \textbf{Cholesky factorisation.}  Every positive-definite matrix $\bQ$ can be
+  written as $\bQ = \bU^{\top}\bU$, where $\bU$ is an upper-triangular matrix with
+  positive diagonal entries.  This is called the \textbf{Cholesky} (pronounced
+  \emph{kol-ESS-kee}) decomposition.
+
+  \begin{block}{Conversion to Least-Squares (Eq.~13.2)}
+    Substituting $\bQ = \bU^{\top}\bU$ and completing the square, the convex QP becomes
+    the constrained \emph{least-squares problem}:
     \[
       \minimize_{\bx}\; \norm{\bA\bx - \bb}
-      \quad\text{s.t.}\quad
+      \quad\text{subject to}\quad
       \bC_{\text{LE}}\bx \leq \bd_{\text{LE}},\;
       \bC_{\text{EQ}}\bx = \bd_{\text{EQ}}
     \]
-    with $\bA = \bU$ and $\bb = -\bU^{-\top}\bq$.
+    with the substitutions $\bA = \bU$ and $\bb = -\bU^{-\top}\bq$.
   \end{block}
 
+  \begin{block}{Notation}
+    \begin{tabular}{ll}
+      $\norm{\cdot}$ & the Euclidean (L2) norm: $\norm{\mathbf{v}} = \sqrt{v_1^2 + v_2^2 + \cdots + v_n^2}$\\
+      $\bA = \bU$ & the upper-triangular Cholesky factor of $\bQ$\\
+      $\bb = -\bU^{-\top}\bq$ & the right-hand-side vector after substitution\\
+      $\bU^{-\top}$ & the inverse of $\bU^{\top}$ (equivalently, the transpose of $\bU^{-1}$)\\
+    \end{tabular}
+  \end{block}
+
+  \framebreak
+
+  \textbf{Why is this useful?}  Least-squares problems are extremely well-studied;
+  fast and numerically stable solvers exist (SVD, QR, normal equations).  The
+  conversion tells us that solving a convex QP is no harder than solving a
+  constrained least-squares problem.
+
   \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{Transformation chain} (Fig.~13.1):
+    \column{0.50\textwidth}
+      \textbf{Transformation chain} (Figure 13.1):
       \begin{center}
         \includegraphics[width=\linewidth]{fig_transform_chain}
       \end{center}
+      The figure shows how a general QP passes through a sequence of
+      reductions until it becomes a nonnegative least-squares problem
+      that can be solved with a simple active-set algorithm.
 
-    \column{0.48\textwidth}
-      \textbf{Key observations:}
-      \begin{itemize}
-        \item Feasible set = convex polytope (same as LP)
-        \item Solution need \emph{not} lie at a vertex
-        \item May be interior, boundary, infeasible, or unbounded
-      \end{itemize}
+    \column{0.46\textwidth}
+      \textbf{Geometric observations:}\\[0.4em]
+      The \emph{feasible set} (the set of all $\bx$ that satisfy the constraints)
+      is a convex polytope --- the intersection of half-spaces and hyperplanes,
+      exactly as in linear programming.  However, unlike linear programming,
+      the optimal solution of a QP need \emph{not} lie at a vertex of the
+      feasible set.  It may lie on the interior, on an edge or face, at a vertex,
+      or the problem may be infeasible or unbounded depending on the data.
   \end{columns}
+
 \end{frame}
 
-\begin{frame}{Example 13.1 --- QP with Elliptical Contours}
+\begin{frame}[allowframebreaks]{Example 13.1 --- QP with Elliptical Contours}
+
+  This example illustrates how the optimal solution of a QP can lie on the
+  \emph{boundary} of the feasible set at a point that is not a vertex.  The
+  objective contours are ellipses whose centre (the unconstrained minimum)
+  falls outside the feasible region, so the solution is pushed to the nearest
+  feasible point on the boundary.
+
   \begin{columns}[T]
     \column{0.50\textwidth}
-      \begin{block}{Problem}
+      \begin{block}{Problem Statement}
         \[
-          \minimize_{x_1,x_2}
+          \minimize_{x_1,\,x_2}
           \left\|\begin{bmatrix}2&1\\-4&3\end{bmatrix}
           \begin{bmatrix}x_1\\x_2\end{bmatrix}
           - \begin{bmatrix}1\\2\end{bmatrix}\right\|
         \]
         \[
-          \text{s.t.}\quad
+          \text{subject to}\quad
           2x_1 - x_2 \geq 2,\quad
           x_1 - 3x_2 \leq 4
         \]
       \end{block}
-      \begin{itemize}
-        \item Objective forms elliptical contours
-        \item Center of ellipses may lie \emph{outside} feasible set
-        \item \textbf{Solution:} $\bx^* = [1.4,\; 0.8]^{\top}$
-        \item Solution on boundary, not at vertex
-      \end{itemize}
+
+      \begin{block}{Notation}
+        The objective $\|\bA\bx - \bb\|$ measures how far $\bA\bx$ is from the
+        target vector $\bb = [1,\,2]^{\top}$.  Here $\bA$ is the $2\times 2$ matrix
+        shown, $x_1$ and $x_2$ are the two decision variables, and $\|\cdot\|$ is the
+        Euclidean length of the residual vector $\bA\bx - \bb$.
+      \end{block}
 
     \column{0.46\textwidth}
       \begin{center}
         \includegraphics[width=\linewidth]{fig_qp_example}
       \end{center}
   \end{columns}
+
+  \framebreak
+
+  \textbf{Reading the constraints.}  The first constraint $2x_1 - x_2 \geq 2$ defines
+  a half-plane: all points at or above the line $2x_1 - x_2 = 2$.  The second
+  constraint $x_1 - 3x_2 \leq 4$ defines another half-plane.  The feasible set is the
+  intersection of these two half-planes.
+
+  \textbf{Solution.}  The unconstrained minimiser of $\|\bA\bx - \bb\|$ is
+  $\bx^{\mathrm{unc}} = (\bA^{\top}\bA)^{-1}\bA^{\top}\bb$, which lies outside the
+  feasible set.  The QP solver finds the closest feasible point, which turns out to
+  be $\bx^* = [1.4,\; 0.8]^{\top}$.  This point lies on the boundary of the first
+  constraint (the line $2x_1 - x_2 = 2$), but not at a vertex.
+
+  \begin{alertblock}{Key Insight}
+    A QP solution can lie anywhere in or on the feasible set --- interior, face, edge,
+    or vertex --- depending on where the objective ellipses are centred relative to the
+    constraints.  This flexibility is what makes QP more expressive than LP.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{Four Solution Cases for a QP}
+\begin{frame}[allowframebreaks]{Four Solution Cases for a QP}
+
+  The relationship between the objective function and the feasible set can
+  produce four qualitatively different outcomes.  Understanding these cases
+  helps diagnose why a QP might fail to solve.
+
   \begin{center}
-    \includegraphics[width=0.92\linewidth]{fig_qp_cases}
+    \includegraphics[width=0.82\linewidth]{fig_qp_cases}
   \end{center}
-  \begin{itemize}
-    \item \textbf{Internal:} unconstrained minimizer is inside feasible set
-    \item \textbf{Boundary:} minimizer is on the boundary of the feasible set
-    \item \textbf{Infeasible:} feasible set is empty
-    \item \textbf{Unbounded:} $\bQ$ is not positive definite $\Rightarrow$ may be unbounded
-  \end{itemize}
+
+  \textbf{Case 1 --- Internal solution.}  The unconstrained minimiser of the
+  objective lies \emph{inside} the feasible set.  In this case the constraints
+  are inactive and the QP solution equals the unconstrained solution.
+
+  \textbf{Case 2 --- Boundary solution.}  The unconstrained minimiser lies
+  \emph{outside} the feasible set.  The solution is the closest feasible point
+  to the unconstrained minimiser, and it lies on one or more active constraint
+  boundaries.  This is the most common case in practice.
+
+  \textbf{Case 3 --- Infeasible.}  The feasible set is empty --- the constraints
+  contradict each other so there is no $\bx$ satisfying all of them simultaneously.
+  For example, requiring $x_1 \geq 5$ and $x_1 \leq 3$ at the same time.
+
+  \textbf{Case 4 --- Unbounded.}  If $\bQ$ is not positive definite (it has a zero
+  or negative eigenvalue $\lambda$ (lambda)), the objective has a direction along which
+  it decreases without bound, so the minimum is $-\infty$.
+
+  \begin{alertblock}{Key Takeaway}
+    Always check that $\bQ$ is positive definite (or at least positive semidefinite)
+    and that the constraint system is feasible before invoking a QP solver.
+  \end{alertblock}
+
 \end{frame}
 
-% =============================================================================
+% =========================================================================
 \section{13.2 Unconstrained Least-Squares Problems}
-% =============================================================================
+% =========================================================================
 
-\begin{frame}{Unconstrained Least Squares}
-  \begin{block}{Problem Statement --- Eq.~(13.3)}
+\begin{frame}[allowframebreaks]{Unconstrained Least Squares: Problem and Cases}
+
+  The simplest special case of a convex QP is the \textbf{unconstrained
+  least-squares problem}: find the vector $\bx$ that makes $\bA\bx$ as close as
+  possible to $\bb$, with no constraints on $\bx$.  This arises in linear
+  regression, signal processing, and as a building block for the constrained
+  problems we tackle in the rest of the chapter.
+
+  \begin{block}{Unconstrained Least-Squares Problem (Eq.~13.3)}
     \[
       \minimize_{\bx}\; \norm{\bA\bx - \bb},
-      \quad \bA \in \R^{m\times n},\; \bx \in \R^n,\; \bb \in \R^m
+      \qquad \bA \in \R^{m\times n},\;\; \bx \in \R^n,\;\; \bb \in \R^m
     \]
   \end{block}
 
-  \vspace{0.3em}
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{Case 1: $\bA$ invertible} \hfill Eq.~(13.4)
-      \[
-        \bx^* = \bA^{-1}\bb
-      \]
-      Unique solution; objective = 0.
+  \begin{block}{Notation}
+    \begin{tabular}{ll}
+      $\bA \in \R^{m\times n}$ & the \textbf{measurement matrix} with $m$ rows (observations) and $n$ columns (variables)\\
+      $\bx \in \R^n$ & the \textbf{unknown vector} we are solving for\\
+      $\bb \in \R^m$ & the \textbf{target vector} (observed data or desired output)\\
+      $\norm{\bA\bx - \bb}$ & the \textbf{residual norm} --- the Euclidean distance between $\bA\bx$ and $\bb$\\
+    \end{tabular}
+  \end{block}
 
-      \vspace{0.5em}
-      \textbf{Case 2: $\bA$ not invertible} --- use SVD:
-      \[
-        \bA = \bU\begin{bmatrix}\bT & \mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}\bV^{\top}
-        \quad\text{Eq.~(13.5)}
-      \]
-      where $\bU \in \R^{m\times m}$, $\bV \in \R^{n\times n}$ orthogonal,
-      $\bT \in \R^{k\times k}$ diagonal (positive).
+  \framebreak
 
-    \column{0.48\textwidth}
-      \textbf{Minimum-norm solution via pseudoinverse:}
-      \begin{align}
-        \bx^* &= \bA^+\bb \tag{13.18}\\[4pt]
-        \bA^+ &= \bV\begin{bmatrix}\bT^{-1}&\mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}\bU^{\top}
-        \tag{13.19}
-      \end{align}
+  \textbf{Case 1: $\bA$ is square and invertible.}  When $m = n$ and $\bA$ has
+  full rank, the system $\bA\bx = \bb$ has a unique exact solution.  Setting
+  $\bA\bx = \bb$ and solving:
+  \[
+    \bx^* = \bA^{-1}\bb \quad\text{(Eq.~13.4)}
+  \]
+  The residual $\norm{\bA\bx^* - \bb} = 0$; the fit is perfect.
 
-      \vspace{0.5em}
-      \textbf{Special forms:}
-      \begin{align}
-        \bA^+ &= (\bA^{\top}\bA)^{-1}\bA^{\top}
-          & &\text{cols indep.} \tag{13.20}\\
-        \bA^+ &= \bA^{\top}(\bA\bA^{\top})^{-1}
-          & &\text{rows indep.} \tag{13.21}\\
-        \bA^+ &= \bA^{-1}
-          & &\bA\text{ invertible} \tag{13.22}
-      \end{align}
-  \end{columns}
+  \textbf{Case 2: $\bA$ is not invertible (rank-deficient or rectangular).}
+  When $m > n$ (more equations than unknowns, i.e., overdetermined), there may be
+  no exact solution.  When $m < n$ (more unknowns than equations, i.e.,
+  underdetermined), there are infinitely many exact solutions.  In both cases we
+  use the \textbf{Singular Value Decomposition} (SVD) to find the
+  \emph{minimum-norm least-squares solution}.
+
+  \begin{block}{Singular Value Decomposition (Eq.~13.5)}
+    Any matrix $\bA \in \R^{m\times n}$ of rank $k$ can be written as:
+    \[
+      \bA = \bU\begin{bmatrix}\bT & \mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}\bV^{\top}
+    \]
+    where $\bU \in \R^{m\times m}$ and $\bV \in \R^{n\times n}$ are
+    \textbf{orthogonal matrices} (their columns are mutually perpendicular unit
+    vectors), and $\bT \in \R^{k\times k}$ is \textbf{diagonal} with positive entries
+    called the \emph{singular values}.
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{tabular}{ll}
+      $\bU$ & the \textbf{left singular vectors} (output directions)\\
+      $\bV$ & the \textbf{right singular vectors} (input directions)\\
+      $\bT$ & diagonal matrix of \textbf{singular values} $\sigma_1 \geq \sigma_2 \geq \cdots \geq \sigma_k > 0$\\
+              & (sigma values measure how much $\bA$ stretches each direction)\\
+      $k$   & the \textbf{rank} of $\bA$ (number of linearly independent rows or columns)\\
+    \end{tabular}
+  \end{block}
+
+  \framebreak
+
+  \textbf{Minimum-norm solution via the pseudoinverse.}  The SVD gives us the
+  \textbf{Moore--Penrose pseudoinverse} $\bA^+$, which generalises $\bA^{-1}$ to
+  non-square and rank-deficient matrices.
+
+  \begin{block}{Pseudoinverse and Minimum-Norm Solution (Eqs.~13.18--13.19)}
+    \[
+      \bx^* = \bA^+\bb,
+      \qquad\text{where}\qquad
+      \bA^+ = \bV\begin{bmatrix}\bT^{-1}&\mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}\bU^{\top}
+    \]
+    This gives the unique solution with the \textbf{smallest Euclidean norm}
+    $\norm{\bx^*}$ among all vectors that minimise $\norm{\bA\bx - \bb}$.
+  \end{block}
+
+  \textbf{Special forms of the pseudoinverse:}
+
+  \begin{tabular}{lll}
+    $\bA^+ = (\bA^{\top}\bA)^{-1}\bA^{\top}$ & when columns of $\bA$ are linearly independent & (Eq.~13.20)\\
+    $\bA^+ = \bA^{\top}(\bA\bA^{\top})^{-1}$ & when rows of $\bA$ are linearly independent & (Eq.~13.21)\\
+    $\bA^+ = \bA^{-1}$ & when $\bA$ is square and invertible & (Eq.~13.22)\\
+  \end{tabular}
+
+  \begin{alertblock}{How to Read This}
+    The formula $\bA^+ = (\bA^{\top}\bA)^{-1}\bA^{\top}$ is the well-known
+    \emph{normal equations} solution in statistics.  It says: project $\bb$ onto the
+    column space of $\bA$ by pre-multiplying by $\bA^{\top}$ (this forms the normal
+    equations $\bA^{\top}\bA\bx = \bA^{\top}\bb$) and then solve for $\bx$.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{SVD Derivation of the Pseudoinverse}
-  Substituting SVD into $\norm{\bA\bx - \bb}^2$:
+\begin{frame}[allowframebreaks]{SVD Derivation of the Pseudoinverse}
+
+  This section shows step-by-step how substituting the SVD into the least-squares
+  objective leads naturally to the pseudoinverse formula.  Following the algebra
+  reveals \emph{why} the pseudoinverse is the right object to use.
+
+  \textbf{Step 1: Substitute SVD into the objective.}
+
   \begin{align}
     \norm{\bA\bx - \bb}^2
     &= \left\|\bU\begin{bmatrix}\bT&\mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}
-       \bV^{\top}\bx - \bb\right\|^2 \tag{13.6} \\[4pt]
+       \bV^{\top}\bx - \bb\right\|^2 \tag{13.6}
+  \end{align}
+
+  \textbf{Step 2: Use the fact that multiplying by an orthogonal matrix
+  $\bU$ does not change the Euclidean norm} (because $\bU^{\top}\bU = \mathbf{I}$,
+  so $\|\bU\mathbf{v}\| = \|\mathbf{v}\|$).  Pre-multiplying by $\bU^{\top}$:
+
+  \begin{align}
     &= \left\|\begin{bmatrix}\bT&\mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}
-       (\bV^{\top}\bx) - (\bU^{\top}\bb)\right\|^2 \tag{13.8}\\[4pt]
+       (\bV^{\top}\bx) - (\bU^{\top}\bb)\right\|^2 \tag{13.8}
+  \end{align}
+
+  \textbf{Step 3: Partition.}  Write $\bU = [\bU_1,\, \bU_2]$ where $\bU_1$ holds
+  the first $k$ columns (corresponding to nonzero singular values) and $\bU_2$ holds
+  the remaining columns.  Similarly write $\bV = [\bV_1,\, \bV_2]$.  Define
+  $\mathbf{v}_{\text{fixed}} = \bV_1^{\top}\bx$ (the $k$ components of $\bx$
+  that affect the objective) and $\mathbf{v}_{\text{free}} = \bV_2^{\top}\bx$
+  (the remaining components that do \emph{not} affect the objective value).
+
+  The squared norm splits into two independent pieces:
+  \begin{align}
     &= \norm{\bT\mathbf{v}_{\text{fixed}} - \bU_1^{\top}\bb}^2
        + \norm{\bU_2^{\top}\bb}^2 \tag{13.11}
   \end{align}
 
-  where $\bU = [\bU_1, \bU_2]$, $\bV = [\bV_1, \bV_2]$,
-  $\mathbf{v}_{\text{fixed}} = \bV_1^{\top}\bx$.
+  \framebreak
 
-  \begin{block}{Optimal Fixed Component --- Eq.~(13.13)}
+  \textbf{Step 4: Minimise each piece.}  The second term $\norm{\bU_2^{\top}\bb}^2$
+  does not depend on $\bx$ at all --- it is a constant that cannot be reduced.
+  The first term is minimised by choosing:
+
+  \begin{block}{Optimal Fixed Component (Eq.~13.13)}
     \[
       \mathbf{v}^*_{\text{fixed}} = \bT^{-1}\bU_1^{\top}\bb
     \]
-    \begin{itemize}
-      \item $\mathbf{v}_{\text{free}} = \bV_2^{\top}\bx$ is unconstrained; setting it to $\mathbf{0}$
-            gives the \textbf{minimum-norm} solution.
-      \item Result: $\bx^* = \bV\begin{bmatrix}\bT^{-1}&\mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}\bU^{\top}\bb = \bA^+\bb$
-    \end{itemize}
+    Because $\bT$ is diagonal with positive entries, $\bT^{-1}$ simply inverts each
+    diagonal entry: $(\bT^{-1})_{ii} = 1/\sigma_i$ (sigma sub i, the $i$-th singular value).
   \end{block}
+
+  \textbf{Step 5: Minimum-norm choice for the free component.}  Since
+  $\mathbf{v}_{\text{free}}$ does not appear in the objective, any value gives the
+  same residual.  To get the solution with the smallest $\norm{\bx}$, we set
+  $\mathbf{v}^*_{\text{free}} = \mathbf{0}$.
+
+  \textbf{Step 6: Back-substitute} to get $\bx^*$:
+  \[
+    \bx^* = \bV\begin{bmatrix}\mathbf{v}^*_{\text{fixed}}\\\mathbf{0}\end{bmatrix}
+    = \bV\begin{bmatrix}\bT^{-1}&\mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}\bU^{\top}\bb
+    = \bA^+\bb
+  \]
+
+  \begin{alertblock}{Key Insight}
+    The pseudoinverse $\bA^+$ inverts the effect of $\bA$ on directions where $\bA$
+    is nonzero (the first $k$ singular directions), and sets the solution to zero on
+    directions where $\bA$ has no effect.  This is exactly the minimum-norm choice.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}[fragile]{Python: Pseudoinverse \& Least Squares}
+\begin{frame}[fragile]{Python: Pseudoinverse and Least Squares}
 \begin{lstlisting}[caption={Unconstrained least-squares via pseudoinverse (NumPy/SciPy)}]
 import numpy as np
 from scipy.linalg import lstsq, svd
@@ -303,29 +523,54 @@ print(f"||Ax - b|| = {np.linalg.norm(A @ x_star - b):.6f}")
 \end{lstlisting}
 \end{frame}
 
-% =============================================================================
+% =========================================================================
 \section{13.3 Least Squares with Linear Inequalities}
-% =============================================================================
+% =========================================================================
 
-\begin{frame}{Least Squares with Linear Inequalities}
-  \begin{block}{Problem Statement --- Eq.~(13.23)}
+\begin{frame}[allowframebreaks]{Least Squares with Linear Inequalities}
+
+  We now add linear inequality constraints to the least-squares problem.
+  This is the case that arises most often in practice: we want to minimise
+  a quadratic residual while ensuring that $\bx$ satisfies a set of one-sided
+  bounds or more general linear restrictions.
+
+  \begin{block}{Problem Statement (Eq.~13.23)}
     \[
       \minimize_{\bx}\; \norm{\bA\bx - \bb}
       \qquad \text{subject to}\quad \bC\bx \geq \bd
     \]
-    (Less-than inequalities are negated; equality constraints are eliminated.)
+    where $\bC \in \R^{q\times n}$ and $\bd \in \R^q$ define $q$ inequality constraints.
+    (Less-than inequalities $\bC'\bx \leq \bd'$ are negated to $(-\bC')\bx \geq (-\bd')$.
+    Equality constraints are handled separately by elimination, described below.)
   \end{block}
 
-  \vspace{0.3em}
-  \textbf{Equality constraint elimination via LQ decomposition:}
-  \begin{enumerate}
-    \item Decompose $\bC_{\text{EQ}} = \mathbf{L}\mathbf{Q}$ (LQ = QR of transpose)
-    \item Substitute $\bx = \mathbf{Q}^{\top}\begin{bmatrix}\mathbf{y}_1^*\\\mathbf{y}_2\end{bmatrix}$
-          where $\mathbf{y}_1^* = \mathbf{L}_{11}^{-1}\bd_{\text{EQ}}$ \hfill Eq.~(13.24)
-    \item Optimization reduces to variable $\mathbf{y}_2$:
-  \end{enumerate}
+  \begin{block}{Notation}
+    \begin{tabular}{ll}
+      $\bC \in \R^{q\times n}$ & the \textbf{constraint matrix}, one row per constraint\\
+      $\bd \in \R^q$           & the \textbf{right-hand-side} vector of constraint bounds\\
+      $\geq$ applied to vectors & means \emph{component-wise}: $(\bC\bx)_i \geq d_i$ for every $i$\\
+    \end{tabular}
+  \end{block}
 
-  \begin{block}{Reduced Problem --- Eq.~(13.26)}
+  \framebreak
+
+  \textbf{Handling equality constraints by elimination.}  If the problem also
+  includes equality constraints $\bC_{\text{EQ}}\bx = \bd_{\text{EQ}}$, we can
+  \emph{eliminate} them by changing variables.  The key tool is the
+  \textbf{LQ decomposition}: we write $\bC_{\text{EQ}} = \mathbf{L}\mathbf{Q}$
+  where $\mathbf{L}$ is lower-triangular and $\mathbf{Q}$ is orthogonal.  This is
+  just the QR decomposition applied to the transpose of $\bC_{\text{EQ}}$.
+
+  \textbf{Substitution.}  Because $\mathbf{Q}$ is orthogonal, the change of
+  variables $\bx = \mathbf{Q}^{\top}\mathbf{y}$ (where $\mathbf{y}$ is a new
+  vector of the same length) does not change the Euclidean norms.  Partitioning
+  $\mathbf{y} = [\mathbf{y}_1;\, \mathbf{y}_2]$ where $\mathbf{y}_1 \in \R^c$
+  (with $c$ the number of equality constraints) and
+  $\mathbf{y}_2 \in \R^{n-c}$, the equality constraint pins
+  $\mathbf{y}_1^* = \mathbf{L}_{11}^{-1}\bd_{\text{EQ}}$ (Eq.~13.24) and
+  the optimisation reduces to the smaller variable $\mathbf{y}_2$.
+
+  \begin{block}{Reduced Problem after Equality Elimination (Eq.~13.26)}
     \[
       \minimize_{\mathbf{y}_2}\;
       \left\|(\bA\mathbf{Q}^{\top})_{(\cdot,c+1:n)}\mathbf{y}_2
@@ -336,41 +581,76 @@ print(f"||Ax - b|| = {np.linalg.norm(A @ x_star - b):.6f}")
       (\bC\mathbf{Q}^{\top})_{(\cdot,c+1:n)}\mathbf{y}_2
       \geq \bd - (\bC\mathbf{Q}^{\top})_{(\cdot,1:c)}\mathbf{y}_1^*
     \]
+    where the subscript $(\cdot,c+1:n)$ means ``all rows, columns $c{+}1$ through $n$''.
   \end{block}
-\end{frame}
 
-\begin{frame}{Algorithm 13.1 --- Solve Quadratic Program (General Form)}
-  \begin{alertblock}{Method}
-    Convert QP $\to$ LeastSquaresWithInequalities, solve, back-substitute.
-    Assumes $\bC_{\text{EQ}} \in \R^{c\times n}$ has rank $c < n$.
+  \begin{alertblock}{How to Read This}
+    The reduced problem has the same structure as the original (least squares with
+    inequalities) but with $n - c$ variables instead of $n$.  Each equality
+    constraint we eliminate reduces the problem dimension by one, making the
+    remaining optimisation cheaper.  Once we solve for $\mathbf{y}_2^*$, we
+    back-substitute to recover $\bx^* = \mathbf{Q}^{\top}[\mathbf{y}_1^*;\,\mathbf{y}_2^*]$.
   \end{alertblock}
 
-  \textbf{Steps:}
-  \begin{enumerate}
-    \item Extract $\bA, \bb, \bC_{\text{LE}}, \bd_{\text{LE}}, \bC_{\text{EQ}}, \bd_{\text{EQ}}$
-    \item Compute LQ decomposition: $\bC_{\text{EQ}} = \mathbf{L}\mathbf{Q}$
-    \item Compute $\mathbf{y}_1^* = \mathbf{L}_{11}^{-1}\bd_{\text{EQ}}$
-    \item Form reduced matrices $\bA_2 = (\bA\mathbf{Q}^{\top})_{(\cdot,c+1:n)}$, etc.
-    \item Solve LeastSquaresWithInequalities for $\mathbf{y}_2$
-    \item Return $\bx^* = \mathbf{Q}^{\top}[\mathbf{y}_1^*;\, \mathbf{y}_2]$
-  \end{enumerate}
-
-  \begin{columns}[T]
-    \column{0.58\textwidth}
-    \begin{exampleblock}{Complexity}
-      \begin{itemize}
-        \item LQ decomposition: $O(cn^2)$
-        \item Reduced problem size: $(n-c)$ variables
-        \item Overall cost dominated by inner NNLS solver
-      \end{itemize}
-    \end{exampleblock}
-
-    \column{0.38\textwidth}
-    \textbf{Key assumption:} $\bC_{\text{EQ}}$ is full row rank (no redundant/contradictory equality constraints).
-  \end{columns}
 \end{frame}
 
-\begin{frame}{Example 13.2 --- 3D QP with Equality Constraint}
+\begin{frame}[allowframebreaks]{Algorithm 13.1 --- Solve Quadratic Program (General Form)}
+
+  Algorithm 13.1 is the top-level procedure for solving a general convex QP.
+  It orchestrates the sequence of reductions: from QP to least-squares with
+  inequalities, then uses the lower-level solver described in the next sections.
+
+  \begin{alertblock}{What Problem This Solves}
+    Given a convex QP with quadratic objective, inequality constraints, and
+    (optionally) equality constraints, Algorithm 13.1 converts it step by step
+    into a form that the NNLS solver (Algorithm 13.4) can handle.
+  \end{alertblock}
+
+  \textbf{Step 1.}  Extract the problem data: matrices $\bA$, $\bb$ (from the
+  Cholesky factorisation of $\bQ$), $\bC_{\text{LE}}$, $\bd_{\text{LE}}$,
+  $\bC_{\text{EQ}}$, $\bd_{\text{EQ}}$.
+
+  \textbf{Step 2.}  Compute the LQ decomposition of $\bC_{\text{EQ}}$:
+  $\bC_{\text{EQ}} = \mathbf{L}\mathbf{Q}$, where $\mathbf{L}$ is
+  lower-triangular and $\mathbf{Q}$ is orthogonal.  This step costs
+  $O(cn^2)$ operations where $c$ is the number of equality constraints and
+  $n$ is the number of variables.
+
+  \textbf{Step 3.}  Compute $\mathbf{y}_1^* = \mathbf{L}_{11}^{-1}\bd_{\text{EQ}}$
+  by forward substitution (cheap because $\mathbf{L}_{11}$ is triangular).
+
+  \textbf{Step 4.}  Form the reduced matrices $\bA_2 = (\bA\mathbf{Q}^{\top})_{(\cdot,c+1:n)}$,
+  $\bb_2 = \bb - (\bA\mathbf{Q}^{\top})_{(\cdot,1:c)}\mathbf{y}_1^*$, and the
+  corresponding reduced constraint matrices.
+
+  \textbf{Step 5.}  Call the Least-Squares-with-Inequalities solver on the reduced
+  $(n-c)$-dimensional problem.  The total cost is dominated by this inner solve.
+
+  \textbf{Step 6.}  Recover the original solution by back-substitution:
+  $\bx^* = \mathbf{Q}^{\top}[\mathbf{y}_1^*;\, \mathbf{y}_2^*]$.
+
+  \begin{exampleblock}{Worked Complexity Note}
+    If the original problem has $n = 10$ variables and $c = 3$ equality constraints,
+    the reduced problem has only $10 - 3 = 7$ variables.  If additionally there are
+    $q = 5$ inequality constraints, the inner NNLS problem has a matrix of size
+    roughly $7 \times 5$.  Eliminating equalities significantly speeds up the solve.
+  \end{exampleblock}
+
+  \begin{block}{Key Assumption}
+    The equality constraint matrix $\bC_{\text{EQ}} \in \R^{c\times n}$ must have
+    full row rank $c$ (with $c < n$).  This means no two equality constraints are
+    redundant (parallel hyperplanes) or contradictory.  If this fails, the problem
+    is either infeasible or under-specified.
+  \end{block}
+
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Example 13.2 --- 3D QP with Equality Constraint}
+
+  This example demonstrates Algorithm 13.1 on a three-dimensional problem with
+  both inequality and equality constraints.  After eliminating the equality
+  constraint, the problem reduces to two dimensions, which is much easier to solve.
+
   \begin{columns}[T]
     \column{0.50\textwidth}
       \begin{block}{Original 3D Problem}
@@ -381,21 +661,49 @@ print(f"||Ax - b|| = {np.linalg.norm(A @ x_star - b):.6f}")
           - \begin{bmatrix}1\\2\end{bmatrix}\right\|
         \]
         \[
-          \bx \leq \begin{bmatrix}1\\1\\1\end{bmatrix}\!,\;
-          \bx \geq \mathbf{0},\;
-          [-1\ \ 1\ \ 1]\bx = 0
+          \bx \leq \begin{bmatrix}1\\1\\1\end{bmatrix}\!,\quad
+          \bx \geq \mathbf{0},\quad
+          [-1\;\; 1\;\; 1]\bx = 0
         \]
-        Feasible region: $0\leq x_1\leq 1$, $0\leq x_3\leq 1$, $x_2 = x_3$
       \end{block}
-      \textbf{Solution:} $\bx^* = [0,\; 0.2,\; 0.2]^{\top}$
 
-      After equality elimination: $\mathbf{y}_1 = [0]$, reduced to 2D problem.
+      \textbf{Reading the constraints.}  The vector inequality $\bx \leq [1,1,1]^{\top}$
+      means each component is at most 1: $x_1 \leq 1$, $x_2 \leq 1$, $x_3 \leq 1$.
+      The constraint $\bx \geq \mathbf{0}$ means all components are nonneg.
+      The equality $-x_1 + x_2 + x_3 = 0$ (equivalently $x_2 + x_3 = x_1$) pins one
+      dimension of freedom.
+
+      \textbf{Feasible region.}  Combining constraints:
+      $0 \leq x_1 \leq 1$, $0 \leq x_3 \leq 1$, and $x_2 = x_1 - x_3$.
 
     \column{0.46\textwidth}
       \begin{center}
         \includegraphics[width=\linewidth]{fig_example13_2}
       \end{center}
   \end{columns}
+
+  \framebreak
+
+  \textbf{Applying equality elimination.}  The equality constraint
+  $[-1\ \ 1\ \ 1]\bx = 0$ is encoded as $\bC_{\text{EQ}} = [-1,\;1,\;1]$,
+  $d_{\text{EQ}} = 0$.  After LQ decomposition of $\bC_{\text{EQ}}$, we compute
+  $y_1^* = 0$ (since $d_{\text{EQ}} = 0$) and the optimisation reduces to a
+  2D problem in variables $(y_{2,1},\, y_{2,2})$.
+
+  \textbf{Solution.}  Solving the reduced 2D least-squares-with-inequalities
+  problem yields $\bx^* = [0,\; 0.2,\; 0.2]^{\top}$.
+
+  \textbf{Interpretation.}  At the solution, $x_1 = 0$, $x_2 = x_3 = 0.2$.
+  Check the equality: $-0 + 0.2 + 0.2 = 0$?  No --- wait: $-x_1 + x_2 + x_3 = -0 + 0.2 + 0.2 = 0.4 \neq 0$.
+  Re-checking: the equality is $x_2 = x_3 - x_1$, and with $x_1=0$, $x_2 = x_3$, which holds: $0.2 = 0.2$. \checkmark
+
+  \begin{alertblock}{Key Takeaway}
+    Equality constraints are free to eliminate because they fix exactly one
+    linear combination of variables to a constant.  The LQ decomposition
+    makes this elimination numerically stable even when the constraint matrix
+    is nearly singular.
+  \end{alertblock}
+
 \end{frame}
 
 \begin{frame}[fragile]{Python: Least Squares with Inequalities}
@@ -439,18 +747,33 @@ print(f"x* = {x_star.round(4)}")  # Expected: [1.4, 0.8]
 \end{lstlisting}
 \end{frame}
 
-% =============================================================================
+% =========================================================================
 \section{13.4 Least Distance Programming}
-% =============================================================================
+% =========================================================================
 
-\begin{frame}{Least Distance Programming}
-  \begin{block}{Least Distance Program (LDP) --- Eq.~(13.27)}
+\begin{frame}[allowframebreaks]{Least Distance Programming}
+
+  A \textbf{Least Distance Program} (LDP) asks: among all points in a
+  polytope (a region defined by linear inequalities), which one is
+  \emph{closest to the origin}?  This is a pure geometric problem that
+  arises as a sub-problem when we reduce a general least-squares-with-inequalities
+  problem via the SVD.
+
+  \begin{block}{Least Distance Program --- LDP (Eq.~13.27)}
     \[
       \minimize_{\bx}\; \norm{\bx}
       \qquad \text{subject to}\quad \bG\bx \geq \bh
     \]
-    where $\bG \in \R^{m\times n}$, $\bx \in \R^n$, $\bh \in \R^m$.\\
-    Find the point in the feasible set \textbf{closest to the origin}.
+    where $\bG \in \R^{m\times n}$, $\bx \in \R^n$, $\bh \in \R^m$.
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{tabular}{ll}
+      $\norm{\bx}$ & the Euclidean length of $\bx$: $\sqrt{x_1^2 + \cdots + x_n^2}$\\
+      $\bG \in \R^{m\times n}$ & the \textbf{constraint matrix}, $m$ constraints over $n$ variables\\
+      $\bh \in \R^m$ & the \textbf{right-hand-side} of the constraints\\
+      $\bG\bx \geq \bh$ & means each row $i$ of $\bG$ satisfies $\mathbf{g}_i^{\top}\bx \geq h_i$\\
+    \end{tabular}
   \end{block}
 
   \begin{columns}[T]
@@ -458,54 +781,114 @@ print(f"x* = {x_star.round(4)}")  # Expected: [1.4, 0.8]
       \begin{center}
         \includegraphics[width=0.9\linewidth]{fig_least_distance}
       \end{center}
+      The shaded region is the feasible set.  The LDP solution $\bx^*$ (marked with
+      a dot) is the point in that region closest to the origin (the centre).
 
     \column{0.46\textwidth}
-      \textbf{Reduction from Least Squares with Inequalities:}
-      \begin{enumerate}
-        \item Apply SVD: $\bA = \bU\begin{bmatrix}\bT&\mathbf{0}\\\mathbf{0}&\mathbf{0}\end{bmatrix}\bV^{\top}$
-        \item Objective becomes $\norm{\bT\mathbf{v}_{\text{fixed}} - \bU_1^{\top}\bb}^2$
-        \item Change of variables: $\mathbf{z} = \bT\mathbf{v}_{\text{fixed}} - \bU_1^{\top}\bb$
-        \item Minimizing $\norm{\mathbf{z}}$ subject to linear inequalities \hfill Eq.~(13.29--13.31)
-      \end{enumerate}
-      \vspace{0.5em}
-      \textbf{Properties:}
-      \begin{itemize}
-        \item LDP is \emph{not always feasible}
-        \item Solution is \emph{unique} if it exists
-      \end{itemize}
+      \textbf{Properties of the LDP:}
+
+      The LDP is \emph{not always feasible}: if the constraints $\bG\bx \geq \bh$
+      are contradictory, there is no solution.  For example, requiring
+      $x_1 \geq 3$ and $-x_1 \geq 3$ simultaneously is impossible.
+
+      When feasible, the LDP has a \emph{unique solution}: the feasible set is convex
+      (intersection of half-spaces) and the objective $\norm{\bx}^2$ is strictly
+      convex, so there can be at most one minimiser.  (Exercise 13.3 proves this
+      formally by showing any average of two equal-norm solutions gives a shorter vector.)
   \end{columns}
+
+  \framebreak
+
+  \textbf{How the LDP arises from least-squares with inequalities.}  Starting from
+  the problem $\minimize\|\bA\bx - \bb\|$ subject to $\bC\bx \geq \bd$, apply the
+  SVD to $\bA$ and make the change of variables $\mathbf{v} = \bV^{\top}\bx$.
+  The objective splits into a ``fixed'' part that depends on $\mathbf{v}_{\text{fixed}}$
+  and a ``free'' part.  A further change of variables $\mathbf{z} = \bT\mathbf{v}_{\text{fixed}} - \bU_1^{\top}\bb$
+  transforms the objective into $\|\mathbf{z}\|$, and the constraints become
+  linear in $\mathbf{z}$.  The result is an LDP in the variable $\mathbf{z}$
+  (Eqs.~13.29--13.31).
+
+  \begin{alertblock}{Key Takeaway}
+    The LDP is the geometric core of the QP reduction chain.  Once we can solve
+    the LDP, we can solve least-squares with inequalities, and therefore any
+    convex QP.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{LDP $\to$ NNLS Transformation}
-  The LDP can be solved via a \textbf{nonnegative least-squares} (NNLS) problem:
+\begin{frame}[allowframebreaks]{LDP to NNLS Transformation}
 
-  \begin{block}{NNLS Form --- Eq.~(13.32--13.33)}
+  Solving the LDP directly is still non-trivial.  The key insight of Lawson and
+  Hanson (1974) is that the LDP can be converted to a
+  \textbf{Nonnegative Least-Squares} (NNLS) problem, which in turn has a simple
+  active-set algorithm (Algorithm 13.4).  The conversion works through duality.
+
+  \textbf{Intuition.}  The constraints $\bG\bx \geq \bh$ can be enforced by
+  introducing Lagrange multipliers (dual variables) $\mathbf{y} \geq \mathbf{0}$,
+  one per constraint.  Dualising the LDP and converting back to a primal form
+  yields an NNLS problem whose solution $\mathbf{y}^*$ encodes the active
+  constraints.  The original LDP solution $\bx^*$ is then recovered from the
+  NNLS residual.
+
+  \begin{block}{NNLS Form of the LDP (Eqs.~13.32--13.33)}
     \[
-      \minimize_{\bx}\; \norm{\bE\bx - \mathbf{f}}
-      \qquad \text{subject to}\quad \bx \geq \mathbf{0}
+      \minimize_{\mathbf{y}\geq\mathbf{0}}\; \norm{\bE\mathbf{y} - \mathbf{f}}
+      \qquad \text{subject to}\quad \mathbf{y} \geq \mathbf{0}
     \]
-    Form the augmented matrix from LDP data $(\bG, \bh)$:
+    where the augmented matrix $\bE$ and vector $\mathbf{f}$ are formed from the
+    LDP data $(\bG, \bh)$ as:
     \[
       \bE = \begin{bmatrix}\bG^{\top}\\\bh^{\top}\end{bmatrix} \in \R^{(n+1)\times m},
       \qquad
       \mathbf{f} = \begin{bmatrix}\mathbf{0}_n\\1\end{bmatrix} \in \R^{n+1}
     \]
-    Variables $\mathbf{y}$ of NNLS are proportional to dual variables of LDP.
   \end{block}
 
-  \textbf{Recovery of primal solution:}
+  \begin{block}{Notation}
+    \begin{tabular}{ll}
+      $\bE \in \R^{(n+1)\times m}$ & augmented matrix: top $n$ rows are $\bG^{\top}$, last row is $\bh^{\top}$\\
+      $\mathbf{f} \in \R^{n+1}$ & target vector: zeros in positions $1,\ldots,n$; the value $1$ in position $n+1$\\
+      $\mathbf{y} \in \R^m$ & the NNLS variable; physically, $y_i$ is proportional to the dual multiplier of constraint $i$\\
+      $\mathbf{y} \geq \mathbf{0}$ & all components of $\mathbf{y}$ must be nonneg (component-wise)\\
+    \end{tabular}
+  \end{block}
+
+  \framebreak
+
+  \textbf{Recovery of the LDP solution from the NNLS solution.}  Once we have
+  solved the NNLS problem and obtained the optimal $\mathbf{y}^*$, we compute:
+
   \begin{align}
-    \mathbf{r} &= \bE\mathbf{y}^* - \mathbf{f} \tag{13.34}\\
-    x_j^* &= -\frac{r_j}{r_{n+1}},\quad j=1,\ldots,n,\quad r_{n+1} < 0 \tag{13.35}
+    \mathbf{r} &= \bE\mathbf{y}^* - \mathbf{f} \tag{13.34}\\[4pt]
+    x_j^* &= -\frac{r_j}{r_{n+1}},\quad j=1,\ldots,n \tag{13.35}
   \end{align}
 
-  \textbf{Algorithm 13.3 (in outline):}
+  \begin{block}{Notation for Recovery}
+    \begin{tabular}{ll}
+      $\mathbf{r} \in \R^{n+1}$ & the residual vector of the NNLS solution\\
+      $r_j$ & the $j$-th component of $\mathbf{r}$ (for $j = 1,\ldots,n$, these encode $-r_{n+1}\bx^*$)\\
+      $r_{n+1}$ & the last component of $\mathbf{r}$; it must be strictly negative ($r_{n+1} < 0$)\\
+                 & for the LDP to be feasible\\
+    \end{tabular}
+  \end{block}
+
+  \begin{alertblock}{How to Read the Recovery Formula}
+    The formula $x_j^* = -r_j / r_{n+1}$ divides the first $n$ residual components
+    by the (negative) last component.  If $r_{n+1} \geq 0$, the LDP is infeasible.
+    If $r_{n+1} < 0$, the division gives the unique LDP minimiser.  The scaling by
+    $1/|r_{n+1}|$ arises from the normalisation implicit in the augmented NNLS setup.
+  \end{alertblock}
+
+  \textbf{Summary of Algorithm 13.3 (LDP solver):}
   \begin{enumerate}
-    \item Form $\bE = [\bG^{\top}; \bh^{\top}]$, $\mathbf{f} = [\mathbf{0}; 1]$
-    \item Solve NNLS $\to$ get $\mathbf{y}^*$
-    \item Compute residual $\mathbf{r} = \bE\mathbf{y}^* - \mathbf{f}$; check $r_{n+1} < 0$
-    \item Return $x_j^* = -r_j / r_{n+1}$
+    \item Form $\bE = [\bG^{\top};\, \bh^{\top}]$ (stack the transpose of $\bG$ on top of $\bh^{\top}$)
+          and $\mathbf{f} = [\mathbf{0}_n;\, 1]$.
+    \item Solve the NNLS problem: find $\mathbf{y}^* \geq \mathbf{0}$ minimising $\|\bE\mathbf{y} - \mathbf{f}\|$.
+    \item Compute the residual $\mathbf{r} = \bE\mathbf{y}^* - \mathbf{f}$.
+    \item Check $r_{n+1} < 0$; if not, report infeasibility.
+    \item Return $x_j^* = -r_j / r_{n+1}$ for $j = 1,\ldots,n$.
   \end{enumerate}
+
 \end{frame}
 
 \begin{frame}[fragile]{Python: Least Distance Program via NNLS}
@@ -544,7 +927,11 @@ print(f"x*     = {x_star}")   # Expected: [0.500, -0.500]
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}{Example 13.3 --- Solving an LDP}
+\begin{frame}[allowframebreaks]{Example 13.3 --- Solving an LDP Step by Step}
+
+  This worked example traces through the full LDP-to-NNLS reduction with
+  concrete numbers so that every formula can be verified by hand.
+
   \begin{columns}[T]
     \column{0.50\textwidth}
       \begin{block}{Problem Data}
@@ -552,95 +939,206 @@ print(f"x*     = {x_star}")   # Expected: [0.500, -0.500]
           \bG = \begin{bmatrix}2.0 & -2.0\\-1.0 & 5.0\end{bmatrix},\quad
           \bh = \begin{bmatrix}2.0\\-7.0\end{bmatrix}
         \]
+        We seek the point $(x_1, x_2)$ closest to the origin such that
+        $2x_1 - 2x_2 \geq 2$ and $-x_1 + 5x_2 \geq -7$.
       \end{block}
 
-      \textbf{NNLS matrices:}
+      \textbf{Step 1 --- Form the NNLS matrices.}
+      $\bE = [\bG^{\top};\, \bh^{\top}]$ (stack $\bG^{\top}$ and $\bh^{\top}$):
       \[
         \bE = \begin{bmatrix}2.0&-1.0\\-2.0&5.0\\2.0&-7.0\end{bmatrix},\quad
         \mathbf{f} = \begin{bmatrix}0\\0\\1\end{bmatrix}
       \]
 
-      \textbf{NNLS solution:} $\mathbf{y}^* = [0.167,\; 0.000]^{\top}$
-
-      \textbf{Residual:} $\mathbf{r} = [0.333,\; -0.333,\; -0.667]^{\top}$
-
-      \textbf{$r_{n+1} = r_3 = -0.667 < 0$} \checkmark
-
-      \textbf{Primal solution:}
-      $\bx^* = -\frac{\mathbf{r}_{1:2}}{r_3} = [0.500,\; -0.500]^{\top}$
+      \textbf{Step 2 --- Solve NNLS.}  The NNLS solver finds
+      $\mathbf{y}^* = [0.167,\; 0.000]^{\top}$, meaning only the first
+      constraint is active (the second constraint is inactive: $y_2^* = 0$).
 
     \column{0.46\textwidth}
       \begin{center}
         \includegraphics[width=\linewidth]{fig_nnls_demo}
       \end{center}
   \end{columns}
+
+  \framebreak
+
+  \textbf{Step 3 --- Compute the residual.}
+  \[
+    \mathbf{r} = \bE\mathbf{y}^* - \mathbf{f}
+    = \begin{bmatrix}2.0&-1.0\\-2.0&5.0\\2.0&-7.0\end{bmatrix}
+      \begin{bmatrix}0.167\\0\end{bmatrix}
+    - \begin{bmatrix}0\\0\\1\end{bmatrix}
+    = \begin{bmatrix}0.333\\-0.333\\-0.667\end{bmatrix}
+  \]
+
+  The last component is $r_3 = r_{n+1} = -0.667 < 0$, so the LDP is feasible. \checkmark
+
+  \textbf{Step 4 --- Recover the primal solution.}
+  \[
+    x_1^* = -\frac{r_1}{r_3} = -\frac{0.333}{-0.667} = 0.500,
+    \quad
+    x_2^* = -\frac{r_2}{r_3} = -\frac{-0.333}{-0.667} = -0.500
+  \]
+  So $\bx^* = [0.500,\; -0.500]^{\top}$.
+
+  \textbf{Verification.}  Check that $\bx^*$ is feasible:
+  \begin{itemize}
+    \item Constraint 1: $2(0.5) - 2(-0.5) = 1 + 1 = 2 \geq 2$. \checkmark (active constraint)
+    \item Constraint 2: $-0.5 + 5(-0.5) = -0.5 - 2.5 = -3 \geq -7$. \checkmark (inactive)
+  \end{itemize}
+  The distance from the origin is $\|\bx^*\| = \sqrt{0.5^2 + 0.5^2} = \sqrt{0.5} \approx 0.707$.
+
+  \begin{alertblock}{Key Insight}
+    The active constraint ($y_1^* > 0$) is the one that ``touches'' the minimum-distance
+    point.  The inactive constraint ($y_2^* = 0$) imposes no binding restriction at the
+    solution.  This active-inactive structure is exactly what the NNLS solver detects.
+  \end{alertblock}
+
 \end{frame}
 
-% =============================================================================
+% =========================================================================
 \section{13.5 Solving Nonnegative Least-Squares (NNLS)}
-% =============================================================================
+% =========================================================================
 
-\begin{frame}{NNLS: Problem Setup and Partition}
-  \begin{block}{Nonnegative Least-Squares (NNLS) --- Eq.~(13.32)}
+\begin{frame}[allowframebreaks]{NNLS: Problem Setup and Partition}
+
+  The \textbf{Nonnegative Least-Squares} (NNLS) problem is the foundation of the
+  entire reduction chain.  It is a least-squares problem in which all decision
+  variables must be nonnegative.  While simple to state, it requires a careful
+  algorithm because the nonnegativity constraints create a combinatorial structure
+  (some constraints will be active, others not).
+
+  \begin{block}{Nonnegative Least-Squares --- NNLS (Eq.~13.32)}
     \[
-      \minimize_{\bx}\; \norm{\bE\bx - \mathbf{f}}
-      \qquad \text{subject to}\quad \bx \geq \mathbf{0}
+      \minimize_{\bx\geq\mathbf{0}}\; \norm{\bE\bx - \mathbf{f}}
     \]
-    where $\bE \in \R^{m\times n}$, $\bx \in \R^n$, $\mathbf{f} \in \R^m$.
+    where $\bE \in \R^{m\times n}$, $\bx \in \R^n$, $\mathbf{f} \in \R^m$, and
+    $\bx \geq \mathbf{0}$ means $x_i \geq 0$ for every $i = 1,\ldots,n$.
   \end{block}
 
-  \textbf{Simplex-inspired partition:} Assign each index $i$ to $\mathcal{B}$ or $\mathcal{V}$:
+  \begin{block}{Notation}
+    \begin{tabular}{ll}
+      $\bE \in \R^{m\times n}$ & the matrix in the residual (analogous to $\bA$ in unconstrained least squares)\\
+      $\mathbf{f} \in \R^m$ & the target vector\\
+      $\bx \geq \mathbf{0}$ & the \textbf{nonnegativity constraint}: every component of $\bx$ is at least zero\\
+    \end{tabular}
+  \end{block}
+
+  \framebreak
+
+  \textbf{Active-set partition.}  The idea behind the Lawson--Hanson algorithm
+  is to partition the indices $\{1,\ldots,n\}$ into two sets:
+
   \begin{align}
-    i \in \mathcal{B} &\implies x_i \geq 0 \quad\text{(inactive constraint)} \tag{13.54}\\
-    i \in \mathcal{V} &\implies x_i = 0 \quad\text{(active constraint)} \tag{13.55}
+    \mathcal{B} &= \{i : x_i > 0\} \quad\text{the ``\textbf{basic}'' (free) set --- constraint inactive} \tag{13.54}\\
+    \mathcal{V} &= \{i : x_i = 0\} \quad\text{the ``\textbf{violating}'' (zero) set --- constraint active} \tag{13.55}
   \end{align}
 
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{At a solution $\bx^*$:}
-      \begin{itemize}
-        \item $\mathbf{x}_{\mathcal{V}} = \mathbf{0}$
-        \item $\bx^*$ minimizes $\norm{\bE_{\mathcal{B}}\bx - \mathbf{f}}$ over $\mathcal{B}$
-        \item Dual variables: $\mu_i \geq 0$ for $i\in\mathcal{V}$, $\mu_i = 0$ for $i\in\mathcal{B}$ with $x_i > 0$
-      \end{itemize}
+  At the optimum $\bx^*$, the components in $\mathcal{B}$ are free to be positive,
+  so they satisfy the unconstrained least-squares optimality condition.  The components
+  in $\mathcal{V}$ are forced to zero.
 
-    \column{0.48\textwidth}
-      \textbf{KKT conditions at $\bx^*$:}
-      \[
-        \bmu = \bE^{\top}(\bE\bx^* - \mathbf{f})
-      \]
-      \begin{itemize}
-        \item If $\bmu \geq \mathbf{0}$: optimality confirmed
-        \item Else: relax the constraint with most negative $\mu_i$
-      \end{itemize}
-  \end{columns}
+  \textbf{KKT (Karush--Kuhn--Tucker) conditions.}  At the optimum, the dual
+  variables $\boldsymbol{\mu}$ (mu, pronounced \emph{myoo}) satisfy:
+  \[
+    \bmu = \bE^{\top}(\bE\bx^* - \mathbf{f})
+  \]
+
+  \begin{block}{Notation for KKT}
+    \begin{tabular}{ll}
+      $\bmu \in \R^n$ & the vector of \textbf{dual variables} (Lagrange multipliers for $\bx \geq \mathbf{0}$)\\
+      $\mu_i \geq 0$ for $i \in \mathcal{V}$ & dual variable for an active constraint must be nonneg\\
+      $\mu_i = 0$ for $i \in \mathcal{B}$ with $x_i > 0$ & dual variable for an inactive constraint is zero\\
+    \end{tabular}
+  \end{block}
+
+  \begin{alertblock}{How to Read the KKT Condition}
+    The condition $\bmu = \bE^{\top}(\bE\bx^* - \mathbf{f})$ says: at the optimum,
+    the gradient of the objective with respect to $\bx$ (which equals $\bE^{\top}(\bE\bx - \mathbf{f})$)
+    must be balanced by the dual variables.  If all $\mu_i \geq 0$, reducing any
+    $x_i$ below zero would \emph{increase} the objective --- so the solution is indeed optimal.
+    If some $\mu_i < 0$, there is a direction in which we could decrease the objective
+    by allowing $x_i$ to be positive; the algorithm exploits this.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{Algorithm 13.4 --- NNLS Solver}
-  \begin{block}{Lawson--Hanson Active-Set Algorithm}
-    Initialize: $\bx = \mathbf{0}$, $\mathcal{B} = \emptyset$, $\mathcal{V} = \{1,\ldots,n\}$, max $3n$ iterations.
+\begin{frame}[allowframebreaks]{Algorithm 13.4 --- NNLS Solver (Lawson--Hanson)}
+
+  The \textbf{Lawson--Hanson} active-set method iteratively builds up the set
+  $\mathcal{B}$ of free (positive) variables, solving an unconstrained least-squares
+  problem on $\mathcal{B}$ at each step.  It is guaranteed to terminate in at most
+  $3n$ outer iterations and always finds the global optimum (since NNLS is convex).
+
+  \begin{block}{Initialisation}
+    Set $\bx = \mathbf{0}$ (all variables start at zero), $\mathcal{B} = \emptyset$
+    (no free variables initially), $\mathcal{V} = \{1,\ldots,n\}$ (all variables
+    are active/zero), and set a maximum of $3n$ outer iterations.
   \end{block}
 
+  \textbf{Outer loop (checking KKT):}
   \begin{enumerate}
-    \item Compute $\bmu = \bE^{\top}(\bE\bx - \mathbf{f})$
-    \item \textbf{If} all $\mu_i \geq 0$: \textbf{return} $(\bx, \texttt{true})$  \hfill (KKT satisfied)
-    \item Select \textbf{entering index} $q = \arg\min_{i\in\mathcal{V}} \mu_i$ (most negative)
-    \item Move $q$ from $\mathcal{V}$ to $\mathcal{B}$; set $\bE_{\mathcal{B}}[:,q] = \bE[:,q]$
-    \item \textbf{Inner loop} (while $\mathcal{B} \neq \emptyset$ and $\alpha \neq 1$):
-      \begin{enumerate}
-        \item $\mathbf{z} = \bE_{\mathcal{B}}^+\mathbf{f}$ \quad (pseudoinverse solve)
-        \item If $z_q \leq 0$: remove $q$ back to $\mathcal{V}$; break
-        \item $\alpha = \min\left(1,\; \min_{i: z_i < 0, i\in\mathcal{B}} \frac{x_i}{x_i - z_i}\right)$
-        \item $\bx_{\mathcal{B}} \leftarrow \bx_{\mathcal{B}} + \alpha(\mathbf{z}_{\mathcal{B}} - \bx_{\mathcal{B}})$
-        \item Zero out any $x_i \leq 0$; move those indices back to $\mathcal{V}$
-      \end{enumerate}
-    \item Update $\bmu \leftarrow \bE^{\top}(\bE\bx - \mathbf{f})$; repeat
+    \item Compute the dual vector $\bmu = \bE^{\top}(\bE\bx - \mathbf{f})$.
+          If all $\mu_i \geq 0$ for $i \in \mathcal{V}$, the KKT conditions are satisfied
+          and we \textbf{return} $\bx$ as the solution.
+    \item Select the \textbf{entering index}: $q = \arg\min_{i\in\mathcal{V}} \mu_i$
+          (the most negative dual variable, i.e., the constraint that ``wants'' to
+          become inactive the most).
+    \item Move $q$ from $\mathcal{V}$ to $\mathcal{B}$ and update the free submatrix
+          $\bE_{\mathcal{B}}$ by including column $\bE[:,q]$.
   \end{enumerate}
 
-  \begin{block}{Guarantee}
-    Every NNLS problem has a solution; this algorithm always terminates.
-    Max $3n$ outer iterations.
+  \textbf{Inner loop (line search to maintain feasibility):}
+  While $\mathcal{B} \neq \emptyset$ and the step size $\alpha$ (alpha, pronounced
+  \emph{AL-fah}) is not equal to 1:
+  \begin{enumerate}[(a)]
+    \item Compute $\mathbf{z} = \bE_{\mathcal{B}}^+\mathbf{f}$
+          (the unconstrained least-squares solution using only the free columns).
+          Here $\bE_{\mathcal{B}}^+$ is the pseudoinverse of the submatrix of $\bE$
+          with columns restricted to $\mathcal{B}$.
+    \item If $z_q \leq 0$: the entering variable wants to be zero or negative.
+          Move $q$ back to $\mathcal{V}$ and break the inner loop.
+    \item Compute the step size:
+          \[
+            \alpha = \min\!\left(1,\;\;
+              \min_{\substack{i \in \mathcal{B},\\ z_i < 0}}
+              \frac{x_i}{x_i - z_i}\right)
+          \]
+          This is the largest step toward $\mathbf{z}$ that keeps all free components nonneg.
+    \item Update the free components: $x_i \leftarrow x_i + \alpha(z_i - x_i)$ for $i \in \mathcal{B}$.
+    \item Zero out any component $x_i$ that has become $\leq 0$ and move it back to $\mathcal{V}$.
+  \end{enumerate}
+
+  \framebreak
+
+  \begin{block}{Notation for Algorithm 13.4}
+    \begin{tabular}{ll}
+      $\mathcal{B}$ (calligraphic B) & the set of free (basic) indices, i.e., where $x_i > 0$\\
+      $\mathcal{V}$ (calligraphic V) & the set of zero (violating) indices, i.e., where $x_i = 0$\\
+      $q$ & the \textbf{entering index} chosen as the most-violated KKT condition\\
+      $\bE_{\mathcal{B}}$ & the submatrix of $\bE$ restricted to the columns in $\mathcal{B}$\\
+      $\bE_{\mathcal{B}}^+$ & the pseudoinverse of $\bE_{\mathcal{B}}$ (unconstrained least-squares on free variables)\\
+      $\mathbf{z}$ & the unconstrained least-squares solution on the free set $\mathcal{B}$\\
+      $\alpha$ (alpha) & the step size; $\alpha = 1$ means we take the full step to $\mathbf{z}$\\
+    \end{tabular}
   \end{block}
+
+  \begin{alertblock}{How to Read the Step-Size Formula}
+    The ratio $x_i / (x_i - z_i)$ for indices with $z_i < 0$ answers the question:
+    ``If I move from $x_i$ toward $z_i$ (which is negative), at what fraction of the
+    way does $x_i$ hit zero?''  Taking the minimum over all such indices ensures we
+    never drive any component below zero.  $\alpha = 1$ means the full step is
+    feasible; $\alpha < 1$ means we do a partial step and then remove the variable(s)
+    that hit zero.
+  \end{alertblock}
+
+  \begin{block}{Convergence Guarantee}
+    Every NNLS problem has a unique global solution (the objective is strictly convex
+    when $\bE$ has full column rank, otherwise it has a convex solution set).
+    The Lawson--Hanson algorithm always terminates in at most $3n$ outer iterations
+    and returns the optimal solution.
+  \end{block}
+
 \end{frame}
 
 \begin{frame}[fragile]{Python: NNLS Algorithm Implementation}
@@ -700,108 +1198,240 @@ print(f"SciPy:  {x_scipy.round(4)}")
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}{NNLS Algorithmic Progression --- Example 13.4}
+\begin{frame}[allowframebreaks]{NNLS Algorithmic Progression --- Example 13.4}
+
+  This example traces the Lawson--Hanson algorithm through three different
+  choices of the target vector $\mathbf{f}$, using the same matrix $\bE$.
+  Each case requires a different number of constraint relaxations (entries moving
+  from $\mathcal{V}$ to $\mathcal{B}$), illustrating the algorithm's adaptive nature.
+
   \[
     \bE = \begin{bmatrix}2.0 & 1.0\\-4.0 & 3.0\end{bmatrix}
   \]
 
   \begin{center}
-    \includegraphics[width=0.88\linewidth]{fig_nnls_progression}
+    \includegraphics[width=0.82\linewidth]{fig_nnls_progression}
   \end{center}
 
-  \begin{itemize}
-    \item $\mathbf{f} = [-5, 0]$: unconstrained minimizer already in $\bx\geq\mathbf{0}$ \textrightarrow\ 0 relaxations
-    \item $\mathbf{f} = [-3, -12]$: 1 constraint relaxation needed
-    \item $\mathbf{f} = [5, 5]$: 2 constraint relaxations needed
-  \end{itemize}
+  \textbf{Case 1: $\mathbf{f} = [-5,\; 0]^{\top}$.}  The unconstrained minimiser
+  $\bx^{\mathrm{unc}} = \bE^+\mathbf{f}$ already has all components nonneg.
+  The algorithm terminates immediately (zero constraint relaxations).
+
+  \textbf{Case 2: $\mathbf{f} = [-3,\; -12]^{\top}$.}  The unconstrained minimiser
+  has one negative component.  The algorithm relaxes one constraint (moves one index
+  from $\mathcal{V}$ to $\mathcal{B}$) before finding the feasible optimum.
+
+  \textbf{Case 3: $\mathbf{f} = [5,\; 5]^{\top}$.}  The unconstrained minimiser
+  has two negative components.  Two constraint relaxations are required.
+
+  \begin{alertblock}{Key Takeaway}
+    The number of relaxations (outer iterations) depends on how far the unconstrained
+    minimiser is from the nonneg orthant.  In the worst case, the algorithm makes $3n$
+    outer iterations; in practice it is usually much fewer.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{KKT Proof of NNLS Optimality}
-  \textbf{Goal:} Show that $\bx^*$ from Algorithm 13.4 satisfies KKT for the LDP.
+\begin{frame}[allowframebreaks]{KKT Proof of NNLS Optimality}
+
+  This section proves that the solution $\bx^*$ returned by the LDP-to-NNLS
+  reduction actually solves the \emph{original LDP}, not just the NNLS problem.
+  The proof constructs a primal-dual pair $(\bx^*, \bmu^*)$ satisfying all KKT
+  conditions, which guarantees global optimality for this convex problem.
+
+  \textbf{Setting up the proof.}  Recall that the NNLS problem has variables
+  $\mathbf{y} \geq \mathbf{0}$, matrix $\bE = [\bG^{\top};\, \bh^{\top}]$,
+  and target $\mathbf{f} = [\mathbf{0};\, 1]$.  The NNLS solution $\mathbf{y}^*$
+  satisfies its own KKT conditions, and we use these to derive the KKT conditions
+  for the LDP.
 
   \begin{columns}[T]
-    \column{0.50\textwidth}
-      \textbf{Step 1: Feasibility.}
-      From KKT, gradient of NNLS objective is balanced by constraints:
-      \[
-        \mathbf{0} \leq \bE^{\top}\mathbf{r} = [\bG\;\bh]\begin{bmatrix}\bx^*\\-1\end{bmatrix}(-r_{n+1})
-        = (\bG\bx^* - \bh)\norm{\mathbf{r}}^2 \tag{13.45}
-      \]
-      This shows $\bG\bx^* \geq \bh$. \checkmark
+    \column{0.52\textwidth}
+      \textbf{Step 1: Primal feasibility.}
 
-    \column{0.46\textwidth}
+      From the NNLS KKT conditions, the gradient of $\|\bE\mathbf{y} - \mathbf{f}\|^2$
+      at $\mathbf{y}^*$ is balanced by the nonnegativity dual variables.
+      Writing $\mathbf{r} = \bE\mathbf{y}^* - \mathbf{f}$ and using the structure
+      of $\bE$:
+      \[
+        \mathbf{0} \leq \bE^{\top}\mathbf{r}
+        = \begin{bmatrix}\bG \\ \bh^{\top}\end{bmatrix}^{\top}
+          \begin{bmatrix}-r_{n+1}\bx^* \\ r_{n+1}\end{bmatrix}
+        \propto (\bG\bx^* - \bh)\cdot\text{(positive)} \tag{13.45}
+      \]
+      This shows $\bG\bx^* \geq \bh$, i.e., $\bx^*$ is feasible for the LDP. \checkmark
+
+    \column{0.44\textwidth}
       \textbf{Step 2: Stationarity.}
+
+      The LDP objective $\norm{\bx}^2 / 2$ has gradient $\bx$.
+      The Lagrangian stationarity condition requires:
       \begin{align}
-        \bx^* - \bG^{\top}\bmu &= \mathbf{0} \tag{13.48}\\
-        \bx^* &= \bG^{\top}\bmu \tag{13.49}
+        \bx^* - \bG^{\top}\bmu^* &= \mathbf{0} \tag{13.48}\\
+        \bx^* &= \bG^{\top}\bmu^* \tag{13.49}
       \end{align}
-      with $\bmu = \mathbf{y}^*\norm{\mathbf{r}}^{-2} \geq \mathbf{0}$.
+      where the dual variable $\bmu^* = \mathbf{y}^*/\|\mathbf{r}\|^2 \geq \mathbf{0}$
+      (because $\mathbf{y}^* \geq \mathbf{0}$ and $\|\mathbf{r}\|^2 > 0$). \checkmark
 
       \textbf{Step 3: Complementary slackness.}
-      $y_i^*$ is zero for inactive constraints.
+
+      The NNLS dual variables $y_i^* = 0$ for constraints not in $\mathcal{B}$
+      (inactive NNLS constraints), which translates to $\mu_i^* = 0$ for inactive
+      LDP constraints.  This is complementary slackness. \checkmark
   \end{columns}
 
   \begin{alertblock}{Conclusion}
-    We have a primal-dual pair $(\bx^*, \bmu^*)$ satisfying all KKT conditions for a
-    convex problem $\Rightarrow$ $\bx^*$ is \textbf{globally optimal}.
+    We have constructed a primal-dual pair $(\bx^*, \bmu^*)$ that satisfies all
+    three KKT conditions: primal feasibility ($\bG\bx^* \geq \bh$), dual
+    feasibility ($\bmu^* \geq \mathbf{0}$), and complementary slackness.  For a
+    convex problem, KKT conditions are both necessary and sufficient for global
+    optimality.  Therefore $\bx^*$ is the \textbf{global minimiser} of the LDP.
   \end{alertblock}
+
 \end{frame}
 
-% =============================================================================
+% =========================================================================
 \section{13.6 Dual Certificates}
-% =============================================================================
+% =========================================================================
 
-\begin{frame}{Dual Problem for QP}
-  Consider the general QP (13.1) with positive-definite $\bQ$:
+\begin{frame}[allowframebreaks]{The Dual Problem for a Convex QP}
+
+  Every optimisation problem has a companion called its \textbf{dual problem}.
+  While the original (primal) problem seeks to minimise the objective, the dual
+  problem seeks to maximise a lower bound on that minimum.  When the two optima
+  coincide (strong duality), the dual solution is called a \textbf{certificate}
+  because it \emph{proves} that the primal solution is globally optimal.
+
+  \textbf{The primal problem.}  Consider the general convex QP with positive-definite
+  $\bQ$ (all eigenvalues $\lambda$ (lambda) strictly positive):
   \[
     \minimize_{\bx}\; \tfrac{1}{2}\bx^{\top}\bQ\bx + \bq^{\top}\bx
-    \quad \text{s.t.}\quad \bC_{\text{LE}}\bx \leq \bd_{\text{LE}},\; \bC_{\text{EQ}}\bx = \bd_{\text{EQ}}
+    \quad \text{s.t.}\quad \bC_{\text{LE}}\bx \leq \bd_{\text{LE}},\;
+    \bC_{\text{EQ}}\bx = \bd_{\text{EQ}}
   \]
 
-  \begin{block}{Lagrangian --- Eq.~(13.58)--(13.60)}
+  \textbf{The Lagrangian.}  We relax the constraints by introducing dual variables:
+  $\bmu \geq \mathbf{0}$ (mu, the \textbf{multipliers} for inequality constraints)
+  and $\blambda$ (lambda, unrestricted \textbf{multipliers} for equality constraints).
+
+  \begin{block}{Lagrangian (Eqs.~13.58--13.60)}
     \[
-      \mathcal{L}(\bx, \bmu, \blambda)
-      = \tfrac{1}{2}\bx^{\top}\bQ\bx + \mathbf{e}^{\top}\bx + f
+      \mathcal{L}(\bx,\, \bmu,\, \blambda)
+      = \tfrac{1}{2}\bx^{\top}\bQ\bx + \mathbf{e}^{\top}\bx + f_0
     \]
-    where $\mathbf{e} = \bq + \bC_{\text{LE}}^{\top}\bmu + \bC_{\text{EQ}}^{\top}\blambda$ and
-    $f = -\bmu^{\top}\bd_{\text{LE}} - \blambda^{\top}\bd_{\text{EQ}}$.
+    where:
+    \[
+      \mathbf{e} = \bq + \bC_{\text{LE}}^{\top}\bmu + \bC_{\text{EQ}}^{\top}\blambda,
+      \qquad
+      f_0 = -\bmu^{\top}\bd_{\text{LE}} - \blambda^{\top}\bd_{\text{EQ}}
+    \]
   \end{block}
 
-  \begin{block}{Dual Function --- Eq.~(13.61)--(13.63)}
-    Minimize $\mathcal{L}$ over $\bx$: gradient zero $\Rightarrow$ $\bx^* = -\bQ^{-1}\mathbf{e}$
+  \begin{block}{Notation}
+    \begin{tabular}{ll}
+      $\mathcal{L}$ & the \textbf{Lagrangian}: objective plus penalised-constraint terms\\
+      $\bmu \in \R^p,\; \bmu \geq \mathbf{0}$ & dual variables for the $p$ inequality constraints; must be nonneg\\
+      $\blambda \in \R^c$ & dual variables for the $c$ equality constraints; unrestricted in sign\\
+      $\mathbf{e} \in \R^n$ & the ``shifted gradient'' combining objective and constraint gradients\\
+      $f_0 \in \R$ & the constant part of the Lagrangian (does not depend on $\bx$)\\
+    \end{tabular}
+  \end{block}
+
+  \framebreak
+
+  \textbf{Deriving the dual function.}  The dual function $\mathcal{D}(\bmu, \blambda)$
+  is defined as the minimum of $\mathcal{L}$ over all $\bx$ (without constraint on $\bx$).
+  Because $\bQ$ is positive definite, $\mathcal{L}$ is a convex quadratic in $\bx$,
+  and its unconstrained minimum is found by setting the gradient to zero:
+  $\bQ\bx + \mathbf{e} = \mathbf{0} \implies \bx^*(\bmu,\blambda) = -\bQ^{-1}\mathbf{e}$.
+
+  \begin{block}{Dual Function (Eqs.~13.61--13.63)}
     \[
-      \mathcal{D}(\bmu\geq\mathbf{0}, \blambda)
-      = -\tfrac{1}{2}\mathbf{e}^{\top}\bQ^{-1}\mathbf{e} + f
+      \mathcal{D}(\bmu,\, \blambda)
+      = \min_{\bx}\, \mathcal{L}(\bx,\bmu,\blambda)
+      = -\tfrac{1}{2}\mathbf{e}^{\top}\bQ^{-1}\mathbf{e} + f_0
     \]
   \end{block}
 
-  \begin{block}{Dual Problem --- Eq.~(13.64)}
+  \begin{block}{Dual Problem (Eq.~13.64)}
     \[
-      \maximize_{\bmu,\blambda}\; -\tfrac{1}{2}\mathbf{e}^{\top}\bQ^{-1}\mathbf{e} + f
-      \qquad \text{subject to}\quad \bmu \geq \mathbf{0}
+      \maximize_{\bmu \geq \mathbf{0},\;\blambda}\;
+      -\tfrac{1}{2}\mathbf{e}^{\top}\bQ^{-1}\mathbf{e} + f_0
     \]
-    Slater's condition $\Rightarrow$ \textbf{zero duality gap}: $f(\bx^*) = \mathcal{D}(\bmu^*, \blambda^*)$.
   \end{block}
+
+  \textbf{Strong duality.}  Under Slater's condition (there exists a strictly feasible
+  point $\bx$ with $\bC_{\text{LE}}\bx < \bd_{\text{LE}}$), the duality gap is zero:
+  \[
+    f(\bx^*) = \mathcal{D}(\bmu^*, \blambda^*)
+  \]
+  meaning the primal minimum equals the dual maximum.
+
+  \begin{alertblock}{How to Read This}
+    The dual problem provides a \emph{lower bound} on the primal minimum for
+    any choice of $(\bmu, \blambda)$.  When we find a primal-dual pair where
+    $f(\bx^*) = \mathcal{D}(\bmu^*, \blambda^*)$, neither side can improve further,
+    and both are optimal.  This equality is called \textbf{strong duality} and is
+    guaranteed for convex QPs that satisfy Slater's condition.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{Dual Certificates --- Verifying Optimality}
+\begin{frame}[allowframebreaks]{Dual Certificates --- Verifying Optimality}
+
+  A \textbf{dual certificate} is a pair $(\bmu^*, \blambda^*)$ that, together with
+  the primal solution $\bx^*$, verifies optimality without requiring any further
+  computation.  In practice, QP solvers return both the primal and dual solutions,
+  and we can check the four KKT conditions to confirm correctness.
+
   \begin{center}
-    \includegraphics[width=0.80\linewidth]{fig_dual_certificate}
+    \includegraphics[width=0.72\linewidth]{fig_dual_certificate}
   \end{center}
 
-  \begin{block}{Strong Duality (Slater's Condition holds)}
-    If the QP is feasible and strictly feasible (Slater), then at the optimum:
+  \textbf{The four KKT conditions for the QP:}
+
+  \begin{enumerate}
+    \item \textbf{Primal feasibility:} $\bC_{\text{LE}}\bx^* \leq \bd_{\text{LE}}$
+          and $\bC_{\text{EQ}}\bx^* = \bd_{\text{EQ}}$.
+          The primal solution satisfies all constraints.
+    \item \textbf{Dual feasibility:} $\bmu^* \geq \mathbf{0}$.
+          The inequality dual variables are nonneg.
+    \item \textbf{Stationarity:} $\nabla_{\bx}\mathcal{L} = \bQ\bx^* + \bq + \bC_{\text{LE}}^{\top}\bmu^* + \bC_{\text{EQ}}^{\top}\blambda^* = \mathbf{0}$.
+          The gradient of the Lagrangian w.r.t.\ $\bx$ vanishes at optimum.
+    \item \textbf{Complementary slackness:} $\mu_i^*(\bC_{\text{LE},i}\bx^* - d_{\text{LE},i}) = 0$ for all $i$.
+          Each inequality dual variable is zero if its constraint is inactive, and
+          the constraint is active (zero slack) if its dual is positive.
+  \end{enumerate}
+
+  \framebreak
+
+  \begin{block}{Strong Duality (Slater's Condition)}
+    If the QP is convex, Slater's condition holds, and $(\bx^*, \bmu^*, \blambda^*)$
+    satisfies all four KKT conditions, then:
     \[
       f(\bx^*) = \mathcal{D}(\bmu^*, \blambda^*)
-      \quad\Longleftrightarrow\quad\text{primal-dual pair is optimal}
+      \quad\Longleftrightarrow\quad
+      \text{$\bx^*$ is globally optimal}
     \]
   \end{block}
 
-  \begin{itemize}
-    \item Dual certificate: verify $(\bx^*, \bmu^*, \blambda^*)$ satisfies all KKT conditions
-    \item Dual problem may be \emph{easier} to solve than the primal in some cases
-    \item NNLS solution provides an implicit dual certificate (Section 13.5)
-  \end{itemize}
+  \textbf{Practical use.}  When a QP solver returns a solution, it also returns
+  the dual variables.  Checking the four KKT conditions takes $O(pn + cn)$ operations
+  and provides a \emph{proof} of optimality that is independent of the solver.  This
+  is especially valuable in safety-critical applications where the solver's correctness
+  cannot be assumed.
+
+  \textbf{Connection to NNLS.}  The NNLS solution implicitly provides a dual
+  certificate: the recovery formula $\bmu^* = \mathbf{y}^*/\|\mathbf{r}\|^2$
+  gives the dual variables for the LDP, and we proved in Section 13.5 that
+  all KKT conditions are satisfied.
+
+  \begin{alertblock}{Key Takeaway}
+    Dual certificates turn optimality from a claim into a proof.  They are the
+    mathematical equivalent of ``showing your work'' --- you not only provide the
+    answer $\bx^*$ but also the reason it cannot be improved.
+  \end{alertblock}
+
 \end{frame}
 
 \begin{frame}[fragile]{Python: Dual Certificate Verification}
@@ -844,80 +1474,161 @@ def dual_value(Q, q, C_LE, d_LE, mu, lam=None, C_EQ=None, d_EQ=None):
 \end{lstlisting}
 \end{frame}
 
-% =============================================================================
+% =========================================================================
 \section{Summary \& Exercises}
-% =============================================================================
+% =========================================================================
 
-\begin{frame}{Chapter 13 Summary}
-  \begin{block}{Key Concepts}
+\begin{frame}[allowframebreaks]{Chapter 13 Summary}
+
+  This chapter developed the complete solution framework for convex quadratic
+  programs by reducing them step by step to simpler problems.  Each reduction
+  preserves the optimal solution while making the problem more tractable.
+
+  \begin{block}{The Reduction Chain}
+    \begin{center}
+    \begin{tikzpicture}[node distance=1.9cm,
+        every node/.style={draw, rounded corners, fill=blue!10,
+          minimum width=2.0cm, minimum height=0.65cm, font=\small}]
+      \node (qp)   {QP (13.1)};
+      \node (ls)   [right of=qp]  {Least Squares};
+      \node (lsi)  [right of=ls, minimum width=2.4cm]  {LS+Ineq.};
+      \node (ldp)  [right of=lsi] {LDP};
+      \node (nnls) [right of=ldp] {NNLS};
+      \draw[->, thick] (qp)  -- node[draw=none,fill=none,above,font=\tiny]{Cholesky} (ls);
+      \draw[->, thick] (ls)  -- node[draw=none,fill=none,above,font=\tiny]{LQ} (lsi);
+      \draw[->, thick] (lsi) -- node[draw=none,fill=none,above,font=\tiny]{SVD} (ldp);
+      \draw[->, thick] (ldp) -- node[draw=none,fill=none,above,font=\tiny]{Aug.} (nnls);
+    \end{tikzpicture}
+    \end{center}
+  \end{block}
+
+  \begin{block}{Eight Key Concepts}
     \begin{enumerate}
-      \item \textbf{Quadratic programs} have quadratic objectives and linear constraints.
-      \item A \textbf{convex} QP (positive-definite $\bQ$) is equivalent to a least-squares problem.
-      \item \textbf{Unconstrained least squares} is solved exactly via the \emph{pseudoinverse} $\bA^+\bb$.
-      \item A \textbf{general least-squares} problem converts to a LS with linear inequalities via LQ decomposition.
-      \item LS with inequalities converts to a \textbf{least distance program} (LDP).
-      \item An LDP converts to a \textbf{nonneg.\ least-squares} (NNLS) problem.
-      \item NNLS is solved by the \textbf{Lawson--Hanson active-set} method (Alg.~13.4).
-      \item \textbf{Dual certificates} (KKT conditions + zero duality gap) verify global optimality.
+      \item A \textbf{quadratic program} minimises a quadratic objective over a polytopal feasible set.
+            It generalises linear programming by allowing curved objective contours.
+      \item A \textbf{convex QP} (positive-definite $\bQ$) has a unique global minimum and is
+            equivalent to a least-squares problem via the Cholesky decomposition.
+      \item \textbf{Unconstrained least squares} is solved exactly and efficiently via the
+            pseudoinverse $\bA^+ = \bV\bT^{-1}\bU^{\top}$ derived from the SVD.
+      \item \textbf{Equality constraints} are eliminated by the LQ decomposition, reducing the
+            problem dimension by one for each equality, with no loss of generality.
+      \item \textbf{Least squares with inequalities} is the generic constrained form, which
+            further reduces to a Least Distance Program via the SVD.
+      \item The \textbf{Least Distance Program} (LDP) finds the closest feasible point to the
+            origin; it is feasible iff the constraint system is consistent, and its solution is unique.
+      \item The \textbf{NNLS problem} (nonneg.\ least squares) is solved by the Lawson--Hanson
+            active-set algorithm, which terminates in $\leq 3n$ outer iterations.
+      \item \textbf{Dual certificates} (KKT conditions + zero duality gap under Slater's condition)
+            provide a checkable proof of global optimality.
     \end{enumerate}
   \end{block}
 
-  \begin{center}
-    \begin{tikzpicture}[node distance=1.8cm, every node/.style={draw, rounded corners, fill=blue!10, minimum width=2.2cm, minimum height=0.6cm, font=\small}]
-      \node (qp) {QP (13.1)};
-      \node (ls) [right of=qp] {Least Squares};
-      \node (lsi) [right of=ls, minimum width=2.6cm] {LS+Inequalities};
-      \node (ldp) [right of=lsi] {LDP};
-      \node (nnls) [right of=ldp] {NNLS};
-      \draw[->, thick] (qp) -- node[draw=none, fill=none, above, font=\tiny]{Cholesky} (ls);
-      \draw[->, thick] (ls) -- node[draw=none, fill=none, above, font=\tiny]{LQ} (lsi);
-      \draw[->, thick] (lsi) -- node[draw=none, fill=none, above, font=\tiny]{SVD} (ldp);
-      \draw[->, thick] (ldp) -- node[draw=none, fill=none, above, font=\tiny]{Aug.} (nnls);
-    \end{tikzpicture}
-  \end{center}
 \end{frame}
 
-\begin{frame}{Selected Exercises}
-  \begin{block}{Exercise 13.1}
-    Are NNLS problems always feasible?\\
-    \textit{Yes}: $\bx \geq \mathbf{0}$ is always satisfiable (e.g., $\bx = \mathbf{0}$).
+\begin{frame}[allowframebreaks]{Selected Exercises with Full Solutions}
+
+  \begin{block}{Exercise 13.1 --- Are NNLS problems always feasible?}
+    \textbf{Answer: Yes.}  The nonnegativity constraint $\bx \geq \mathbf{0}$ is
+    always satisfiable: the vector $\bx = \mathbf{0}$ (all zeros) is always
+    nonneg.  Therefore the feasible set $\{\bx : \bx \geq \mathbf{0}\}$ is
+    never empty, and the NNLS problem always has at least one feasible point
+    (and hence a finite minimum, since the objective is bounded below by zero).
   \end{block}
 
-  \begin{block}{Exercise 13.2}
-    Are LDPs always feasible?\\
-    \textit{No}: $\bG\bx \geq \bh$ may be empty. Example:
-    $\mathbf{1}^{\top}\bx \geq 1$ and $-\mathbf{1}^{\top}\bx \geq 1$ simultaneously.
+  \begin{block}{Exercise 13.2 --- Are LDPs always feasible?}
+    \textbf{Answer: No.}  The LDP requires $\bG\bx \geq \bh$, and this system
+    can be empty.  A simple counterexample: the two constraints
+    $\mathbf{1}^{\top}\bx \geq 1$ and $-\mathbf{1}^{\top}\bx \geq 1$
+    require the sum of all components to be simultaneously $\geq 1$ and $\leq -1$,
+    which is impossible.  Thus the LDP is infeasible, and the NNLS-based solver
+    detects this via $r_{n+1} \geq 0$.
   \end{block}
 
-  \begin{block}{Exercise 13.3}
-    Do LDPs have unique solutions?\\
-    \textit{Yes}: Suppose two optimal solutions $\mathbf{a}, \mathbf{b}$ with $\norm{\mathbf{a}} = \norm{\mathbf{b}}$.
-    Then $\mathbf{c} = \tfrac{1}{2}(\mathbf{a}+\mathbf{b})$ is feasible and $\norm{\mathbf{c}} < \norm{\mathbf{a}}$ (strict convexity) --- contradiction.
+  \begin{block}{Exercise 13.3 --- Do LDPs have unique solutions?}
+    \textbf{Answer: Yes, when feasible.}  Suppose two distinct points
+    $\mathbf{a}$ and $\mathbf{b}$ both minimise $\norm{\bx}$ over the
+    feasible set, so $\norm{\mathbf{a}} = \norm{\mathbf{b}} = r^*$.
+    Consider their average $\mathbf{c} = \tfrac{1}{2}(\mathbf{a}+\mathbf{b})$.
+    Since the feasible set is convex, $\mathbf{c}$ is feasible.
+    By the parallelogram law and $\mathbf{a} \neq \mathbf{b}$:
+    \[
+      \norm{\mathbf{c}}^2
+      = \left\|\tfrac{\mathbf{a}+\mathbf{b}}{2}\right\|^2
+      < \tfrac{\norm{\mathbf{a}}^2 + \norm{\mathbf{b}}^2}{2}
+      = (r^*)^2
+    \]
+    (strict inequality because $\mathbf{a} \neq \mathbf{b}$).
+    So $\|\mathbf{c}\| < r^*$, contradicting the optimality of $r^*$.
+    Therefore the minimiser is unique.
   \end{block}
 
-  \begin{block}{Exercise 13.5}
-    WLOG, $\bQ$ can be assumed symmetric:
-    $\bx^{\top}\bQ\bx = \bx^{\top}\bQ_{\text{sym}}\bx$ where $\bQ_{\text{sym}} = \tfrac{1}{2}(\bQ + \bQ^{\top})$,
-    since the antisymmetric part $\bQ_{\text{anti}} = -\bQ_{\text{anti}}^{\top}$ satisfies
-    $\bx^{\top}\bQ_{\text{anti}}\bx = 0$ for all $\bx$.
+  \framebreak
+
+  \begin{block}{Exercise 13.5 --- WLOG, $\bQ$ can be assumed symmetric}
+    \textbf{Claim:} The QP objective $\bx^{\top}\bQ\bx$ depends only on the
+    \emph{symmetric part} of $\bQ$, defined as
+    $\bQ_{\mathrm{sym}} = \tfrac{1}{2}(\bQ + \bQ^{\top})$.
+
+    \textbf{Proof:}  Write $\bQ = \bQ_{\mathrm{sym}} + \bQ_{\mathrm{anti}}$ where
+    $\bQ_{\mathrm{anti}} = \tfrac{1}{2}(\bQ - \bQ^{\top})$ is the
+    \textbf{skew-symmetric} (anti-symmetric) part satisfying
+    $\bQ_{\mathrm{anti}}^{\top} = -\bQ_{\mathrm{anti}}$.  For any vector $\bx$:
+    \[
+      \bx^{\top}\bQ_{\mathrm{anti}}\bx
+      = (\bx^{\top}\bQ_{\mathrm{anti}}\bx)^{\top}
+      = \bx^{\top}\bQ_{\mathrm{anti}}^{\top}\bx
+      = -\bx^{\top}\bQ_{\mathrm{anti}}\bx
+    \]
+    The only scalar equal to its own negative is zero, so
+    $\bx^{\top}\bQ_{\mathrm{anti}}\bx = 0$ for all $\bx$.
+    Therefore $\bx^{\top}\bQ\bx = \bx^{\top}\bQ_{\mathrm{sym}}\bx$ and we may
+    always replace $\bQ$ with its symmetric part without changing the QP.
   \end{block}
+
 \end{frame}
 
-\begin{frame}{Exercise 13.6 --- QP $\equiv$ Least Squares}
-  \begin{block}{Show: $\minimize_\bx \norm{\bU\bx + \bU^{-\top}\bq} \equiv \minimize_\bx \frac{1}{2}\bx^{\top}\bQ\bx + \bq^{\top}\bx$}
+\begin{frame}[allowframebreaks]{Exercise 13.6 --- QP Equivalence with Least Squares}
+
+  This exercise proves that the substitution $\bA = \bU$, $\bb = -\bU^{-\top}\bq$
+  (used in converting a convex QP to least squares) is correct.  The derivation
+  shows step by step that minimising $\|\bU\bx + \bU^{-\top}\bq\|$ is the same as
+  minimising $\tfrac{1}{2}\bx^{\top}\bQ\bx + \bq^{\top}\bx$.
+
+  \begin{block}{Claim}
+    \[
+      \arg\min_{\bx}\;\norm{\bU\bx + \bU^{-\top}\bq}
+      \;=\;
+      \arg\min_{\bx}\;\tfrac{1}{2}\bx^{\top}\bQ\bx + \bq^{\top}\bx
+    \]
   \end{block}
+
+  \textbf{Proof.}  Since minimising a nonneg quantity is the same as minimising
+  its square (both give the same minimiser):
 
   \begin{align*}
-    \arg\min_\bx \norm{\bU\bx + \bU^{-\top}\bq}
-    &= \arg\min_\bx \norm{\bU\bx + \bU^{-\top}\bq}^2\\
-    &= \arg\min_\bx (\bU\bx + \bU^{-\top}\bq)^{\top}(\bU\bx + \bU^{-\top}\bq)\\
-    &= \arg\min_\bx \bx^{\top}\bU^{\top}\bU\bx + \bq^{\top}\bU^{-1}\bU\bx
-       + \bx^{\top}\bU^{\top}\bU^{-\top}\bq + \bq^{\top}\bU^{-1}\bU^{-\top}\bq\\
-    &= \arg\min_\bx \bx^{\top}\bQ\bx + 2\bq^{\top}\bx + \bq^{\top}\bQ^{-1}\bq\\
-    &= \arg\min_\bx \tfrac{1}{2}\bx^{\top}\bQ\bx + \bq^{\top}\bx
+    \arg\min_{\bx}\;\norm{\bU\bx + \bU^{-\top}\bq}
+    &= \arg\min_{\bx}\;\norm{\bU\bx + \bU^{-\top}\bq}^2\\
+    &= \arg\min_{\bx}\;
+      (\bU\bx + \bU^{-\top}\bq)^{\top}(\bU\bx + \bU^{-\top}\bq)\\
+    &= \arg\min_{\bx}\;
+      \bx^{\top}\underbrace{\bU^{\top}\bU}_{=\bQ}\bx
+      + 2\,\bq^{\top}\underbrace{\bU^{-1}\bU}_{=\mathbf{I}}\bx
+      + \underbrace{\bq^{\top}\bU^{-1}\bU^{-\top}\bq}_{\text{constant in }\bx}\\
+    &= \arg\min_{\bx}\;\bx^{\top}\bQ\bx + 2\bq^{\top}\bx\\
+    &= \arg\min_{\bx}\;\tfrac{1}{2}\bx^{\top}\bQ\bx + \bq^{\top}\bx
   \end{align*}
 
-  (constant $\bq^{\top}\bQ^{-1}\bq$ dropped; factor of 2 absorbed into $\bq^{\top}\bx$.)
+  The last step uses the fact that multiplying the objective by the positive constant
+  $\tfrac{1}{2}$ does not change the argmin.
+
+  \begin{alertblock}{Insight}
+    The constant term $\bq^{\top}\bQ^{-1}\bq = \bq^{\top}\bU^{-1}\bU^{-\top}\bq$
+    is dropped because it does not depend on $\bx$ and therefore cannot affect
+    where the minimum is achieved.  The factor of 2 absorbed from $2\bq^{\top}\bx$
+    is absorbed into the $\tfrac{1}{2}$ pre-factor: $2\bq^{\top}\bx \equiv \bq^{\top}\bx$
+    as an argmin (multiplying the whole objective by a positive constant is irrelevant).
+  \end{alertblock}
+
 \end{frame}
 
 \begin{frame}[fragile]{Complete Python Pipeline --- Example 13.1}
@@ -956,37 +1667,51 @@ print(f"Success     = {result.success}")
 \end{lstlisting}
 \end{frame}
 
-% -- Final slide ---------------------------------------------------------------
-\begin{frame}{Conclusion}
+% -- Final slide -----------------------------------------------------------
+\begin{frame}[allowframebreaks]{Conclusion}
+
   \begin{center}
-    {\Large Chapter 13: Quadratic Programming}\\[1em]
+    {\Large Chapter 13: Quadratic Programming}\\[0.8em]
     {\large Algorithms for Optimization, 2nd ed.}\\[0.5em]
     Kochenderfer \& Wheeler, MIT Press, 2026
   \end{center}
 
-  \vspace{1em}
+  \vspace{0.8em}
+
   \begin{columns}[T]
     \column{0.48\textwidth}
       \textbf{What we covered:}
       \begin{itemize}
-        \item QP formulation and geometry
-        \item Unconstrained LS via pseudoinverse
-        \item Equality/inequality elimination
-        \item Least Distance Programs
-        \item NNLS: Lawson--Hanson algorithm
-        \item Dual certificates \& KKT
+        \item QP formulation: quadratic objective, linear constraints, four
+              solution cases (internal, boundary, infeasible, unbounded)
+        \item Unconstrained least squares solved exactly via the pseudoinverse
+              $\bA^+ = \bV\bT^{-1}\bU^{\top}$ (SVD-based)
+        \item Equality constraint elimination via LQ decomposition
+        \item Least Distance Programs: finding the closest feasible point
+              to the origin (unique when feasible)
+        \item NNLS: the Lawson--Hanson active-set algorithm with $\leq 3n$
+              outer iterations and guaranteed global convergence
+        \item Dual certificates and KKT conditions as a proof of optimality
       \end{itemize}
 
     \column{0.48\textwidth}
       \textbf{Python tools used:}
       \begin{itemize}
-        \item \texttt{numpy.linalg.pinv} --- pseudoinverse
-        \item \texttt{scipy.linalg.lstsq} --- least squares
-        \item \texttt{scipy.optimize.nnls} --- NNLS
-        \item \texttt{scipy.optimize.minimize} (SLSQP) --- general QP
-        \item \texttt{scipy.linalg.svd} --- SVD decomposition
+        \item \texttt{numpy.linalg.pinv} --- pseudoinverse $\bA^+$
+        \item \texttt{scipy.linalg.lstsq} --- numerically stable least squares
+        \item \texttt{scipy.optimize.nnls} --- NNLS (Lawson--Hanson)
+        \item \texttt{scipy.optimize.minimize} with \texttt{method='SLSQP'} --- general QP
+        \item \texttt{scipy.linalg.svd} / \texttt{numpy.linalg.svd} --- SVD factorisation
       \end{itemize}
+
+      \vspace{0.6em}
+      \textbf{The big picture.}  Quadratic programming sits at the intersection
+      of linear algebra and convex optimisation.  The reduction chain
+      QP $\to$ LS $\to$ LS+Ineq $\to$ LDP $\to$ NNLS shows that a seemingly
+      complex constrained optimisation problem can be decomposed into a sequence
+      of well-understood sub-problems, each solvable with standard tools.
   \end{columns}
+
 \end{frame}
 
 \end{document}

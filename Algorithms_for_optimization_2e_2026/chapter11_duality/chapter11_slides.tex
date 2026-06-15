@@ -81,7 +81,6 @@
   \titlepage
 \end{frame}
 
-% ---- Table of Contents ----
 \begin{frame}{Outline}
   \tableofcontents
 \end{frame}
@@ -90,274 +89,580 @@
 \section{11.1 Dual Problem}
 % ============================================================
 
-\begin{frame}{Motivation: Why Duality?}
-  \begin{columns}
-    \begin{column}{0.55\textwidth}
-      \begin{itemize}
-        \item Constrained minimisation can be transformed into a
-              \textbf{dual maximisation} problem.
-        \item The dual value is always a \textbf{lower bound} on the
-              primal optimal value.
-        \item In some cases (strong duality), both problems share the
-              same optimal value -- enabling \emph{verification}.
-        \item Dual structure underpins many practical algorithms:\\
-              interior-point methods, ADMM, distributed optimisation.
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.42\textwidth}
-      \includegraphics[width=\linewidth]{fig_lagrangian_overview.pdf}
-    \end{column}
-  \end{columns}
+\begin{frame}[allowframebreaks]{Motivation: Why Duality?}
+
+Most optimisation problems start as a \emph{primal} problem: minimise some
+objective subject to constraints.  Duality is a powerful theoretical tool that
+lets us construct a companion \emph{dual} problem whose solution always
+provides a guaranteed lower bound on the primal optimal value.
+
+\begin{columns}
+  \begin{column}{0.55\textwidth}
+    The key benefits of working with duality are:
+
+    \medskip
+    \textbf{(1) Verification:} when the dual optimal value equals the primal
+    optimal value --- a situation called \emph{strong duality} --- solving
+    either problem gives us the answer to both, and we can certify optimality
+    without exhaustive search.
+
+    \medskip
+    \textbf{(2) Algorithm design:} many of the most efficient practical
+    solvers --- interior-point methods, ADMM (Alternating Direction Method of
+    Multipliers), and distributed optimisation algorithms --- are built
+    directly on the dual structure of the problem.
+
+    \medskip
+    \textbf{(3) Sensitivity analysis:} the dual variables (also called
+    Lagrange multipliers, explained below) tell us how much the optimal
+    objective value would change if we tightened or relaxed each constraint
+    by a small amount.
+  \end{column}
+  \begin{column}{0.42\textwidth}
+    \includegraphics[width=\linewidth]{fig_lagrangian_overview.pdf}
+  \end{column}
+\end{columns}
+
+\begin{alertblock}{Key Insight}
+  The dual problem is always a \emph{concave maximisation} problem, regardless
+  of whether the primal is convex.  This means dual ascent algorithms always
+  converge --- a very useful property.
+\end{alertblock}
+
 \end{frame}
 
 % ----
-\begin{frame}{The Generalised Lagrangian}
-  \textbf{General constrained problem:}
-  \begin{equation}
-    \min_{\bx}\ f(\bx) \quad \text{s.t.}\quad \bg(\bx)\le\mathbf{0},
-    \quad \bh(\bx)=\mathbf{0} \tag{11.1}
-  \end{equation}
+\begin{frame}[allowframebreaks]{The Generalised Lagrangian}
 
-  \begin{block}{Generalised Lagrangian (Eq.\ 11.2)}
+  We begin with the most general form of a constrained optimisation problem.
+  Suppose we want to minimise an objective $f(\bx)$ subject to inequality
+  constraints $\bg(\bx) \le \mathbf{0}$ and equality constraints
+  $\bh(\bx) = \mathbf{0}$:
+
+  \begin{block}{General Constrained Problem}
     \[
-      \calL(\bx,\bmu,\blam) = f(\bx) + \sum_i \mu_i g_i(\bx) + \sum_j \lambda_j h_j(\bx)
+      \min_{\bx}\; f(\bx) \quad \text{subject to} \quad
+      \bg(\bx) \le \mathbf{0},\quad \bh(\bx) = \mathbf{0}
     \]
-    \begin{tabular}{ll}
-      $\bx\in\R^n$  & design (primal) variables \\
-      $\bmu\ge\mathbf{0}$ & inequality multipliers (dual variables) \\
-      $\blam\in\R^p$ & equality multipliers (dual variables) \\
-    \end{tabular}
+    where $\bx \in \R^n$ (x, an $n$-dimensional real vector) is the vector of
+    decision variables we are optimising over.
   \end{block}
 
   \medskip
-  $\bmu$ and $\blam$ are called \textbf{Lagrange multipliers} or \textbf{dual variables}.
+  The central idea of duality is to ``relax'' the constraints by moving them
+  into the objective function, weighted by penalty multipliers.  The result
+  is the \textbf{Generalised Lagrangian} (named after the mathematician
+  Joseph-Louis Lagrange):
+
+  \begin{block}{Generalised Lagrangian}
+    \[
+      \calL(\bx, \bmu, \blam)
+      \;=\; f(\bx)
+      \;+\; \sum_i \mu_i\, g_i(\bx)
+      \;+\; \sum_j \lambda_j\, h_j(\bx)
+    \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bx \in \R^n$: the \emph{primal} (design) variables --- the
+            quantities we are trying to find.
+      \item $\bmu \ge \mathbf{0}$ (mu, pronounced ``myoo'', a bold Greek
+            letter): a vector of \emph{inequality multipliers}, one per
+            inequality constraint $g_i(\bx) \le 0$.  Each $\mu_i \ge 0$
+            must be non-negative.
+      \item $\blam \in \R^p$ (lambda, pronounced ``lam-da'', a bold Greek
+            letter): a vector of \emph{equality multipliers}, one per
+            equality constraint $h_j(\bx) = 0$.  These can be any sign.
+      \item $g_i(\bx)$: the $i$-th inequality constraint function evaluated
+            at $\bx$; the constraint requires this to be $\le 0$.
+      \item $h_j(\bx)$: the $j$-th equality constraint function; the
+            constraint requires this to equal $0$ exactly.
+      \item $\sum_i$ (Sigma, meaning ``sum over index $i$''): we add up one
+            term for each inequality constraint.
+    \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{How to Read This Formula}
+    Think of the Lagrangian as an ``augmented objective.''  When $\bx$
+    satisfies all inequality constraints, $g_i(\bx) \le 0$, and since
+    $\mu_i \ge 0$, the penalty terms $\mu_i g_i(\bx)$ are non-positive ---
+    they do not inflate the objective.  But if $\bx$ violates a constraint
+    (so $g_i(\bx) > 0$), the penalty $\mu_i g_i(\bx)$ becomes \emph{positive},
+    pushing the Lagrangian above $f(\bx)$ and discouraging infeasibility.
+    The multipliers $\mu_i$ and $\lambda_j$ are also called \textbf{dual
+    variables} because they become the variables of the dual problem.
+  \end{alertblock}
+
 \end{frame}
 
 % ----
-\begin{frame}{Primal and Dual Problems}
-  \begin{block}{Primal problem (Eq.\ 11.3)}
+\begin{frame}[allowframebreaks]{Primal and Dual Problems}
+
+  Starting from the Lagrangian $\calL(\bx, \bmu, \blam)$, we can recover the
+  original constrained problem by a clever minimax trick, and then derive the
+  dual by swapping the order of min and max.
+
+  \begin{block}{Primal Problem}
     \[
-      p^* = \min_{\bx}\; \max_{\bmu\ge\mathbf{0},\,\blam}\; \calL(\bx,\bmu,\blam)
+      p^* \;=\; \min_{\bx}\; \max_{\bmu \ge \mathbf{0},\;\blam}\;
+      \calL(\bx, \bmu, \blam)
     \]
-    The outer \emph{maximisation} sets penalty terms $\to +\infty$ for infeasible $\bx$.
+    Here $p^*$ (p-star) is the \emph{optimal primal value} --- the lowest
+    possible value of $f(\bx)$ subject to all constraints.
   \end{block}
 
-  \begin{block}{Dual function (Eq.\ 11.4)}
+  Why does this recover the original problem?  If $\bx$ violates any
+  inequality constraint, then $g_i(\bx) > 0$ for some $i$, and we can send
+  $\mu_i \to +\infty$, making the inner maximum $+\infty$.  An outer
+  minimisation over $\bx$ will never choose an infeasible point.  For
+  feasible $\bx$, $g_i(\bx) \le 0$, the best multipliers set $\mu_i = 0$
+  and $\lambda_j = 0$, so the maximum equals $f(\bx)$.
+
+  \framebreak
+
+  \begin{block}{Dual Function}
     \[
-      \calD(\bmu,\blam) = \min_{\bx}\; \calL(\bx,\bmu,\blam)
+      \calD(\bmu, \blam) \;=\; \min_{\bx}\; \calL(\bx, \bmu, \blam)
     \]
-    Always \textbf{concave} in $(\bmu,\blam)$ (lower envelope of affine functions).
+    For fixed multipliers $(\bmu, \blam)$, this is the \emph{minimum value
+    of the Lagrangian over all $\bx$} (with no constraints on $\bx$).
   \end{block}
 
-  \begin{block}{Dual problem (Eq.\ 11.5)}
+  The dual function $\calD$ (script D) has a remarkable property: it is
+  always \textbf{concave} in $(\bmu, \blam)$, even when the original problem
+  is non-convex.  This is because it is a pointwise minimum of affine
+  (linear) functions of $(\bmu, \blam)$, and a minimum of affines is
+  always concave.
+
+  \begin{block}{Dual Problem}
     \[
-      d^* = \max_{\bmu\ge\mathbf{0},\,\blam}\; \calD(\bmu,\blam)
+      d^* \;=\; \max_{\bmu \ge \mathbf{0},\;\blam}\; \calD(\bmu, \blam)
     \]
+    Here $d^*$ (d-star) is the \emph{optimal dual value} --- the highest
+    value of the dual function achievable over all valid multipliers.
   \end{block}
+
+  \begin{alertblock}{Key Insight}
+    We have transformed a minimisation problem into a maximisation problem.
+    The dual problem is always concave, which makes it easier to solve with
+    gradient ascent methods --- they are guaranteed to find the global maximum
+    of a concave function.
+  \end{alertblock}
+
 \end{frame}
 
 % ----
-\begin{frame}{Weak and Strong Duality}
+\begin{frame}[allowframebreaks]{Weak and Strong Duality}
+
   \begin{columns}
     \begin{column}{0.55\textwidth}
-      \begin{block}{Weak Duality (always holds)}
+      \begin{block}{Weak Duality (always true)}
         \[
-          d^* \le p^*
+          d^* \;\le\; p^*
         \]
-        The dual value is always a \emph{lower bound} on the primal value.
-        The gap $p^*-d^*\ge 0$ is the \textbf{duality gap}.
+        The dual optimal value is \emph{always} a lower bound on the
+        primal optimal value.  This holds regardless of convexity or
+        any other assumption.
       \end{block}
 
+      The difference $p^* - d^* \ge 0$ is called the \textbf{duality gap}.
+      A large gap means the dual bound is loose; a gap of zero means we
+      have found exact optimality certificates.
+
+      \medskip
       \begin{block}{Strong Duality}
         \[
-          d^* = p^*
+          d^* \;=\; p^*
         \]
-        Holds for \textbf{convex} problems satisfying a constraint qualification
-        (e.g.\ Slater's condition: there exists a strictly feasible point).
+        The gap is zero --- the dual and primal optimal values coincide.
+        Strong duality holds for \textbf{convex} problems that satisfy a
+        \emph{constraint qualification}, such as:
+
+        \smallskip
+        \textbf{Slater's condition:} there exists at least one $\hat{\bx}$
+        in the interior of the feasible set, meaning $g_i(\hat{\bx}) < 0$
+        strictly for all $i$ (strictly feasible point).
       \end{block}
     \end{column}
     \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_duality_gap.pdf}
     \end{column}
   \end{columns}
+
+  \begin{alertblock}{How to Read This}
+    Think of the primal value $p^*$ as the ``true answer'' and the dual
+    value $d^*$ as a ``certificate'' that no solution can do better.  Weak
+    duality says the certificate can never exceed the truth.  Strong duality
+    says the certificate is tight --- we can verify optimality exactly.
+    In practice, algorithms drive the duality gap to near-zero as a
+    stopping criterion.
+  \end{alertblock}
+
 \end{frame}
 
 % ----
-\begin{frame}{Example 11.1: Dual Function as Lower Bound}
+\begin{frame}[allowframebreaks]{Example 11.1: Dual Function as Lower Bound}
+
+  This example makes the abstract notion of ``lower bound'' concrete.
+
   \begin{columns}
     \begin{column}{0.52\textwidth}
-      \textbf{Problem:}
-      \[
-        \min_x\ \sin(x) \quad \text{s.t.}\ x^2 \le 1
-      \]
-      \textbf{Lagrangian:} $\calL(x,\mu)=\sin(x)+\mu(x^2-1)$
+      \textbf{The problem:} minimise $\sin(x)$ subject to $x^2 \le 1$
+      (so $x$ must lie in the interval $[-1, 1]$).
 
       \medskip
-      \textbf{Primal:}
+      The minimum of $\sin(x)$ on $[-1, 1]$ occurs at $x^* = -1$,
+      giving $p^* = \sin(-1) \approx -0.841$.
+
+      \medskip
+      \textbf{Constructing the Lagrangian:} the single inequality constraint
+      is $g(x) = x^2 - 1 \le 0$, so the Lagrangian is:
       \[
-        \min_x\max_{\mu\ge 0}\bigl[\sin(x)+\mu(x^2-1)\bigr]
+        \calL(x, \mu) \;=\; \sin(x) \;+\; \mu\,(x^2 - 1)
       \]
-      \textbf{Dual:}
+      where $\mu \ge 0$ (mu) is the scalar inequality multiplier.
+
+      \medskip
+      \textbf{Primal (minimax):}
       \[
-        \max_{\mu\ge 0}\min_x\bigl[\sin(x)+\mu(x^2-1)\bigr]
+        p^* \;=\; \min_x \max_{\mu \ge 0} \bigl[\sin(x) + \mu(x^2 - 1)\bigr]
       \]
-      Optimal: $x^*=-1$, $p^*\approx -0.841$.\\
-      Each purple curve ($\calL$ at fixed $\mu$) has its
-      minimum \emph{below} $p^*$ -- weak duality.\\
-      Strong duality holds here by inspection.
+
+      \textbf{Dual (maximin):}
+      \[
+        d^* \;=\; \max_{\mu \ge 0} \min_x \bigl[\sin(x) + \mu(x^2 - 1)\bigr]
+      \]
+
+      Each curve in the figure shows $\calL(x, \mu)$ for a fixed value of
+      $\mu$.  The minimum of each curve (shown in purple) lies \emph{below}
+      $p^* \approx -0.841$, illustrating weak duality.  Strong duality
+      holds here: the dual optimal value also equals $-0.841$.
     \end{column}
     \begin{column}{0.46\textwidth}
       \includegraphics[width=\linewidth]{fig_dual_lower_bound.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
 % ----
 \begin{frame}[allowframebreaks]{Example 11.2: Lagrangian Duality with Equality Constraint}
-  \textbf{Problem:}
+
+  Here we work through a two-variable problem with an equality constraint,
+  deriving the dual function explicitly and verifying strong duality.
+
+  \textbf{The problem:}
   \[
-    \min_{\bx}\ x_1+x_2+x_1 x_2 \quad \text{s.t.}\ x_1^2+x_2^2=1
+    \min_{\bx}\; x_1 + x_2 + x_1 x_2
+    \quad \text{subject to} \quad x_1^2 + x_2^2 = 1
   \]
-  \textbf{Lagrangian:} $\calL(x_1,x_2,\lambda)=x_1+x_2+x_1 x_2+\lambda(x_1^2+x_2^2-1)$
+  The constraint forces $(x_1, x_2)$ to lie on the unit circle (the set of
+  points at distance 1 from the origin).
 
   \medskip
-  \textbf{First-order conditions:}
+  \textbf{Constructing the Lagrangian:} the single equality constraint is
+  $h(x_1, x_2) = x_1^2 + x_2^2 - 1 = 0$, so:
   \[
-    \frac{\partial\calL}{\partial x_1}=1+x_2+2\lambda x_1=0,\quad
-    \frac{\partial\calL}{\partial x_2}=1+x_1+2\lambda x_2=0,\quad
-    x_1^2+x_2^2-1=0
+    \calL(x_1, x_2, \lambda)
+    \;=\; x_1 + x_2 + x_1 x_2
+    \;+\; \lambda\,(x_1^2 + x_2^2 - 1)
   \]
+  where $\lambda$ (lambda, pronounced ``lam-da'') is the equality multiplier
+  (unrestricted in sign).
 
-  \textbf{Four critical points:}
-  \smallskip
+  \medskip
+  \textbf{Finding critical points} by setting partial derivatives to zero:
+  \[
+    \frac{\partial \calL}{\partial x_1} = 1 + x_2 + 2\lambda x_1 = 0,
+    \qquad
+    \frac{\partial \partial \calL}{\partial x_2} = 1 + x_1 + 2\lambda x_2 = 0,
+    \qquad
+    x_1^2 + x_2^2 = 1
+  \]
+  Here $\frac{\partial \calL}{\partial x_1}$ means the partial derivative
+  of $\calL$ with respect to $x_1$, i.e.\ the rate of change of $\calL$
+  as $x_1$ varies while $x_2$ and $\lambda$ are held fixed.
+
+  \framebreak
+
+  Solving the three equations simultaneously yields \textbf{four critical
+  points}:
+
   \begin{center}
-  \begin{tabular}{cccc}
+  \begin{tabular}{cccl}
     \toprule
-    $x_1$ & $x_2$ & $\lambda$ & $f(\bx)$ \\
+    $x_1$ & $x_2$ & $\lambda$ & Objective $f(\bx)$ \\
     \midrule
-    $-1$ & $0$ & $1/2$ & $-1$ \\
-    $0$ & $-1$ & $1/2$ & $-1$ \\
-    $\frac{\sqrt{2}+1}{\sqrt{2}+2}$ & $\frac{\sqrt{2}+1}{\sqrt{2}+2}$ &
-      $\frac{1}{2}(-1-\sqrt{2})$ & $\approx 1.914$ \\
-    $\frac{\sqrt{2}-1}{\sqrt{2}-2}$ & $\frac{\sqrt{2}-1}{\sqrt{2}-2}$ &
-      $\frac{1}{2}(-1+\sqrt{2})$ & $\approx -0.914$ \\
+    $-1$ & $0$ & $1/2$ & $-1$ \quad (global minimum) \\
+    $0$ & $-1$ & $1/2$ & $-1$ \quad (global minimum) \\
+    $\dfrac{\sqrt{2}+1}{\sqrt{2}+2}$ & $\dfrac{\sqrt{2}+1}{\sqrt{2}+2}$ &
+      $\frac{1}{2}(-1-\sqrt{2})$ & $\approx 1.914$ \quad (global maximum) \\
+    $\dfrac{\sqrt{2}-1}{\sqrt{2}-2}$ & $\dfrac{\sqrt{2}-1}{\sqrt{2}-2}$ &
+      $\frac{1}{2}(-1+\sqrt{2})$ & $\approx -0.914$ \quad (saddle point) \\
     \bottomrule
   \end{tabular}
   \end{center}
 
+  The optimal primal value is $p^* = -1$, achieved at $(-1, 0)$ and $(0, -1)$.
+
   \framebreak
 
-  Optimal solutions: $[-1,0]$ and $[0,-1]$ (value $-1$). \\
-  Using substitution $u=x_1+x_2$, $v=x_1-x_2$:
-
+  \textbf{Deriving the dual function:} substituting $u = x_1 + x_2$
+  and $v = x_1 - x_2$ transforms the Lagrangian into:
   \[
-    \calD(\lambda)=\min_{u,v}\frac{1}{4}(2\lambda+1)u^2+u+\frac{1}{4}(2\lambda-1)v^2-\lambda
+    \calL \;=\; \tfrac{1}{4}(2\lambda + 1)\,u^2 \;+\; u
+               \;+\; \tfrac{1}{4}(2\lambda - 1)\,v^2 \;-\; \lambda
   \]
+  Minimising over $u$ and $v$ gives the dual function:
+
+  \begin{block}{Dual Function $\calD(\lambda)$}
+    \[
+      \calD(\lambda) \;=\;
+      \begin{cases}
+        -\!\left(\dfrac{1}{2\lambda + 1} + \lambda\right) & \lambda \ge \tfrac{1}{2} \\[6pt]
+        -\infty & \text{otherwise}
+      \end{cases}
+    \]
+  \end{block}
 
   \begin{columns}
     \begin{column}{0.50\textwidth}
-      \[
-        \calD(\lambda)=
-        \begin{cases}
-          -\!\left(\dfrac{1}{2\lambda+1}+\lambda\right) & \lambda\ge\tfrac{1}{2}\\[4pt]
-          -\infty & \text{otherwise}
-        \end{cases}
-      \]
-      Strong duality holds: $d^*=-1=p^*$.
+      The dual function equals $-\infty$ for $\lambda < 1/2$ because the
+      quadratic in $v$ becomes unbounded below.  For $\lambda \ge 1/2$,
+      we can minimise the Lagrangian, and the maximum of $\calD(\lambda)$
+      occurs at $\lambda^* = 1/2$, giving $d^* = -(1/2 + 1/2) = -1 = p^*$.
+
+      \medskip
+      This confirms \textbf{strong duality}: $d^* = p^* = -1$.
     \end{column}
     \begin{column}{0.48\textwidth}
       \includegraphics[width=\linewidth]{fig_dual_function_ex2.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
 % ============================================================
 \section{11.2 Primal-Dual Methods}
 % ============================================================
 
-\begin{frame}{Primal-Dual Interior-Point: Motivation}
-  \begin{itemize}
-    \item \textbf{Primal-dual methods} simultaneously update primal $\bx$ and dual $\bmu$.
-    \item Build on interior-point barrier method for:
-          \[
-            \min_\bx f(\bx) \quad \text{s.t.}\ \bg(\bx)\le\mathbf{0} \tag{11.7}
-          \]
-    \item Replace with log-barrier problem:
-          \[
-            \min_\bx f(\bx)-\frac{1}{\rho}\sum_i\log(-g_i(\bx)) \tag{11.9}
-          \]
-    \item Setting $\mu_i^*=-1/(\rho g_i(\bx^*))$ recovers Lagrangian KKT:
-          \[
-            \mathbf{0}=\grad f(\bx^*)+\sum_i\mu_i^*\grad g_i(\bx^*) \tag{11.13}
-          \]
-    \item \textbf{Duality gap} at iteration: $p^*-\calD(\bmu^*)=m/\rho\;\to 0$ as $\rho\to\infty$.
-  \end{itemize}
-\end{frame}
+\begin{frame}[allowframebreaks]{Primal-Dual Interior-Point: Motivation}
 
-% ----
-\begin{frame}{Primal-Dual System and Newton Step}
-  Seek to satisfy \emph{stationarity} and \emph{complementarity} simultaneously:
-  \begin{equation}
-    \mathbf{r}(\bx,\bmu,\rho)=
-    \begin{bmatrix}
-      \grad f(\bx)+\sum_i\mu_i\grad g_i(\bx) \\
-      -\mu_1 g_1(\bx)-1/\rho \\
-      \vdots \\
-      -\mu_m g_m(\bx)-1/\rho
-    \end{bmatrix} = \mathbf{0} \tag{11.19}
-  \end{equation}
-
-  \begin{block}{Newton (descent) direction}
-    \[
-      \mathbf{d} = -\mathbf{J}^{-1}\,\mathbf{r}
-    \]
-    where $\mathbf{J}=\partial\mathbf{r}/\partial(\bx,\bmu)$.
-  \end{block}
-
-  \smallskip
-  \textbf{Step-size safeguards:}
-  \begin{itemize}
-    \item Bound $\alpha$ to keep $\bmu>0$: $\alpha\le(1-\varepsilon)\mu_i/(-d_{\mu_i})$ if $d_{\mu_i}<0$.
-    \item Reduce $\alpha$ while any $g_i(\bx+\alpha d_x)>0$ (maintain feasibility).
-    \item Armijo sufficient decrease on $\|\mathbf{r}\|$.
-  \end{itemize}
-\end{frame}
-
-% ----
-\begin{frame}{Example 11.3: Primal-Dual Descent Direction}
-  \textbf{Problem:} $\min_x\ x^2$ s.t.\ $(x-3)^2\le 1$\quad (feasible: $x\in[2,4]$)
+  Primal-dual interior-point methods are among the most powerful algorithms
+  for solving convex constrained optimisation problems.  The idea is to
+  update the primal variables $\bx$ and the dual variables $\bmu$ (mu)
+  \emph{simultaneously} at each iteration, rather than alternating between
+  them.  This joint update leads to very fast convergence in practice.
 
   \medskip
-  \textbf{Residual vector:}
+  We focus on the inequality-constrained problem:
+  \begin{block}{Inequality-Constrained Problem}
+    \[
+      \min_{\bx}\; f(\bx)
+      \quad \text{subject to} \quad
+      \bg(\bx) \le \mathbf{0}
+    \]
+    where $\bg(\bx) = [g_1(\bx), \ldots, g_m(\bx)]^\top$ is the vector of
+    $m$ inequality constraint functions.
+  \end{block}
+
+  \textbf{Step 1 --- Replace constraints with a log-barrier:}  instead of
+  enforcing $g_i(\bx) \le 0$ directly, we add a \emph{logarithmic barrier}
+  that blows up as $\bx$ approaches the constraint boundary:
+  \begin{block}{Log-Barrier Problem}
+    \[
+      \min_{\bx}\; f(\bx) - \frac{1}{\rho} \sum_{i=1}^{m} \log(-g_i(\bx))
+    \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\rho$ (rho, pronounced ``roe''): a positive penalty parameter
+            that controls how strongly the barrier enforces constraints.
+            As $\rho \to \infty$, the barrier becomes more and more
+            concentrated at the boundary.
+      \item $\log(\cdot)$: the natural logarithm.  When $g_i(\bx)$ is
+            negative (feasible), $-g_i(\bx)$ is positive, so
+            $\log(-g_i(\bx))$ is finite.  As $g_i(\bx) \to 0$ from below,
+            $-g_i(\bx) \to 0^+$ and $\log(-g_i(\bx)) \to -\infty$,
+            creating a barrier wall at the boundary.
+      \item $\frac{1}{\rho}$: the barrier weight.  A small weight (large
+            $\rho$) means the barrier is almost invisible far from the
+            boundary, so the solution stays close to the true constrained
+            optimum.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \textbf{Step 2 --- Interpret the optimality condition:}
+  setting the gradient of the barrier objective to zero gives:
   \[
-    \mathbf{r} =
-    \begin{bmatrix}
-      2x+2\mu(x-3) \\[4pt]
-      -\mu(x-3)^2+\mu-1/\rho
-    \end{bmatrix} = \mathbf{0}
+    \mathbf{0} \;=\; \grad f(\bx^*) \;+\;
+    \sum_{i=1}^m \underbrace{\frac{-1}{\rho\, g_i(\bx^*)}}_{\mu_i^*}\,
+    \grad g_i(\bx^*)
+  \]
+  Here $\grad$ (nabla, the del or gradient operator) denotes the vector of
+  partial derivatives.  We can define $\mu_i^* = -1/(\rho\, g_i(\bx^*))$,
+  which is automatically positive since $g_i(\bx^*) < 0$ for a strictly
+  interior point.  This recovers the KKT stationarity condition:
+  \[
+    \mathbf{0} \;=\; \grad f(\bx^*) + \sum_{i=1}^m \mu_i^*\, \grad g_i(\bx^*)
   \]
 
-  \textbf{Jacobian:}
+  \textbf{Step 3 --- Duality gap:}
+  one can show that the duality gap at the barrier solution equals
+  $m/\rho$, where $m$ is the number of constraints.  As $\rho \to \infty$,
+  the gap shrinks to zero, confirming convergence to the true constrained
+  optimum.
+
+  \begin{alertblock}{Key Insight}
+    By increasing $\rho$ gradually, the log-barrier solution tracks the true
+    constrained optimum ever more closely.  Primal-dual methods do not solve
+    a sequence of separate barrier problems; instead, they use a Newton step
+    that simultaneously drives both the primal residual and the duality gap
+    to zero.
+  \end{alertblock}
+
+\end{frame}
+
+% ----
+\begin{frame}[allowframebreaks]{Primal-Dual System and Newton Step}
+
+  The primal-dual method seeks to satisfy both \emph{stationarity} and
+  \emph{complementary slackness} simultaneously.  It does this by defining
+  a residual vector $\mathbf{r}$ that packages all the optimality conditions,
+  and then applying a Newton step to drive $\mathbf{r}$ to zero.
+
+  \begin{block}{Residual Vector $\mathbf{r}(\bx, \bmu, \rho)$}
+    \[
+      \mathbf{r}(\bx, \bmu, \rho) \;=\;
+      \begin{bmatrix}
+        \grad f(\bx) + \displaystyle\sum_i \mu_i\, \grad g_i(\bx) \\[6pt]
+        -\mu_1 g_1(\bx) - 1/\rho \\
+        \vdots \\
+        -\mu_m g_m(\bx) - 1/\rho
+      \end{bmatrix}
+      \;=\; \mathbf{0}
+    \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item The first block (a vector of length $n$) is the KKT stationarity
+            condition: the gradient of the Lagrangian with respect to $\bx$
+            must vanish at the optimum.
+      \item The remaining $m$ scalar equations are the \emph{perturbed
+            complementary slackness} conditions: at a true KKT point we would
+            want $\mu_i g_i(\bx) = 0$, but the barrier shifts this to
+            $-\mu_i g_i(\bx) = 1/\rho$.  As $\rho \to \infty$, the right
+            side shrinks to zero, recovering exact complementary slackness.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Newton (Descent) Direction}
+    \[
+      \mathbf{d} \;=\; -\mathbf{J}^{-1}\, \mathbf{r}
+    \]
+    where $\mathbf{J} = \partial \mathbf{r} / \partial(\bx, \bmu)$ is the
+    Jacobian (matrix of partial derivatives) of the residual with respect
+    to all unknowns $(\bx, \bmu)$.
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\mathbf{J}^{-1}$: the inverse of the Jacobian matrix.
+            Solving the linear system $\mathbf{J}\,\mathbf{d} = -\mathbf{r}$
+            gives the Newton direction without explicitly forming the inverse.
+      \item $\mathbf{d} = [d_x;\; d_\mu]$: partitioned into the primal
+            update direction $d_x \in \R^n$ and the dual update direction
+            $d_\mu \in \R^m$.
+    \end{itemize}
+  \end{block}
+
+  \textbf{Step-size safeguards:} a plain Newton step might violate the
+  requirements $\bmu > \mathbf{0}$ (dual positivity) or
+  $\bg(\bx) \le \mathbf{0}$ (primal feasibility).  Three line-search
+  rules prevent this:
+
+  \begin{enumerate}
+    \item \textbf{Dual positivity:} if the $i$-th component of $d_\mu$ is
+          negative (i.e.\ $d_{\mu_i} < 0$, the step would decrease $\mu_i$),
+          limit the step size to
+          $\alpha \le (1 - \varepsilon)\,\mu_i / (-d_{\mu_i})$
+          so that $\mu_i$ stays positive.  Here $\varepsilon$ (epsilon,
+          a small positive constant, e.g.\ $0.01$) provides a safety margin.
+    \item \textbf{Primal feasibility:} repeatedly halve $\alpha$ (multiply
+          by $p < 1$ each time) until $g_i(\bx + \alpha\, d_x) \le 0$ for
+          all $i$, i.e.\ the new primal point remains feasible.
+    \item \textbf{Armijo sufficient decrease:} reduce $\alpha$ further until
+          $\|\mathbf{r}(\bx + \alpha\, d_x,\; \bmu + \alpha\, d_\mu,\; \rho)\|
+           \le (1 - \beta\alpha)\,\|\mathbf{r}\|$,
+          ensuring the residual norm decreases by at least a fraction
+          $\beta\alpha$ of its current value.  Here $\beta$ (beta, a small
+          constant, e.g.\ $10^{-4}$) controls how strict the decrease
+          requirement is.
+  \end{enumerate}
+
+\end{frame}
+
+% ----
+\begin{frame}[allowframebreaks]{Example 11.3: Primal-Dual Descent Direction}
+
+  We now trace through the primal-dual algorithm on a concrete scalar example
+  to see exactly what the residual and Jacobian look like.
+
+  \textbf{The problem:} minimise $f(x) = x^2$ subject to
+  $(x - 3)^2 \le 1$, i.e.\ $x$ must lie in $[2, 4]$.
+
+  The constraint function is $g(x) = (x - 3)^2 - 1$.  The Lagrangian is:
   \[
-    \mathbf{J} =
+    \calL(x, \mu) \;=\; x^2 \;+\; \mu\,[(x-3)^2 - 1]
+  \]
+
+  \textbf{Residual vector:}
+  \[
+    \mathbf{r}(x, \mu, \rho) \;=\;
     \begin{bmatrix}
-      2+2\mu & 2(x-3) \\
-      -2\mu(x-3) & 1-(x-3)^2
+      2x + 2\mu(x - 3) \\[4pt]
+      -\mu\,(x-3)^2 + \mu - 1/\rho
+    \end{bmatrix}
+    \;=\; \mathbf{0}
+  \]
+  The first equation is stationarity ($\partial \calL / \partial x = 0$).
+  The second is perturbed complementary slackness
+  ($-\mu\,g(x) = 1/\rho$).
+
+  \medskip
+  \textbf{Jacobian:} differentiating $\mathbf{r}$ with respect to $(x, \mu)$:
+  \[
+    \mathbf{J}(x, \mu) \;=\;
+    \begin{bmatrix}
+      2 + 2\mu & 2(x - 3) \\
+      -2\mu(x - 3) & 1 - (x-3)^2
     \end{bmatrix}
   \]
 
-  \textbf{Descent direction:} $\mathbf{d}=-\mathbf{J}^{-1}\mathbf{r}$, where $d_1$ updates $x$ and $d_2$ updates $\mu$.
+  \textbf{Newton direction:} $\mathbf{d} = -\mathbf{J}^{-1}\mathbf{r}$,
+  where $d_1$ (d sub 1) updates $x$ and $d_2$ (d sub 2) updates $\mu$.
 
   \begin{columns}
     \begin{column}{0.56\textwidth}
-      The primal-dual method converges quickly because it
-      simultaneously enforces both stationarity and the
-      complementary slackness condition.
+      Starting from a feasible initial point (e.g.\ $x = 2.5$, $\mu = 1$),
+      the algorithm applies the Newton direction with step-size safeguards.
+      Because Newton's method has quadratic convergence near the solution,
+      the algorithm reaches the optimum $x^* = 2$, $\mu^* = 1/4$ in very
+      few iterations.  The figure shows the rapid reduction of the residual
+      norm and the duality gap.
     \end{column}
     \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_primal_dual_convergence.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
 % ----
@@ -425,174 +730,380 @@ def primal_dual_interior_point(f, gradf, hessf, gs, gradgs, hessgs,
 \section{11.3 Dual Ascent}
 % ============================================================
 
-\begin{frame}{Dual Ascent: Alternating Optimisation}
-  When strong duality holds, an optimum $(\bx^*,\bmu^*,\blam^*)$ satisfies:
+\begin{frame}[allowframebreaks]{Dual Ascent: Alternating Optimisation}
+
+  Dual ascent is an iterative method that alternates between minimising
+  the Lagrangian over the primal variables $\bx$ and ascending (maximising)
+  the dual function over the multipliers $\bmu$ and $\blam$ (lambda).
+  Because the dual function is concave, gradient ascent on it converges to
+  the global maximum --- the dual optimal solution.
+
+  \medskip
+  \textbf{Why does this work?}  When strong duality holds, the optimal
+  triple $(\bx^*, \bmu^*, \blam^*)$ is a saddle point of the Lagrangian:
   \[
-    \calL(\bx^*,\bmu^*,\blam^*)=\min_\bx \calL(\bx,\bmu^*,\blam^*)
-    \quad\text{and}\quad
-    \calL(\bx^*,\bmu^*,\blam^*)=\max_{\bmu\ge\mathbf{0},\blam}\calL(\bx^*,\bmu,\blam)
+    \calL(\bx^*, \bmu^*, \blam^*) \;=\; \min_{\bx}\, \calL(\bx, \bmu^*, \blam^*)
+    \quad \text{and} \quad
+    \calL(\bx^*, \bmu^*, \blam^*) \;=\; \max_{\bmu \ge \mathbf{0},\, \blam}
+    \calL(\bx^*, \bmu, \blam)
   \]
+  At this saddle point, no change to $\bx$ can decrease the Lagrangian, and
+  no change to the multipliers can increase it.  Alternating between the two
+  optimisations converges to this point.
 
   \begin{block}{Dual Ascent Algorithm}
-    \begin{enumerate}
-      \item \textbf{Minimise} Lagrangian over $\bx$ (primal update):
-            $\bx^{(k+1)}=\arg\min_\bx \calL(\bx,\bmu^{(k)},\blam^{(k)})$
-      \item \textbf{Gradient ascent} on dual variables (dual update):
-            \[
-              \bmu^{(k+1)}=\max\!\bigl(\mathbf{0},\;\bmu^{(k)}+\alpha\,\bg(\bx^{(k+1)})\bigr)
-            \]
-            \[
-              \blam^{(k+1)}=\blam^{(k)}+\alpha\,\bh(\bx^{(k+1)})
-            \]
-    \end{enumerate}
-    Gradient of $\calD$ w.r.t.\ $\bmu,\blam$ is the constraint violation.
+    \textbf{Step 1 --- Primal update} (minimise Lagrangian over $\bx$):
+    \[
+      \bx^{(k+1)} \;=\; \arg\min_{\bx}\; \calL\!\left(\bx,\, \bmu^{(k)},\, \blam^{(k)}\right)
+    \]
+    This is an unconstrained minimisation (no constraints on $\bx$), which
+    is generally easier to solve than the original constrained problem.
+
+    \medskip
+    \textbf{Step 2 --- Dual update} (gradient ascent on dual variables):
+    \[
+      \bmu^{(k+1)} \;=\; \max\!\left(\mathbf{0},\;\; \bmu^{(k)} + \alpha\, \bg\!\left(\bx^{(k+1)}\right)\right)
+    \]
+    \[
+      \blam^{(k+1)} \;=\; \blam^{(k)} + \alpha\, \bh\!\left(\bx^{(k+1)}\right)
+    \]
   \end{block}
 
-  \begin{itemize}
-    \item Dual function is always \emph{concave} $\Rightarrow$ gradient ascent converges.
-    \item Slow convergence for ill-conditioned problems (zig-zagging).
-  \end{itemize}
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bx^{(k)}$ (x superscript k): the value of $\bx$ at iteration
+            number $k$.  Superscript $k$ is a counter, not a power.
+      \item $\alpha$ (alpha, pronounced ``al-fa''): the step size, i.e.\
+            how far we move along the gradient direction.  A larger $\alpha$
+            means bigger steps; too large causes divergence.
+      \item $\bg(\bx^{(k+1)})$: the vector of constraint violations at the
+            new primal point.  This is the gradient of the dual function
+            $\calD$ with respect to $\bmu$ --- ascent on $\calD$ means
+            stepping toward positive constraint violations.
+      \item $\max(\mathbf{0}, \cdot)$: the component-wise maximum with
+            zero, which projects $\bmu$ onto the non-negative orthant and
+            ensures $\bmu \ge \mathbf{0}$ is maintained.
+    \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{How to Read This}
+    The dual update for $\bmu$ says: if the constraint $g_i(\bx) > 0$ is
+    violated at the new primal point, increase $\mu_i$ (make the penalty
+    for violating this constraint bigger).  If $g_i(\bx) < 0$ (constraint
+    is satisfied with slack), decrease $\mu_i$ toward zero.  Over many
+    iterations, $\mu_i$ settles at the value that perfectly prices the
+    constraint.  One drawback is that dual ascent can be slow when the
+    problem is ill-conditioned, because it zig-zags in the dual space.
+  \end{alertblock}
+
 \end{frame}
 
 % ----
-\begin{frame}{Dual Ascent: Numerical Example}
+\begin{frame}[allowframebreaks]{Dual Ascent: Numerical Example}
+
   \begin{columns}
     \begin{column}{0.52\textwidth}
-      \textbf{Problem:} $\min x_1^2+x_2^2$ s.t.\ $x_1+x_2=1$
-
-      Dual function:
-      \[
-        \calD(\lambda)=-\frac{\lambda^2}{2}-\lambda
-      \]
-      Maximised at $\lambda^*=-1$ giving $\calD(-1)=\tfrac{1}{2}=p^*$.
+      \textbf{The problem:} minimise $x_1^2 + x_2^2$ subject to
+      $x_1 + x_2 = 1$.  The objective is the squared distance from the
+      origin; the constraint forces the solution to lie on the line
+      $x_1 + x_2 = 1$.
 
       \medskip
-      \textbf{Update rule:}
+      \textbf{Deriving the dual function:} the Lagrangian is
+      $\calL = x_1^2 + x_2^2 + \lambda(x_1 + x_2 - 1)$.
+      Setting $\partial\calL/\partial x_1 = 2x_1 + \lambda = 0$ and
+      $\partial\calL/\partial x_2 = 2x_2 + \lambda = 0$ gives
+      $x_1 = x_2 = -\lambda/2$.  Substituting back:
+
+      \begin{block}{Dual Function}
+        \[
+          \calD(\lambda) \;=\; -\frac{\lambda^2}{2} - \lambda
+        \]
+      \end{block}
+
+      Setting $\calD'(\lambda) = -\lambda - 1 = 0$ gives $\lambda^* = -1$
+      and $\calD(-1) = -1/2 + 1 = 1/2 = p^*$.  Strong duality holds.
+
+      \medskip
+      \textbf{Dual ascent update rules:}
       \[
-        x_i^{(k+1)}=-\lambda^{(k)}/2
+        x_i^{(k+1)} \;=\; -\lambda^{(k)} / 2
       \]
       \[
-        \lambda^{(k+1)}=\lambda^{(k)}+\alpha\underbrace{(x_1+x_2-1)}_{\text{constraint viol.}}
+        \lambda^{(k+1)} \;=\; \lambda^{(k)} + \alpha\,
+        \underbrace{(x_1 + x_2 - 1)}_{\text{constraint violation}}
       \]
     \end{column}
     \begin{column}{0.46\textwidth}
       \includegraphics[width=\linewidth]{fig_dual_ascent.pdf}
     \end{column}
   \end{columns}
+
+  \begin{exampleblock}{Worked Example: two steps with $\alpha = 0.5$}
+    Start at $\lambda^{(0)} = 0$.
+    \begin{itemize}
+      \item Primal step: $x_1 = x_2 = -0/2 = 0$.
+            Violation: $0 + 0 - 1 = -1$.
+      \item Dual step: $\lambda^{(1)} = 0 + 0.5(-1) = -0.5$.
+      \item Primal step: $x_1 = x_2 = -(-0.5)/2 = 0.25$.
+            Violation: $0.25 + 0.25 - 1 = -0.5$.
+      \item Dual step: $\lambda^{(2)} = -0.5 + 0.5(-0.5) = -0.75$.
+    \end{itemize}
+    The sequence converges toward $\lambda^* = -1$,
+    $x_1^* = x_2^* = 1/2$.
+  \end{exampleblock}
+
 \end{frame}
 
 % ----
-\begin{frame}{Method of Multipliers (Augmented Lagrangian)}
-  Dual ascent can converge slowly. Adding a quadratic penalty helps:
+\begin{frame}[allowframebreaks]{Method of Multipliers (Augmented Lagrangian)}
+
+  Plain dual ascent can be slow, especially when the dual function is nearly
+  flat (ill-conditioned problem).  The \textbf{method of multipliers} fixes
+  this by adding a quadratic penalty term directly to the Lagrangian, which
+  sharpens the curvature and accelerates convergence --- without requiring
+  $\rho \to \infty$ as in the pure penalty method.
 
   \begin{block}{Augmented Lagrangian}
     \[
-      \calL_\rho(\bx,\blam)=f(\bx)+\blam^\top\bh(\bx)+\frac{\rho}{2}\|\bh(\bx)\|_2^2
+      \calL_\rho(\bx, \blam) \;=\;
+      f(\bx) \;+\; \blam^\top \bh(\bx) \;+\;
+      \frac{\rho}{2}\,\|\bh(\bx)\|_2^2
     \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\calL_\rho$ (script L sub rho): the \emph{augmented} Lagrangian,
+            which includes both the standard Lagrange multiplier term and a
+            quadratic penalty.
+      \item $\blam^\top \bh(\bx)$: the standard Lagrange multiplier term.
+            $\blam^\top$ (lambda transposed) is the row vector of equality
+            multipliers; multiplying by the column vector $\bh(\bx)$ gives
+            the scalar dot product $\sum_j \lambda_j h_j(\bx)$.
+      \item $\|\bh(\bx)\|_2^2 = \sum_j h_j(\bx)^2$: the squared Euclidean
+            norm (denoted $\|\cdot\|_2^2$, ``2-norm squared'') of the
+            constraint vector.  This is zero only when all equality
+            constraints are satisfied.
+      \item $\rho/2$: the penalty weight.  A larger $\rho$ penalises
+            constraint violation more severely.
+    \end{itemize}
   \end{block}
 
   \begin{block}{Method of Multipliers Updates}
     \[
-      \bx^{(k+1)}=\arg\min_\bx \calL_\rho(\bx,\blam^{(k)})
+      \bx^{(k+1)} \;=\; \arg\min_{\bx}\; \calL_\rho\!\left(\bx,\, \blam^{(k)}\right)
     \]
     \[
-      \blam^{(k+1)}=\blam^{(k)}+\rho\,\bh(\bx^{(k+1)})
+      \blam^{(k+1)} \;=\; \blam^{(k)} \;+\; \rho\, \bh\!\left(\bx^{(k+1)}\right)
     \]
   \end{block}
 
   \begin{columns}
     \begin{column}{0.54\textwidth}
-      \begin{itemize}
-        \item Converges for a fixed $\rho>0$ (unlike plain penalty method).
-        \item Quadratic term enforces feasibility more aggressively.
-        \item Drawback: cannot easily parallelise the joint $\bx$-minimisation.
-      \end{itemize}
+      Compared to plain dual ascent (step size $\alpha$), the method of
+      multipliers uses the natural step size $\rho$ for the dual update,
+      and the augmented Lagrangian has stronger curvature in the primal
+      direction.  This means convergence holds for any fixed $\rho > 0$
+      (unlike the pure penalty method, which needs $\rho \to \infty$
+      to approach feasibility).
+
+      \medskip
+      One drawback: the primal update
+      $\min_\bx \calL_\rho(\bx, \blam^{(k)})$ must be solved jointly
+      over all components of $\bx$, which prevents easy parallelisation.
+      ADMM (the next section) addresses this limitation.
     \end{column}
     \begin{column}{0.44\textwidth}
       \includegraphics[width=\linewidth]{fig_method_of_multipliers.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
 % ============================================================
 \section{11.4 ADMM}
 % ============================================================
 
-\begin{frame}{ADMM: Alternating Direction Method of Multipliers}
+\begin{frame}[allowframebreaks]{ADMM: Alternating Direction Method of Multipliers}
+
+  ADMM combines the benefits of dual ascent (decomposability) and the
+  method of multipliers (convergence for fixed $\rho$).  It does so by
+  splitting the problem into two separate sub-problems that can each be
+  solved independently, then combining results via a shared multiplier.
+
+  The problem must be written in the following \textbf{canonical ADMM form}:
+
   \begin{block}{ADMM Canonical Form}
     \[
-      \min_{\bx_1,\bx_2}\; f_1(\bx_1)+f_2(\bx_2)
-      \quad\text{s.t.}\quad \bA_1\bx_1+\bA_2\bx_2=\bb \tag{11.30}
+      \min_{\bx_1, \bx_2}\; f_1(\bx_1) + f_2(\bx_2)
+      \quad \text{subject to} \quad
+      \bA_1 \bx_1 + \bA_2 \bx_2 = \bb
     \]
   \end{block}
 
-  Augmented Lagrangian:
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bx_1 \in \R^{n_1}$, $\bx_2 \in \R^{n_2}$: the two blocks of
+            primal variables.  Splitting into two blocks is what enables
+            alternating optimisation.
+      \item $f_1, f_2$: two convex objective functions, one for each block.
+            They need not have the same form.
+      \item $\bA_1 \in \R^{p \times n_1}$, $\bA_2 \in \R^{p \times n_2}$:
+            matrices (capital bold A) that couple the two blocks in the
+            linear equality constraint.
+      \item $\bb \in \R^p$: the right-hand side (bold lowercase b) of the
+            coupling equality.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \textbf{Augmented Lagrangian for ADMM:}
   \[
-    \calL_\rho(\bx_1,\bx_2,\blam)=f_1(\bx_1)+f_2(\bx_2)+\blam^\top(\bA_1\bx_1+\bA_2\bx_2-\bb)
-    +\frac{\rho}{2}\|\bA_1\bx_1+\bA_2\bx_2-\bb\|_2^2
+    \calL_\rho(\bx_1, \bx_2, \blam)
+    \;=\; f_1(\bx_1) + f_2(\bx_2)
+    \;+\; \blam^\top(\bA_1\bx_1 + \bA_2\bx_2 - \bb)
+    \;+\; \frac{\rho}{2}\,\|\bA_1\bx_1 + \bA_2\bx_2 - \bb\|_2^2
   \]
 
-  \begin{block}{ADMM Updates (Eqs.\ 11.35--11.37)}
+  \begin{block}{ADMM Updates}
     \begin{align*}
-      \bx_1^{(k+1)} &= \arg\min_{\bx_1}\;\calL_\rho\!\left(\bx_1,\bx_2^{(k)},\blam^{(k)}\right)\\
-      \bx_2^{(k+1)} &= \arg\min_{\bx_2}\;\calL_\rho\!\left(\bx_1^{(k+1)},\bx_2,\blam^{(k)}\right)\\
-      \blam^{(k+1)} &= \blam^{(k)}+\rho\!\left(\bA_1\bx_1^{(k+1)}+\bA_2\bx_2^{(k+1)}-\bb\right)
+      \bx_1^{(k+1)} &\;=\; \arg\min_{\bx_1}\;
+        \calL_\rho\!\left(\bx_1,\, \bx_2^{(k)},\, \blam^{(k)}\right)
+        \quad \textit{(update $\bx_1$, fix $\bx_2$)}\\[4pt]
+      \bx_2^{(k+1)} &\;=\; \arg\min_{\bx_2}\;
+        \calL_\rho\!\left(\bx_1^{(k+1)},\, \bx_2,\, \blam^{(k)}\right)
+        \quad \textit{(update $\bx_2$, fix new $\bx_1$)}\\[4pt]
+      \blam^{(k+1)} &\;=\; \blam^{(k)}
+        \;+\; \rho\!\left(\bA_1\bx_1^{(k+1)} + \bA_2\bx_2^{(k+1)} - \bb\right)
+        \quad \textit{(dual update)}
     \end{align*}
   \end{block}
 
-  \textbf{Key:} alternating direction gives ADMM its name and enables efficient parallel computation.
+  The \emph{alternating direction} is the key feature: rather than
+  minimising jointly over $(\bx_1, \bx_2)$ together (which may be
+  expensive), we alternate between the two sub-problems.  Each sub-problem
+  is typically much cheaper to solve.  After updating $\bx_1$ and $\bx_2$,
+  the dual variable $\blam$ is updated using the constraint violation
+  $\bA_1\bx_1 + \bA_2\bx_2 - \bb$, which is the gradient of the
+  augmented Lagrangian with respect to $\blam$.
+
 \end{frame}
 
 % ----
-\begin{frame}{ADMM Block Diagram \& Convergence}
+\begin{frame}[allowframebreaks]{ADMM Block Diagram and Convergence}
+
   \begin{columns}
     \begin{column}{0.50\textwidth}
       \includegraphics[width=\linewidth]{fig_admm_block.pdf}
 
       \medskip
-      \textbf{Stopping criteria:}
-      \begin{itemize}
-        \item \textbf{Primal residual}: $\mathbf{r}^{(k+1)}=\bA_1\bx_1^{(k+1)}+\bA_2\bx_2^{(k+1)}-\bb$
-        \item \textbf{Dual residual}: $\mathbf{s}^{(k+1)}=\rho\bA_2^\top(\bx_2^{(k+1)}-\bx_2^{(k)})$
-      \end{itemize}
-      Terminate when $\|\mathbf{r}\|<\varepsilon_r$ and $\|\mathbf{s}\|<\varepsilon_s$.
+      \textbf{Stopping criteria:} we monitor two residuals to decide
+      when ADMM has converged.
+
+      \begin{block}{Primal Residual $\mathbf{r}^{(k+1)}$}
+        \[
+          \mathbf{r}^{(k+1)}
+          \;=\; \bA_1\bx_1^{(k+1)} + \bA_2\bx_2^{(k+1)} - \bb
+        \]
+        This measures how well the coupling constraint
+        $\bA_1\bx_1 + \bA_2\bx_2 = \bb$ is satisfied.
+      \end{block}
+
+      \begin{block}{Dual Residual $\mathbf{s}^{(k+1)}$}
+        \[
+          \mathbf{s}^{(k+1)}
+          \;=\; \rho\, \bA_2^\top\!\left(\bx_2^{(k+1)} - \bx_2^{(k)}\right)
+        \]
+        This measures stationarity of the Lagrangian with respect to
+        $\bx_2$ --- it is large when $\bx_2$ is still changing rapidly.
+      \end{block}
+
+      Stop when $\|\mathbf{r}\| < \varepsilon_r$ (epsilon sub r) and
+      $\|\mathbf{s}\| < \varepsilon_s$ (epsilon sub s), where
+      $\varepsilon_r, \varepsilon_s > 0$ are prescribed tolerances.
     \end{column}
     \begin{column}{0.48\textwidth}
       \includegraphics[width=\linewidth]{fig_admm_convergence.pdf}
+
+      \medskip
+      \textbf{Adaptive $\rho$:} the penalty parameter $\rho$ (rho) can be
+      adjusted during the run to balance primal and dual convergence:
       \begin{itemize}
-        \item $\rho$ is increased when $\|\mathbf{r}\|\gg\|\mathbf{s}\|$
-        \item Decreases $\rho$ when $\|\mathbf{s}\|\gg\|\mathbf{r}\|$
-        \item Self-adaptive $\rho$ improves convergence.
+        \item If $\|\mathbf{r}\| \gg \|\mathbf{s}\|$ (primal residual much
+              larger than dual), \textbf{increase} $\rho$.  This pushes
+              the iterates toward primal feasibility more aggressively.
+        \item If $\|\mathbf{s}\| \gg \|\mathbf{r}\|$ (dual residual much
+              larger), \textbf{decrease} $\rho$.  This gives the dual
+              variable more room to move.
+        \item Self-adaptive $\rho$ can significantly improve convergence
+              in practice without tuning by hand.
       \end{itemize}
     \end{column}
   \end{columns}
+
 \end{frame}
 
 % ----
-\begin{frame}{Scaled ADMM Form}
-  Introduce the \textbf{scaled dual variable} $\bu=(1/\rho)\blam$:
-  \begin{align*}
-    \calL_\rho(\bx_1,\bx_2,\blam)
-    &= f_1(\bx_1)+f_2(\bx_2)+\frac{\rho}{2}\|\bA_1\bx_1+\bA_2\bx_2-\bb+\bu\|_2^2
-      -\frac{\rho}{2}\|\bu\|_2^2
-  \end{align*}
+\begin{frame}[allowframebreaks]{Scaled ADMM Form}
 
-  \begin{block}{Scaled ADMM Updates (Eqs.\ 11.50--11.52)}
+  It is often convenient to rescale the dual variable $\blam$ by dividing
+  by $\rho$, defining a \textbf{scaled dual variable}:
+  \[
+    \bu \;=\; \frac{1}{\rho}\,\blam
+  \]
+  Here $\bu$ (bold u) is called the scaled dual variable.  This
+  simplifies the update formulas considerably.
+
+  \medskip
+  Substituting $\blam = \rho\,\bu$ into the augmented Lagrangian,
+  completing the square, and dropping constant terms gives:
+  \[
+    \calL_\rho(\bx_1, \bx_2, \blam)
+    \;=\; f_1(\bx_1) + f_2(\bx_2)
+    + \frac{\rho}{2}\,\|\bA_1\bx_1 + \bA_2\bx_2 - \bb + \bu\|_2^2
+    - \frac{\rho}{2}\,\|\bu\|_2^2
+  \]
+
+  \begin{block}{Scaled ADMM Updates}
     \[
-      \bx_1^{(k+1)} = \arg\min_{\bx_1} f_1(\bx_1)+\frac{\rho}{2}\|\bA_1\bx_1-\bv^{(k)}\|_2^2,
-      \quad \bv^{(k)}=-\bA_2\bx_2^{(k)}+\bb-\bu^{(k)}
+      \bx_1^{(k+1)} \;=\; \arg\min_{\bx_1}\;
+        f_1(\bx_1) + \frac{\rho}{2}\,\|\bA_1\bx_1 - \bv^{(k)}\|_2^2,
+      \quad \bv^{(k)} = -\bA_2\bx_2^{(k)} + \bb - \bu^{(k)}
     \]
     \[
-      \bx_2^{(k+1)} = \arg\min_{\bx_2} f_2(\bx_2)+\frac{\rho}{2}\|\bA_2\bx_2-\bw^{(k)}\|_2^2,
-      \quad \bw^{(k)}=-\bA_1\bx_1^{(k+1)}+\bb-\bu^{(k)}
+      \bx_2^{(k+1)} \;=\; \arg\min_{\bx_2}\;
+        f_2(\bx_2) + \frac{\rho}{2}\,\|\bA_2\bx_2 - \bw^{(k)}\|_2^2,
+      \quad \bw^{(k)} = -\bA_1\bx_1^{(k+1)} + \bb - \bu^{(k)}
     \]
     \[
-      \bu^{(k+1)} = \bu^{(k)}+\bA_1\bx_1^{(k+1)}+\bA_2\bx_2^{(k+1)}-\bb
-              = \bu^{(0)}+\sum_{j=1}^{k+1}\mathbf{r}^{(j)}
+      \bu^{(k+1)} \;=\; \bu^{(k)} + \bA_1\bx_1^{(k+1)} + \bA_2\bx_2^{(k+1)} - \bb
+      \;=\; \bu^{(0)} + \sum_{j=1}^{k+1} \mathbf{r}^{(j)}
     \]
   \end{block}
 
-  The scaled dual variable is the \textbf{running sum of primal residuals}.
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bv^{(k)}$, $\bw^{(k)}$: auxiliary target vectors that
+            consolidate the current values of the other block and the
+            scaled dual variable into a single ``target'' that $\bx_1$
+            (or $\bx_2$) is being pulled toward.
+      \item The scaled dual update $\bu^{(k+1)} = \bu^{(k)} + \mathbf{r}^{(k+1)}$
+            is simply the \textbf{running sum of all past primal residuals}
+            $\mathbf{r}^{(j)} = \bA_1\bx_1^{(j)} + \bA_2\bx_2^{(j)} - \bb$.
+    \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{Key Insight}
+    Each sub-problem for $\bx_1$ and $\bx_2$ now has the form:
+    minimise $f_i(\bx_i) + \frac{\rho}{2}\|\bA_i\bx_i - \text{target}\|_2^2$.
+    This is a \emph{proximal minimisation} of $f_i$ with a quadratic
+    proximity term pulling toward the target.  Many standard functions
+    (e.g.\ $\ell_1$ norm, indicator of a convex set) have closed-form
+    proximal operators, making each ADMM step very efficient.
+  \end{alertblock}
+
 \end{frame}
 
 % ----
@@ -643,140 +1154,291 @@ def admm(f1_prox, f2_prox, A1, A2, b, rho=1.0, gamma=1.5,
 \section{11.5 ADMM Applications}
 % ============================================================
 
-\begin{frame}{11.5.1 General Constrained Optimisation in ADMM Form}
-  \textbf{Any} constrained problem can be cast in ADMM form:
+\begin{frame}[allowframebreaks]{11.5.1 General Constrained Optimisation in ADMM Form}
+
+  Any constrained optimisation problem can be reformulated in the ADMM
+  canonical form by introducing an auxiliary variable $\bx_2$ and using
+  the \emph{indicator function} of the feasible set as one of the
+  objective terms.
+
+  \medskip
+  \textbf{Reformulation:} given $\min_\bx f(\bx)$ subject to
+  $\bx \in \mathcal{X}$ (calligraphic X, some convex constraint set),
+  we write:
   \[
-    \min_\bx f(\bx)\quad\text{s.t.}\;\bx\in\mathcal{X}
-    \quad\Longrightarrow\quad
-    \min_{\bx_1,\bx_2}\underbrace{f(\bx_1)}_{f_1}+\underbrace{\mathbb{1}_\mathcal{X}(\bx_2)}_{f_2}
-    \quad\text{s.t.}\;\bx_1-\bx_2=\mathbf{0}
+    \min_{\bx_1,\, \bx_2}\;
+    \underbrace{f(\bx_1)}_{f_1}
+    + \underbrace{\mathbb{1}_{\mathcal{X}}(\bx_2)}_{f_2}
+    \quad \text{subject to} \quad \bx_1 - \bx_2 = \mathbf{0}
   \]
-  where $\mathbb{1}_\mathcal{X}(\bx_2)=0$ if $\bx_2\in\mathcal{X}$, else $+\infty$.
+  where $\mathbb{1}_{\mathcal{X}}(\bx_2) = 0$ if $\bx_2 \in \mathcal{X}$,
+  and $+\infty$ otherwise.  This indicator function encodes the constraint:
+  any solution with $\bx_2 \notin \mathcal{X}$ has infinite cost.
 
   \begin{block}{Proximal Minimisation}
+    Each ADMM sub-problem has the form:
     \[
-      \arg\min_\bx f(\bx)+\frac{\rho}{2}\|\bx-\bp\|_2^2
+      \arg\min_{\bx}\; f(\bx) + \frac{\rho}{2}\,\|\bx - \bp\|_2^2
     \]
-    If $f$ is differentiable, linearising gives a gradient step:
+    where $\bp$ (bold p) is the current ``target'' point.  If $f$ is
+    differentiable, a first-order approximation gives the gradient step:
     \[
-      \bx\approx \bp-\frac{1}{\rho}\grad f(\bp)
+      \bx \;\approx\; \bp - \frac{1}{\rho}\,\grad f(\bp)
     \]
-    The $\bx_2$-update becomes: \textbf{project} $\bx_1^{(k+1)}+\bu^{(k)}$ onto $\mathcal{X}$.
+    This says: start at $\bp$, then take a step of size $1/\rho$ in the
+    direction of steepest descent of $f$.
   \end{block}
+
+  The $\bx_2$-sub-problem with $f_2 = \mathbb{1}_{\mathcal{X}}$ has an
+  especially simple solution: it is the \textbf{projection} of the current
+  $\bx_1 + \bu$ onto the set $\mathcal{X}$, denoted
+  $\text{proj}_{\mathcal{X}}(\bx_1^{(k+1)} + \bu^{(k)})$.  Projection
+  operators onto common sets (boxes, cones, affine subspaces) often have
+  closed-form expressions.
+
 \end{frame}
 
 % ----
-\begin{frame}{11.5.2 Alternating Projections}
-  \textbf{Goal:} find $\bx\in\mathcal{X}_1\cap\mathcal{X}_2$
+\begin{frame}[allowframebreaks]{11.5.2 Alternating Projections}
 
-  ADMM form:
+  \textbf{Goal:} find a point $\bx$ that belongs to the intersection of
+  two convex sets, $\bx \in \mathcal{X}_1 \cap \mathcal{X}_2$.  This arises
+  in image reconstruction, signal processing, and constraint satisfaction.
+
+  \medskip
+  \textbf{ADMM formulation:}
   \[
-    \min_{\bx_1,\bx_2}\mathbb{1}_{\mathcal{X}_1}(\bx_1)+\mathbb{1}_{\mathcal{X}_2}(\bx_2)
-    \quad\text{s.t.}\;\bx_1-\bx_2=\mathbf{0}
+    \min_{\bx_1,\, \bx_2}\;
+    \mathbb{1}_{\mathcal{X}_1}(\bx_1) + \mathbb{1}_{\mathcal{X}_2}(\bx_2)
+    \quad \text{subject to} \quad \bx_1 - \bx_2 = \mathbf{0}
   \]
-
-  ADMM updates: each is a \textbf{projection} onto the respective convex set.
+  Both sub-problems are projections: the $\bx_1$-update projects onto
+  $\mathcal{X}_1$, and the $\bx_2$-update projects onto $\mathcal{X}_2$.
 
   \begin{columns}
     \begin{column}{0.52\textwidth}
       \includegraphics[width=\linewidth]{fig_proximal.pdf}
     \end{column}
     \begin{column}{0.46\textwidth}
-      \begin{itemize}
-        \item \textbf{Von Neumann:} alternate projections directly, no dual variable.
-              Slow in narrow canyons.
-        \item \textbf{Dykstra (= ADMM):} dual variable $\bu$ acts as \emph{momentum}.
-              Faster convergence.
-      \end{itemize}
+      \textbf{Von Neumann's alternating projections algorithm} simply
+      bounces between the two sets: project onto $\mathcal{X}_1$, then
+      onto $\mathcal{X}_2$, and repeat.  This converges to the
+      intersection but can be very slow when the two sets meet at a
+      narrow angle (like the inside of a thin wedge).
+
+      \medskip
+      \textbf{Dykstra's algorithm} (which is equivalent to ADMM here)
+      introduces a correction term $\bu$ at each step.  This correction
+      acts like a momentum term that remembers the accumulated constraint
+      violations and steers the iterates more directly toward the
+      intersection.  Dykstra converges significantly faster than Von
+      Neumann in difficult geometries.
     \end{column}
   \end{columns}
+
 \end{frame}
 
 % ----
-\begin{frame}{11.5.3 Least Absolute Deviations (LAD)}
-  \textbf{Problem:} $\min_{\bx}\|\bA\bx-\bb\|_1$
+\begin{frame}[allowframebreaks]{11.5.3 Least Absolute Deviations (LAD)}
 
-  Cast in ADMM form: $\min_{\bx_1,\bx_2}f_1(\bx_1)+\|\bx_2\|_1$\; s.t.\ $\bA\bx_1-\bx_2=\bb$
+  Ordinary least squares minimises $\|\bA\bx - \bb\|_2^2$, which is
+  sensitive to outliers because large errors are squared.  \textbf{Least
+  Absolute Deviations (LAD)} instead minimises $\|\bA\bx - \bb\|_1$
+  (the sum of absolute residuals), which is much more robust.
 
-  \begin{block}{Soft Thresholding Operator $S_\kappa$}
+  \begin{block}{LAD Problem}
     \[
-      (S_\kappa(\bx))_i=
-      \begin{cases}
-        x_i+\kappa & x_i<-\kappa\\
-        0 & |x_i|\le\kappa\\
-        x_i-\kappa & x_i>\kappa
-      \end{cases}
-      \;=\operatorname{sign}(x_i)\max(|x_i|-\kappa,0)
+      \min_{\bx}\; \|\bA\bx - \bb\|_1
+      \;=\; \sum_{i=1}^m |(\bA\bx - \bb)_i|
     \]
   \end{block}
 
+  \textbf{ADMM formulation:} introduce $\bx_2 = \bA\bx_1 - \bb$:
+  \[
+    \min_{\bx_1,\, \bx_2}\; f_1(\bx_1) + \|\bx_2\|_1
+    \quad \text{subject to} \quad \bA\bx_1 - \bx_2 = \bb
+  \]
+
+  The key to solving the $\bx_2$-update is the \textbf{soft thresholding
+  operator}, which is the proximal operator of the $\ell_1$ (L1) norm:
+
+  \begin{block}{Soft Thresholding Operator $S_\kappa$}
+    \[
+      (S_\kappa(\bx))_i \;=\;
+      \begin{cases}
+        x_i + \kappa & x_i < -\kappa \\
+        0            & |x_i| \le \kappa \\
+        x_i - \kappa & x_i > \kappa
+      \end{cases}
+      \;=\; \operatorname{sign}(x_i)\,\max(|x_i| - \kappa,\; 0)
+    \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\kappa$ (kappa, pronounced ``cap-a''): the threshold level.
+            Values of $|x_i|$ smaller than $\kappa$ are shrunk to exactly
+            zero; larger values are shifted toward zero by $\kappa$.
+      \item $\operatorname{sign}(x_i)$: returns $+1$ if $x_i > 0$,
+            $-1$ if $x_i < 0$, and $0$ if $x_i = 0$.
+    \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{How to Read This}
+    Soft thresholding shrinks every element of a vector toward zero by
+    the amount $\kappa$, and sets it to exactly zero if it was already
+    smaller than $\kappa$ in magnitude.  It is the ``soft'' version of
+    hard thresholding (which would set small values to zero and leave
+    large values unchanged).  Soft thresholding is the key operation
+    that produces sparse solutions.
+  \end{alertblock}
+
   \begin{columns}
     \begin{column}{0.40\textwidth}
-      \textbf{ADMM updates:}
+      \textbf{LAD ADMM updates:}
       \begin{align*}
-        \bx_1' &= (\bA^\top\bA)^{-1}\bA^\top(\bb+\bx_2-\bu)\\
-        \bx_2' &= S_{1/\rho}(\bA\bx_1'-\bb+\bu)\\
-        \bu' &= \bu+\bA\bx_1'-\bb-\bx_2'
+        \bx_1' &= (\bA^\top\bA)^{-1}\bA^\top(\bb + \bx_2 - \bu) \\
+        \bx_2' &= S_{1/\rho}(\bA\bx_1' - \bb + \bu) \\
+        \bu'   &= \bu + \bA\bx_1' - \bb - \bx_2'
       \end{align*}
-      Cholesky of $\bA^\top\bA$ precomputed once.
+      The Cholesky factorisation of $\bA^\top\bA$ is precomputed once,
+      making each iteration $O(mn)$ instead of $O(n^3)$.
     \end{column}
     \begin{column}{0.58\textwidth}
       \includegraphics[width=\linewidth]{fig_soft_threshold.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
 % ----
-\begin{frame}{11.5.4 Basis Pursuit (Split Bregman)}
-  \textbf{Problem:} $\min_\bx\|\bx\|_1$ s.t.\ $\bA\bx=\bb$ (find sparse solutions)
+\begin{frame}[allowframebreaks]{11.5.4 Basis Pursuit (Split Bregman)}
 
-  ADMM updates (Eqs.\ 11.79--11.82):
-  \[
-    \bx_1' = \bigl(\bI-\bA^\top(\bA\bA^\top)^{-1}\bA\bigr)(\bx_2-\bu)+\bA^\top(\bA\bA^\top)^{-1}\bb
-  \]
-  \[
-    \bx_2' = S_{1/\rho}(\bx_1'+\bu) \qquad
-    \bu' = \bu+\bx_1'-\bx_2'
-  \]
+  \textbf{Basis pursuit} finds the sparsest solution to an underdetermined
+  linear system.  In compressed sensing and signal recovery, we observe
+  a short measurement vector $\bb$ and know a measurement matrix $\bA$,
+  and we want to recover a high-dimensional sparse signal $\bx$:
 
-  \begin{itemize}
-    \item Precompute $\bI-\bA^\top(\bA\bA^\top)^{-1}\bA$ and $\bA^\top(\bA\bA^\top)^{-1}\bb$ once.
-    \item Each iteration is cheap: one matrix-vector product + soft thresholding.
-    \item This is the \textbf{split Bregman} method.
-  \end{itemize}
+  \begin{block}{Basis Pursuit Problem}
+    \[
+      \min_{\bx}\; \|\bx\|_1
+      \quad \text{subject to} \quad
+      \bA\bx = \bb
+    \]
+  \end{block}
+
+  The $\ell_1$ norm $\|\bx\|_1 = \sum_i |x_i|$ promotes sparsity: solutions
+  with many zero components are preferred because they have smaller
+  $\ell_1$ norm (for the same constraint satisfaction) than dense solutions.
+
+  \medskip
+  \textbf{ADMM reformulation:} split $\bx$ into two copies $\bx_1 = \bx_2$,
+  putting the $\ell_1$ penalty on $\bx_2$ and the equality constraint on
+  $\bx_1$:
+
+  \begin{block}{ADMM Updates for Basis Pursuit}
+    \[
+      \bx_1' \;=\;
+      \bigl(\bI - \bA^\top(\bA\bA^\top)^{-1}\bA\bigr)(\bx_2 - \bu)
+      + \bA^\top(\bA\bA^\top)^{-1}\bb
+    \]
+    \[
+      \bx_2' \;=\; S_{1/\rho}(\bx_1' + \bu)
+      \qquad
+      \bu' \;=\; \bu + \bx_1' - \bx_2'
+    \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bI - \bA^\top(\bA\bA^\top)^{-1}\bA$: the
+            \emph{orthogonal projector} onto the null space of $\bA$
+            (the set of all $\bx$ satisfying $\bA\bx = \mathbf{0}$).
+      \item $\bA^\top(\bA\bA^\top)^{-1}\bb$: the minimum-norm particular
+            solution to $\bA\bx = \bb$ (the pseudo-inverse solution).
+      \item The $\bx_1'$ update therefore takes any starting point
+            $\bx_2 - \bu$, projects it onto the feasible affine subspace
+            $\{\bx : \bA\bx = \bb\}$.
+    \end{itemize}
+  \end{block}
+
+  Both matrices $\bI - \bA^\top(\bA\bA^\top)^{-1}\bA$ and
+  $\bA^\top(\bA\bA^\top)^{-1}\bb$ can be precomputed once (costing
+  $O(p^3)$ for the matrix inverse of the $p \times p$ Gram matrix
+  $\bA\bA^\top$).  Each subsequent iteration then costs only one
+  matrix-vector product ($O(np)$) plus soft thresholding ($O(n)$).
+  This method is also known as the \textbf{split Bregman} method.
+
 \end{frame}
 
 % ----
-\begin{frame}{11.5.5 Lasso: $L_1$-Regularised Regression}
+\begin{frame}[allowframebreaks]{11.5.5 Lasso: $L_1$-Regularised Regression}
+
   \begin{columns}
     \begin{column}{0.55\textwidth}
-      \textbf{Lasso problem:}
-      \[
-        \min_\bx\;\frac{1}{2}\|\bA\bx-\bb\|_2^2+\lambda\|\bx\|_1 \tag{11.83}
-      \]
-      $\lambda>0$ biases toward \textbf{sparse} solutions.
+      \textbf{The Lasso} (Least Absolute Shrinkage and Selection Operator)
+      balances fitting a linear model to data against producing a sparse
+      coefficient vector:
 
-      \medskip
-      ADMM form: $f_1(\bx_1)=\frac{1}{2}\|\bA\bx_1-\bb\|_2^2$,\; $f_2(\bx_2)=\lambda\|\bx_2\|_1$,
-      s.t.\ $\bx_1-\bx_2=\mathbf{0}$.
+      \begin{block}{Lasso Problem}
+        \[
+          \min_{\bx}\;
+          \frac{1}{2}\,\|\bA\bx - \bb\|_2^2
+          \;+\; \lambda\,\|\bx\|_1
+        \]
+      \end{block}
 
-      \medskip
-      \textbf{Updates (Eqs.\ 11.85--11.87):}
-      \[
-        \bx_1' = (\bA^\top\bA+\rho\bI)^{-1}(\bA^\top\bb+\rho(\bx_2-\bu))
-      \]
-      \[
-        \bx_2' = S_{\lambda/\rho}(\bx_1'+\bu)
-      \]
-      \[
-        \bu' = \bu+\bx_1'-\bx_2'
-      \]
-      Matrix $\bA^\top\bA+\rho\bI$ always invertible for $\rho>0$.
+      \begin{block}{Notation}
+        \begin{itemize}
+          \item $\frac{1}{2}\|\bA\bx - \bb\|_2^2$: the least-squares
+                fit term, measuring how well $\bA\bx$ approximates $\bb$.
+                The factor $1/2$ is included for convenience so the
+                gradient equals $\bA^\top(\bA\bx - \bb)$ without a
+                factor of 2.
+          \item $\lambda\,\|\bx\|_1$ (lambda times L1 norm): the
+                regularisation term.  $\lambda \ge 0$ (lambda, ``lam-da'')
+                controls the sparsity trade-off.  Larger $\lambda$ pushes
+                more coefficients to exactly zero.
+        \end{itemize}
+      \end{block}
+
+      \textbf{ADMM formulation:} $f_1(\bx_1) = \frac{1}{2}\|\bA\bx_1 - \bb\|_2^2$,
+      $f_2(\bx_2) = \lambda\|\bx_2\|_1$, subject to $\bx_1 - \bx_2 = \mathbf{0}$.
     \end{column}
     \begin{column}{0.43\textwidth}
       \includegraphics[width=\linewidth]{fig_lasso.pdf}
     \end{column}
   \end{columns}
+
+  \begin{block}{Lasso ADMM Updates}
+    \[
+      \bx_1' \;=\; (\bA^\top\bA + \rho\bI)^{-1}
+      \bigl(\bA^\top\bb + \rho(\bx_2 - \bu)\bigr)
+    \]
+    \[
+      \bx_2' \;=\; S_{\lambda/\rho}(\bx_1' + \bu)
+    \]
+    \[
+      \bu' \;=\; \bu + \bx_1' - \bx_2'
+    \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bA^\top\bA + \rho\bI$: adding $\rho\bI$ (rho times the
+            identity matrix $\bI$) to $\bA^\top\bA$ makes it strictly
+            positive definite for any $\rho > 0$, guaranteeing
+            invertibility even when $\bA$ is rank-deficient.
+      \item $S_{\lambda/\rho}$: soft thresholding with threshold $\lambda/\rho$.
+            As $\rho$ decreases, the threshold $\lambda/\rho$ increases,
+            producing sparser solutions.
+    \end{itemize}
+  \end{block}
+
+  The matrix $\bA^\top\bA + \rho\bI$ can be factorised (e.g.\ via
+  Cholesky) once at the start, making the $\bx_1$-update a single
+  triangular solve at each iteration ($O(n^2)$ after factorisation).
+
 \end{frame}
 
 % ----
@@ -827,24 +1489,41 @@ print(f"Support recovery: {np.sum(np.abs(x_hat)>0.1)} nonzeros found")
 \end{frame}
 
 % ----
-\begin{frame}{Huber Loss and Other ADMM Applications}
+\begin{frame}[allowframebreaks]{Huber Loss and Other ADMM Applications}
+
   \begin{columns}
     \begin{column}{0.52\textwidth}
-      \textbf{Huber loss:}
+      The \textbf{Huber loss} is a hybrid between squared ($\ell_2$) and
+      absolute ($\ell_1$) error that is both smooth near zero and robust
+      to outliers far from zero:
+
+      \begin{block}{Huber Loss}
+        \[
+          \operatorname{huber}(x) \;=\;
+          \begin{cases}
+            \tfrac{1}{2}x^2 & |x| \le 1 \\
+            |x| - \tfrac{1}{2} & |x| > 1
+          \end{cases}
+        \]
+      \end{block}
+
+      \begin{alertblock}{How to Read This}
+        For small residuals ($|x| \le 1$): the Huber loss grows
+        quadratically, just like squared error, giving smooth
+        gradients near the optimum.  For large residuals ($|x| > 1$):
+        the loss grows only linearly, like the absolute value, so
+        outliers contribute at most linearly and do not dominate
+        the fit.  This makes Huber regression robust without
+        sacrificing smoothness.
+      \end{alertblock}
+
+      The $\bx_2$-update for Huber regression in ADMM is:
       \[
-        \operatorname{huber}(x)=
-        \begin{cases}
-          \tfrac{1}{2}x^2 & |x|\le 1\\
-          |x|-\tfrac{1}{2} & \text{otherwise}
-        \end{cases}
+        \bx_2' \;=\; \frac{\rho}{1+\rho}(\bA\bx_1' - \bb + \bu)
+        + \frac{1}{1+\rho} S_{1+1/\rho}(\bA\bx_1' - \bb + \bu)
       \]
-      \begin{itemize}
-        \item Quadratic for small deviations (smooth).
-        \item Linear for large deviations (robust to outliers).
-        \item $x_2$-update:
-          $\bx_2'=\frac{\rho}{1+\rho}(\bA\bx_1'-\bb+\bu)
-          +\frac{1}{1+\rho}S_{1+1/\rho}(\bA\bx_1'-\bb+\bu)$
-      \end{itemize}
+      This is a weighted combination of a linear term and a soft-thresholded
+      term, encoding the two regimes of the Huber loss.
     \end{column}
     \begin{column}{0.46\textwidth}
       \includegraphics[width=\linewidth]{fig_huber.pdf}
@@ -852,70 +1531,142 @@ print(f"Support recovery: {np.sum(np.abs(x_hat)>0.1)} nonzeros found")
   \end{columns}
 
   \medskip
-  \textbf{ADMM application summary:}
+  \textbf{Summary of ADMM application patterns:}
+
   \begin{center}
-  \begin{tabular}{ll}
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{lll}
     \toprule
-    Application & $f_2$ \\
+    Application & $f_2(\bx_2)$ & $\bx_2$-update \\
     \midrule
-    Constrained opt. & indicator $\mathbb{1}_\mathcal{X}$ \\
-    Basis pursuit & $\|\cdot\|_1$ \\
-    Lasso & $\lambda\|\cdot\|_1$ \\
-    LAD / Huber & $\|\cdot\|_1$ / huber \\
+    Constrained opt. & $\mathbb{1}_{\mathcal{X}}$ (indicator) & Project onto $\mathcal{X}$ \\
+    Basis pursuit & $\|\cdot\|_1$ ($\ell_1$ norm) & Soft threshold \\
+    Lasso & $\lambda\|\cdot\|_1$ & Soft threshold (scaled) \\
+    LAD regression & $\|\cdot\|_1$ & Soft threshold \\
+    Huber regression & huber loss & Blend of linear + soft \\
     \bottomrule
   \end{tabular}
   \end{center}
+
+  The pattern is always the same: one sub-problem handles the smooth
+  objective (solved by a linear system), the other handles the
+  non-smooth or constrained term (solved by a proximal/projection step).
+
 \end{frame}
 
 % ============================================================
 \section{11.6 Distributed Methods}
 % ============================================================
 
-\begin{frame}{Consensus Optimisation}
-  \textbf{Goal:} minimise sum of $k$ convex objectives:
-  \[
-    \min_\bx\; f_1(\bx)+f_2(\bx)+\cdots+f_k(\bx) \tag{11.88}
-  \]
+\begin{frame}[allowframebreaks]{Consensus Optimisation}
 
-  \begin{block}{ADMM Consensus Reformulation}
+  In many large-scale problems, the objective is the sum of $k$ separate
+  functions:
+  \[
+    \min_{\bx}\; f_1(\bx) + f_2(\bx) + \cdots + f_k(\bx)
+  \]
+  This arises naturally when $k$ different agents (processors, data shards,
+  or physical subsystems) each have their own local objective $f_i$, but
+  all must agree on a common decision variable $\bx$.  The challenge is to
+  optimise the sum without collecting all data in one place.
+
+  \medskip
+  \textbf{Consensus reformulation:} introduce a local copy
+  $\bx_1^{(i)}$ for each agent, and a global variable $\bx_2$ that all
+  local copies must agree with:
+
+  \begin{block}{ADMM Consensus Form}
     \[
-      \min_{\bx_1^{(1:k)},\,\bx_2}\;\sum_{i=1}^k f_i(\bx_1^{(i)})
-      \quad\text{s.t.}\;\bx_1^{(i)}=\bx_2\quad\forall i
+      \min_{\bx_1^{(1)}, \ldots, \bx_1^{(k)},\; \bx_2}\;
+      \sum_{i=1}^k f_i\!\left(\bx_1^{(i)}\right)
+      \quad \text{subject to} \quad
+      \bx_1^{(i)} = \bx_2 \quad \forall\, i = 1, \ldots, k
     \]
-    All copies of $\bx_1^{(i)}$ must agree with the global $\bx_2$.
   \end{block}
 
-  \textbf{Consensus updates (Eqs.\ 11.90--11.92):}
-  \begin{align*}
-    \bigl(\bx_1^{(i)}\bigr)' &= \arg\min_{\bx_1^{(i)}} f_i\!\left(\bx_1^{(i)}\right)
-      + \bigl(\blam^{(i)}\bigr)^\top\!\left(\bx_1^{(i)}-\bx_2\right)
-      + \frac{\rho}{2}\bigl\|\bx_1^{(i)}-\bx_2\bigr\|_2^2
-      \quad\text{(parallelisable!)}\\
-    \bx_2' &= \frac{1}{k}\sum_{i=1}^k\left[\bigl(\bx_1^{(i)}\bigr)'+\frac{1}{\rho}\blam^{(i)}\right]
-      \quad\text{(consensus / averaging step)}\\
-    \bigl(\blam^{(i)}\bigr)' &= \blam^{(i)}+\rho\left[\bigl(\bx_1^{(i)}\bigr)'-\bx_2'\right]
-  \end{align*}
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bx_1^{(i)}$ (x sub 1 superscript i): agent $i$'s local copy
+            of the decision variable.
+      \item $\bx_2$: the global consensus variable that all agents must
+            agree with.
+      \item $\forall\, i$ (for all i): the constraint must hold for every
+            agent $i = 1, \ldots, k$.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Consensus ADMM Updates}
+    \textbf{Step 1 --- Local updates} (all $k$ agents update in parallel):
+    \[
+      \bigl(\bx_1^{(i)}\bigr)' \;=\; \arg\min_{\bx_1^{(i)}}\;
+      f_i\!\left(\bx_1^{(i)}\right)
+      + \bigl(\blam^{(i)}\bigr)^\top\!\left(\bx_1^{(i)} - \bx_2\right)
+      + \frac{\rho}{2}\,\bigl\|\bx_1^{(i)} - \bx_2\bigr\|_2^2
+    \]
+
+    \textbf{Step 2 --- Consensus update} (global averaging):
+    \[
+      \bx_2' \;=\; \frac{1}{k}\sum_{i=1}^k
+      \left[\bigl(\bx_1^{(i)}\bigr)' + \frac{1}{\rho}\,\blam^{(i)}\right]
+    \]
+
+    \textbf{Step 3 --- Dual updates} (one per agent):
+    \[
+      \bigl(\blam^{(i)}\bigr)' \;=\; \blam^{(i)}
+      + \rho\left[\bigl(\bx_1^{(i)}\bigr)' - \bx_2'\right]
+    \]
+  \end{block}
+
+  \begin{alertblock}{Key Insight}
+    Step 1 runs entirely in parallel: each agent $i$ solves its own
+    sub-problem involving only $f_i$, $\blam^{(i)}$ (its own multiplier),
+    and the current global consensus $\bx_2$.  The sub-problem details of
+    $f_i$ do not need to be shared with anyone.  Only the local solutions
+    $(\bx_1^{(i)})'$ and the multipliers $\blam^{(i)}$ need to be
+    communicated to compute the average in Step 2.  This makes consensus
+    ADMM suitable for \emph{federated learning} and privacy-preserving
+    distributed optimisation.
+  \end{alertblock}
+
 \end{frame}
 
 % ----
-\begin{frame}{Consensus ADMM: Convergence to Mean}
+\begin{frame}[allowframebreaks]{Consensus ADMM: Convergence to Mean}
+
   \begin{columns}
     \begin{column}{0.52\textwidth}
       \includegraphics[width=\linewidth]{fig_consensus.pdf}
     \end{column}
     \begin{column}{0.46\textwidth}
-      \textbf{Key properties:}
-      \begin{itemize}
-        \item Each $\bx_1^{(i)}$-update can run on a \textbf{separate processor}.
-        \item Only $\bx_1^{(i)}$, $\blam^{(i)}$, $\bx_2$, $\rho$ need to be communicated.
-        \item The implementation details of $f_i$ need not be shared.
-        \item Privacy-preserving applications in federated learning.
-      \end{itemize}
+      \textbf{How consensus ADMM converges:}
+
+      Initially, each agent's local copy $\bx_1^{(i)}$ focuses on
+      minimising its own $f_i$ without caring about the others.  This
+      gives a diverse set of local optima.  The dual variables
+      $\blam^{(i)}$ (lambda for agent $i$) then penalise divergence
+      between $\bx_1^{(i)}$ and the global mean $\bx_2$.  Over
+      successive iterations, the dual variables grow until the
+      disagreement cost outweighs the individual objective savings,
+      and all local copies converge to a common consensus value.
 
       \medskip
-      As $\rho\to\infty$: $\bx_2\to\bar{\bx}$ (mean of all designs).
+      \textbf{Key properties:}
+      \begin{itemize}
+        \item Each $\bx_1^{(i)}$-update can run on a separate
+              processor with access only to $f_i$.
+        \item Communication per iteration: each agent sends
+              $\bx_1^{(i)}$ and $\blam^{(i)}$ to the coordinator,
+              which broadcasts $\bx_2$.
+        \item The implementation details of $f_i$ are never shared:
+              this is privacy-preserving by design.
+        \item As $\rho \to \infty$, $\bx_2 \to \bar{\bx}$ (x-bar),
+              the mean of all local optima.
+      \end{itemize}
     \end{column}
   \end{columns}
+
 \end{frame}
 
 % ----
@@ -978,81 +1729,149 @@ def consensus_admm(objectives, x1_inits, x2_init,
 \end{frame}
 
 % ----
-\begin{frame}{11.6.2 General Consensus Optimisation}
-  When local vectors $\bx_1^{(i)}$ need only contain a \emph{subset} of $\bx_2$:
+\begin{frame}[allowframebreaks]{11.6.2 General Consensus Optimisation}
 
-  \[
-    \min_{\bx_1^{(1:k)},\,\bx_2}\;\sum_{i=1}^k f_i\!\left(\bx_1^{(i)}\right)
-    \quad\text{s.t.}\;\bx_1^{(i)}=\bx_2^{(i)}\quad\forall i
-  \]
+  In the basic consensus formulation, every agent's local variable
+  $\bx_1^{(i)}$ has the same dimension as the global variable $\bx_2$.
+  In many real problems, each agent only cares about a \emph{subset} of
+  the global variables.  General consensus handles this case.
+
+  \begin{block}{General Consensus Formulation}
+    \[
+      \min_{\bx_1^{(1)}, \ldots, \bx_1^{(k)},\; \bx_2}\;
+      \sum_{i=1}^k f_i\!\left(\bx_1^{(i)}\right)
+      \quad \text{subject to} \quad
+      \bx_1^{(i)} = \bx_2^{(i)} \quad \forall\, i
+    \]
+    where $\bx_2^{(i)}$ denotes the sub-vector of $\bx_2$ containing
+    only the components relevant to agent $i$.
+  \end{block}
 
   \begin{block}{General Consensus Updates}
     \begin{align*}
-      \bigl(\bx_1^{(i)}\bigr)' &= \arg\min_{\bx_1^{(i)}} f_i(\bx_1^{(i)})
-        + \bigl(\blam^{(i)}\bigr)^\top(\bx_1^{(i)}-\bx_2^{(i)})
-        + \frac{\rho}{2}\|\bx_1^{(i)}-\bx_2^{(i)}\|_2^2\\[4pt]
-      (\bx_2)_g' &= \frac{1}{n_g}\sum_{i=1}^k\sum_j
-        \bigl[\bigl(\bx_1^{(i)}\bigr)'_j\text{ where component $j$ maps to $g$}\bigr]\\[4pt]
-      \bigl(\blam^{(i)}\bigr)' &= \blam^{(i)}+\rho\left(\bigl(\bx_1^{(i)}\bigr)'-\bigl(\bx_2^{(i)}\bigr)'\right)
+      \bigl(\bx_1^{(i)}\bigr)' &\;=\; \arg\min_{\bx_1^{(i)}}\;
+        f_i(\bx_1^{(i)})
+        + \bigl(\blam^{(i)}\bigr)^\top\!\left(\bx_1^{(i)} - \bx_2^{(i)}\right)
+        + \frac{\rho}{2}\,\|\bx_1^{(i)} - \bx_2^{(i)}\|_2^2 \\[6pt]
+      (\bx_2)_g' &\;=\; \frac{1}{n_g} \sum_{i:\, g \in I_i}
+        \left[\bigl(\bx_1^{(i)}\bigr)' + \frac{1}{\rho}\,\blam^{(i)}\right]_g \\[6pt]
+      \bigl(\blam^{(i)}\bigr)' &\;=\; \blam^{(i)}
+        + \rho\,\bigl[\bigl(\bx_1^{(i)}\bigr)' - \bigl(\bx_2^{(i)}\bigr)'\bigr]
     \end{align*}
   \end{block}
 
-  $n_g$ = number of local vectors whose entry corresponds to global component $g$.
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $(\bx_2)_g$: component $g$ of the global variable $\bx_2$.
+      \item $n_g$: the number of agents whose local variable includes
+            component $g$.
+      \item The $\bx_2$-update averages only over those agents who
+            ``participate'' in component $g$ (denoted $g \in I_i$ meaning
+            component $g$ is in agent $i$'s index set $I_i$).
+    \end{itemize}
+  \end{block}
+
+  The key advantage is that each agent's local sub-problem is smaller
+  (lower-dimensional) than the full problem, and agents that do not share
+  any components do not need to communicate at all.
+
 \end{frame}
 
 % ----
-\begin{frame}{Example 11.7: Bakery Placement as General Consensus}
-  \textbf{Problem:} Place 3 bakeries ($\mathbf{b}^{(1)},\mathbf{b}^{(2)},\mathbf{b}^{(3)}$) to serve 6 establishments.
+\begin{frame}[allowframebreaks]{Example 11.7: Bakery Placement as General Consensus}
+
+  This example shows how general consensus handles a real logistics problem
+  where different agents care about different subsets of the global variables.
+
+  \textbf{The setup:} place 3 bakeries at positions
+  $\mathbf{b}^{(1)}$, $\mathbf{b}^{(2)}$, $\mathbf{b}^{(3)}$ (2D coordinates each)
+  to minimise total delivery distances to 6 establishments:
   \begin{itemize}
-    \item 2 cafes at $\mathbf{e}^{(1)}\!=\![0,0]$, $\mathbf{e}^{(2)}\!=\![0.5,0]$
-    \item 2 brunch spots at $\mathbf{e}^{(3)}\!=\![3,2]$, $\mathbf{e}^{(4)}\!=\![0.5,3]$
-    \item 2 restaurants at $\mathbf{e}^{(5)}\!=\![3.5,-0.5]$, $\mathbf{e}^{(6)}\!=\![2.5,0.7]$
+    \item 2 cafes at $\mathbf{e}^{(1)} = [0, 0]$,
+          $\mathbf{e}^{(2)} = [0.5, 0]$ --- supplied by bakery 1 (croissants)
+    \item 2 brunch spots at $\mathbf{e}^{(3)} = [3, 2]$,
+          $\mathbf{e}^{(4)} = [0.5, 3]$ --- supplied by bakeries 1 and 2
+    \item 2 restaurants at $\mathbf{e}^{(5)} = [3.5, -0.5]$,
+          $\mathbf{e}^{(6)} = [2.5, 0.7]$ --- supplied by bakeries 2 and 3 (baguettes, dinner rolls)
   \end{itemize}
-  Bakery 1 (croissants) serves cafes + brunch; bakery 2 (baguettes) serves brunch + restaurants;
-  bakery 3 (dinner rolls) serves restaurants only.
 
   \medskip
-  \textbf{Global variable:} $\bx_2=[b_1^{(1)},b_2^{(1)},b_1^{(2)},b_2^{(2)},b_1^{(3)},b_2^{(3)}]^\top$
+  \textbf{Global variable:}
+  $\bx_2 = [b_1^{(1)},\, b_2^{(1)},\, b_1^{(2)},\, b_2^{(2)},\, b_1^{(3)},\, b_2^{(3)}]^\top$
+  (the $x$- and $y$-coordinates of all three bakeries).
 
   \medskip
-  Each establishment optimises a \emph{local} vector that only contains entries for
-  its compatible bakeries $\Rightarrow$ true distributed computation.
+  Each establishment acts as an agent with a local variable containing
+  only the coordinates of its bakery suppliers.  For example, cafe 1 has
+  local variable $\bx_1^{(1)} = [b_1^{(1)}, b_2^{(1)}]$ (only bakery 1
+  coordinates), while brunch spot 1 has
+  $\bx_1^{(3)} = [b_1^{(1)}, b_2^{(1)}, b_1^{(2)}, b_2^{(2)}]$
+  (bakeries 1 and 2).  No agent needs information about bakeries they
+  do not use, enabling true distributed computation.
+
+  \begin{alertblock}{Key Insight}
+    In this example, bakery 3's position $[b_1^{(3)}, b_2^{(3)}]$ only
+    appears in the local variables of restaurants (agents 5 and 6).
+    The cafes and brunch spots need not know where bakery 3 is.
+    General consensus ADMM automatically handles this partial overlap
+    through the component-wise averaging in the $\bx_2$ update.
+  \end{alertblock}
+
 \end{frame}
 
 % ============================================================
 \section{Summary \& Exercises}
 % ============================================================
 
-\begin{frame}{Chapter 11 Summary}
+\begin{frame}[allowframebreaks]{Chapter 11 Summary}
+
+  This chapter developed the theory and practice of duality, showing how
+  every constrained minimisation problem has a companion dual maximisation
+  problem, and how exploiting this structure leads to powerful algorithms.
+
   \begin{columns}
     \begin{column}{0.50\textwidth}
+      \textbf{Theoretical foundations:}
       \begin{itemize}
-        \item \textbf{Dual problem:} always concave; its value $\le p^*$ (weak duality).
-        \item \textbf{Strong duality} ($d^*=p^*$): holds for convex problems + CQ.
-        \item \textbf{Primal-dual interior-point:} simultaneously drives residual and
-              duality gap to zero.
-        \item \textbf{Dual ascent:} gradient ascent on concave $\calD$; convergence
-              guaranteed but slow.
-        \item \textbf{Method of multipliers:} augmented Lagrangian gives faster, fixed-$\rho$
-              convergence.
+        \item The \textbf{dual function} $\calD(\bmu, \blam)$ is always
+              concave, making maximisation tractable.
+        \item \textbf{Weak duality} ($d^* \le p^*$) always holds:
+              the dual value is a guaranteed lower bound.
+        \item \textbf{Strong duality} ($d^* = p^*$) holds for convex
+              problems satisfying Slater's condition (strictly feasible
+              interior point exists).
+        \item \textbf{Complementary slackness}: at optimality,
+              $\mu_i^* g_i(\bx^*) = 0$ for all $i$ --- either the
+              multiplier or the slack must be zero.
+      \end{itemize}
+
+      \textbf{Primal-dual interior-point:}
+      \begin{itemize}
+        \item Simultaneously updates $\bx$ and $\bmu$.
+        \item Uses Newton step on the residual vector.
+        \item Duality gap equals $m/\rho$; convergence is fast
+              (quadratic near solution).
       \end{itemize}
     \end{column}
     \begin{column}{0.48\textwidth}
+      \textbf{Dual ascent family:}
       \begin{itemize}
-        \item \textbf{ADMM:} decomposes method of multipliers into alternating updates;
-              each sub-problem cheaper.
-        \item \textbf{ADMM applications:} alternating projections, LAD, basis pursuit,
-              lasso, Huber regression.
-        \item \textbf{Consensus:} parallelises ADMM over $k$ processors; only
-              averages communicated.
-        \item \textbf{General consensus:} each agent sees only relevant components --
-              privacy-preserving.
+        \item \textbf{Dual ascent}: alternate between minimising the
+              Lagrangian and ascending the dual.  Converges but slow.
+        \item \textbf{Method of multipliers}: add quadratic penalty
+              to Lagrangian; converges for fixed $\rho$.
+        \item \textbf{ADMM}: split the primal into two blocks; each
+              sub-problem is cheaper.  Enables parallelism.
+        \item \textbf{Consensus ADMM}: $k$ agents optimise in parallel;
+              only averages are communicated; privacy-preserving.
+        \item \textbf{General consensus}: agents have overlapping but
+              non-identical variable sets; enables federated learning.
       \end{itemize}
     \end{column}
   \end{columns}
 
-  \medskip
   \begin{center}
+  \renewcommand{\arraystretch}{1.3}
   \begin{tabular}{lll}
     \toprule
     Method & Primal update & Dual update \\
@@ -1064,83 +1883,156 @@ def consensus_admm(objectives, x1_inits, x2_init,
     \bottomrule
   \end{tabular}
   \end{center}
+
+  \begin{alertblock}{The Central Takeaway}
+    Duality transforms hard constrained minimisation into concave
+    maximisation, provides lower bounds for verification, and enables
+    the efficient decomposition of large problems into small parallel
+    sub-problems.  ADMM is a workhorse of modern large-scale optimisation
+    precisely because it exploits this dual structure.
+  \end{alertblock}
+
 \end{frame}
 
 % ----
 \begin{frame}[allowframebreaks]{Selected Exercises}
-  \textbf{Exercise 11.1.} Show complementary slackness $\mu_i^* g_i(\bx^*)=0$ holds
-  when the duality gap is zero.
+
+  \textbf{Exercise 11.1.}  Show that complementary slackness
+  $\mu_i^*\, g_i(\bx^*) = 0$ holds for all $i$ whenever the duality gap
+  is zero.
 
   \medskip
-  \textit{Key idea:} Zero gap $\Rightarrow d^*=p^*=f(\bx^*)$. Since $\calD(\bmu^*,\blam^*)
-  \le\calL(\bx^*,\bmu^*,\blam^*)$ and each term $\mu_i^* g_i(\bx^*)\le 0$,
-  the sum must be exactly zero $\Rightarrow$ complementary slackness.
+  \textit{Proof sketch:}  A zero gap means $d^* = p^* = f(\bx^*)$.
+  By definition:
+  \[
+    d^* \;=\; \calD(\bmu^*, \blam^*)
+         \;\le\; \calL(\bx^*, \bmu^*, \blam^*)
+         \;=\; f(\bx^*) + \sum_i \mu_i^* g_i(\bx^*)
+         \;\le\; f(\bx^*) \;=\; p^*
+  \]
+  Since $d^* = p^*$, all inequalities are equalities.  In particular
+  $\sum_i \mu_i^* g_i(\bx^*) = 0$.  Since each $\mu_i^* \ge 0$ and
+  $g_i(\bx^*) \le 0$, every term is non-positive and their sum is zero,
+  so each term is exactly zero: $\mu_i^* g_i(\bx^*) = 0$.  This is
+  complementary slackness.
 
   \bigskip
-  \textbf{Exercise 11.2.} Is the dual of the dual equal to the primal?
+  \textbf{Exercise 11.2.}  Is the dual of the dual equal to the primal?
 
   \medskip
-  \textit{Answer:} Not necessarily. From $d^*\le p^*$ and $dd^*\le d^*$, we get
-  $dd^*\le p^*$. If a duality gap exists, $dd^*\ne p^*$.
+  \textit{Answer:}  Not in general.  Let $dd^*$ denote the optimal
+  value of the dual of the dual.  From weak duality applied twice:
+  $dd^* \le d^* \le p^*$.  If a duality gap exists ($d^* < p^*$),
+  then $dd^* \ne p^*$.  For convex problems with strong duality,
+  however, $dd^* = d^* = p^*$.
 
   \framebreak
 
-  \textbf{Exercise 11.3.} ADMM $\bx_1$-update for quadratic $f_1(\bx_1)=\frac{1}{2}\bx_1^\top\mathbf{Q}\bx_1
-  +\mathbf{q}^\top\bx_1+q$ (positive semidefinite $\mathbf{Q}$):
+  \textbf{Exercise 11.3.}  Derive the ADMM $\bx_1$-update when
+  $f_1(\bx_1) = \frac{1}{2}\bx_1^\top \mathbf{Q}\bx_1 + \mathbf{q}^\top\bx_1 + q$
+  with $\mathbf{Q}$ (capital bold Q) positive semidefinite.
+
+  \medskip
+  \textit{Solution:}  The $\bx_1$-sub-problem is:
   \[
-    (\mathbf{Q}+\rho\bA_1^\top\bA_1)\bx_1' = \rho\bA_1^\top(\bA_2\bx_2-\bb)-\mathbf{q}-\blam
+    \min_{\bx_1}\; \tfrac{1}{2}\bx_1^\top\mathbf{Q}\bx_1
+    + \mathbf{q}^\top\bx_1 + \blam^\top\bA_1\bx_1
+    + \tfrac{\rho}{2}\|\bA_1\bx_1 + \bA_2\bx_2 - \bb\|_2^2
   \]
+  Setting the gradient with respect to $\bx_1$ to zero gives the
+  normal equations:
+  \[
+    (\mathbf{Q} + \rho\bA_1^\top\bA_1)\,\bx_1'
+    \;=\; \rho\bA_1^\top(\bA_2\bx_2 - \bb) - \mathbf{q} - \blam
+  \]
+  This is a positive definite linear system when $\mathbf{Q} + \rho\bA_1^\top\bA_1$
+  is positive definite (guaranteed for $\rho > 0$ when $\bA_1$ has full
+  column rank, or always if $\mathbf{Q}$ is positive definite).
 
   \bigskip
-  \textbf{Exercise 11.6.} Simplify consensus $\bx_2$-update: let $\bar{\bx}_1=(1/k)\sum_i(\bx_1^{(i)})'$.
-  Then:
+  \textbf{Exercise 11.6.}  Simplify the consensus $\bx_2$-update.
+
+  \medskip
+  \textit{Solution:}  Let $\bar{\bx}_1 = (1/k)\sum_i (\bx_1^{(i)})'$
+  (the mean of all local updates) and $\bar{\blam} = (1/k)\sum_i \blam^{(i)}$
+  (the mean multiplier).  Then the consensus update simplifies to:
   \[
-    \bx_2' = \bar{\bx}_1 + \frac{1}{\rho}\bar{\blam}
+    \bx_2' \;=\; \bar{\bx}_1 + \frac{1}{\rho}\,\bar{\blam}
   \]
-  This removes the need for an explicit $\bx_2$ variable.
+  This removes the need for an explicit $\bx_2$ variable: the global
+  consensus is simply the mean of local solutions plus a dual correction.
+
 \end{frame}
 
 % ----
-\begin{frame}{Algorithm Complexity Summary}
+\begin{frame}[allowframebreaks]{Algorithm Complexity Summary}
+
   \begin{center}
   \renewcommand{\arraystretch}{1.3}
   \begin{tabular}{lll}
     \toprule
     Algorithm & Per-iteration cost & Key parameter \\
     \midrule
-    Primal-dual IP & $O((n+m)^3)$ Newton solve & $\rho\uparrow$ each iter \\
-    Dual ascent & $O(\text{cost of } \min_\bx\calL)$ & step size $\alpha$ \\
-    Method of multipliers & $O(\text{cost of aug.\ Lag.\ min})$ & $\rho>0$ fixed \\
-    ADMM (basic) & $O(n^3)$ per sub-problem & $\rho,\gamma$ \\
-    ADMM-Lasso & $O(n^3)$ (one-time Chol.) + $O(n^2)$ & $\rho,\lambda$ \\
-    Consensus ADMM & $O(k\cdot\text{sub-prob})$ parallel & $\rho,\gamma$ \\
+    Primal-dual IP & $O((n+m)^3)$ Newton solve & $\rho$ increased each iter \\
+    Dual ascent & $O(\text{cost of } \min_\bx\calL)$ & step size $\alpha$ (alpha) \\
+    Method of multipliers & $O(\text{cost of aug.\ Lag.\ min})$ & $\rho > 0$ fixed \\
+    ADMM (basic) & $O(n^3)$ per sub-problem & $\rho$, $\gamma$ (gamma) \\
+    ADMM-Lasso & $O(n^3)$ (one-time Chol.) $+ O(n^2)$ each & $\rho$, $\lambda$ \\
+    Consensus ADMM & $O(k \cdot \text{sub-problem cost})$, parallel & $\rho$, $\gamma$ \\
     \bottomrule
   \end{tabular}
   \end{center}
 
+  Here $n$ is the number of primal variables, $m$ is the number of
+  inequality constraints, $k$ is the number of agents in consensus,
+  $O(\cdot)$ (big-O notation) means ``proportional to at most this cost
+  as problem size grows,'' and ``Chol.'' means the Cholesky factorisation
+  of the coefficient matrix (done once and reused each iteration).
+
   \medskip
-  \textbf{Practical guidelines:}
+  \textbf{Practical guidelines for running ADMM:}
+
   \begin{itemize}
-    \item Use adaptive $\rho$: scale up when $\|\mathbf{r}\|\gg\|\mathbf{s}\|$, down otherwise.
-    \item Initialise with small $\rho$ and increase geometrically ($\rho\leftarrow\gamma\rho$).
-    \item Precompute matrix factorisations when possible (LASSO, basis pursuit).
-    \item ADMM typically shows linear convergence; near optimal solutions may need refinement.
+    \item \textbf{Adaptive $\rho$:} monitor the ratio
+          $\|\mathbf{r}\| / \|\mathbf{s}\|$ at each iteration.  Scale
+          $\rho$ up (e.g.\ by a factor $\gamma = 2$) when
+          $\|\mathbf{r}\| \gg \|\mathbf{s}\|$; scale down when the
+          reverse holds.  This keeps the two residuals balanced and
+          avoids slow convergence.
+    \item \textbf{Initialisation:} start with a small $\rho$ (e.g.\ 1)
+          and let adaptive scaling do the rest.  A warm-started $\rho$
+          from a previous problem instance can also help.
+    \item \textbf{Precompute factorisations:} for problems like Lasso
+          and basis pursuit, factor $\bA^\top\bA + \rho\bI$ or
+          $\bA\bA^\top$ once before the loop.  Each iteration then
+          costs a triangular solve instead of a full linear solve.
+    \item \textbf{Convergence speed:} ADMM typically shows linear
+          convergence (the residual decreases by a constant factor each
+          iteration).  Near the solution, a few Newton-like refinement
+          steps can dramatically improve accuracy.
   \end{itemize}
+
 \end{frame}
 
 % ----
 \begin{frame}{References}
   \begin{itemize}
-    \item Kochenderfer \& Wheeler, \textit{Algorithms for Optimization}, 2nd ed., MIT Press, 2026.
-    \item S.\ Boyd \& L.\ Vandenberghe, \textit{Convex Optimization}, Cambridge University Press, 2004.
-    \item S.\ J.\ Wright, \textit{Primal-Dual Interior-Point Methods}, SIAM, 1997.
+    \item Kochenderfer \& Wheeler, \textit{Algorithms for Optimization},
+          2nd ed., MIT Press, 2026.
+    \item S.\ Boyd \& L.\ Vandenberghe, \textit{Convex Optimization},
+          Cambridge University Press, 2004.
+    \item S.\ J.\ Wright, \textit{Primal-Dual Interior-Point Methods},
+          SIAM, 1997.
     \item S.\ Boyd, N.\ Parikh, E.\ Chu, B.\ Peleato, J.\ Eckstein,
-          ``Distributed Optimization and Statistical Learning via the Alternating Direction Method of
-          Multipliers,'' \textit{Foundations and Trends in Machine Learning}, vol.\ 3, no.\ 1, 2011.
-    \item R.\ Tibshirani, ``Regression Shrinkage and Selection via the Lasso,''
-          \textit{JRSS-B}, vol.\ 58, 1996.
-    \item T.\ Goldstein \& S.\ Osher, ``The Split Bregman Method for $L_1$-Regularized Problems,''
-          \textit{SIAM Journal on Imaging Sciences}, vol.\ 2, 2009.
+          ``Distributed Optimization and Statistical Learning via the
+          Alternating Direction Method of Multipliers,''
+          \textit{Foundations and Trends in Machine Learning},
+          vol.\ 3, no.\ 1, 2011.
+    \item R.\ Tibshirani, ``Regression Shrinkage and Selection via the
+          Lasso,'' \textit{JRSS-B}, vol.\ 58, 1996.
+    \item T.\ Goldstein \& S.\ Osher, ``The Split Bregman Method for
+          $L_1$-Regularized Problems,'' \textit{SIAM Journal on Imaging
+          Sciences}, vol.\ 2, 2009.
   \end{itemize}
 \end{frame}
 
