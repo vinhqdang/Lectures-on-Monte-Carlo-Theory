@@ -1,7 +1,9 @@
 % ============================================================
-%  Chapter 4 — Local Descent
+%  Chapter 4 -- Local Descent
 %  Algorithms for Optimization, 2nd ed. (2026)
 %  Kochenderfer & Wheeler
+%  READER-FRIENDLY VERSION: complete sentences, notation blocks,
+%  worked examples, Greek-letter pronunciations on first use.
 % ============================================================
 \documentclass[aspectratio=169,10pt]{beamer}
 
@@ -30,7 +32,7 @@
   frame=single,
   backgroundcolor=\color{gray!7},
   keywordstyle=\color{blue!70!black}\bfseries,
-  commentstyle=\color{green!50!black},
+  commentstyle=\color{green!50!black}\itshape,
   stringstyle=\color{red!60!black},
   breaklines=true,
   showstringspaces=false,
@@ -77,71 +79,216 @@
 \section{4.1 Descent Direction Iteration}
 % ============================================================
 
-\begin{frame}{Motivation: Multivariate Optimization}
-  \begin{columns}[T]
-    \begin{column}{0.55\textwidth}
-      \textbf{Goal:} minimize $f : \R^n \to \R$
-      \begin{itemize}
-        \item May be non-convex, may have many local minima
-        \item Exact methods (Chapter 3) do not scale to $n \gg 1$
-        \item \textbf{Key idea:} iteratively move the design point in a
-              direction that \emph{decreases} $f$
-      \end{itemize}
-      \vspace{0.5em}
-      \textbf{Descent direction iteration:}
-      \begin{enumerate}
-        \item Check local model; if already at a minimum, stop.
-        \item Choose a descent direction $\bd^{(k)}$ from the current
-              point $\bx^{(k)}$.
-        \item Choose a step factor $\alpha^{(k)} > 0$.
-        \item Update: $\bx^{(k+1)} \leftarrow \bx^{(k)} + \alpha^{(k)}\bd^{(k)}$.
-      \end{enumerate}
-    \end{column}
-    \begin{column}{0.42\textwidth}
-      \includegraphics[width=\linewidth]{fig_descent_iteration.pdf}
-    \end{column}
-  \end{columns}
-\end{frame}
+\begin{frame}[allowframebreaks]{Motivation: What Problem Are We Solving?}
 
-\begin{frame}{What Is a Descent Direction?}
-  \begin{block}{Definition: Descent Direction}
-    A vector $\bd \in \R^n$ is a \emph{descent direction} at $\bx$ if
+  In this chapter we tackle the central problem of applied optimization:
+  find a point $\bx^* \in \R^n$ (read: ``x-star in R-n'', meaning an
+  $n$-dimensional real-valued vector) that minimises a scalar objective
+  function $f : \R^n \to \R$.
+
+  Real-world functions are typically \emph{non-convex} and possess many
+  local minima, so there is no algebraic shortcut that solves everything
+  at once.  Instead we use an \emph{iterative} strategy: start from an
+  initial guess and repeatedly move the design point in a direction that
+  makes $f$ smaller, stopping when progress becomes negligibly small.
+
+  \begin{block}{The Core Idea of Local Descent}
+    Local descent methods build a sequence of points
     \[
-      \nabla_{\bd} f(\bx) = \grad f(\bx)^{\top}\bd < 0.
+      \bx^{(0)},\; \bx^{(1)},\; \bx^{(2)},\; \ldots
     \]
-    The \emph{directional derivative} $\nabla_{\bd}f$ is negative, so
-    moving a small positive distance along $\bd$ decreases $f$.
+    (read: ``x superscript 0, x superscript 1, \ldots'', where the
+    superscript is the iteration number) such that
+    $f\!\left(\bx^{(k+1)}\right) \le f\!\left(\bx^{(k)}\right)$
+    at every step.
   \end{block}
 
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \textbf{Properties:}
-      \begin{itemize}
-        \item The negative gradient $-\grad f(\bx)$ is always a descent
-              direction (steepest descent).
-        \item Newton direction, quasi-Newton directions are also descent
-              directions under suitable conditions.
-        \item Momentum directions (e.g.\ in machine learning) can provide
-              descent with curvature information.
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{block}{Iterative Update Rule}
-        \[
-          \bx^{(k+1)} = \bx^{(k)} + \alpha^{(k)}\bd^{(k)}
-        \]
-        \vspace{0.3em}
-        \begin{tabular}{ll}
-          $\bx^{(k)}$    & current design point \\
-          $\bd^{(k)}$    & descent direction \\
-          $\alpha^{(k)}$ & step factor (step size) \\
-        \end{tabular}
-      \end{block}
-    \end{column}
-  \end{columns}
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bx^{(k)}$ --- the current design point at iteration $k$.
+            This is a vector of $n$ real numbers (e.g.\ the coordinates
+            of a point in 2-D space if $n=2$).
+      \item $f(\bx^{(k)})$ --- the value of the objective function
+            evaluated at the current point; this is a single real number.
+      \item $\R^n$ --- the set of all $n$-dimensional real-valued vectors.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  The figure below illustrates how successive iterates trace a path
+  downhill across the objective landscape.  Each arrow represents one
+  step of the algorithm --- a carefully chosen direction combined with a
+  carefully chosen step size.
+
+  \begin{center}
+    \includegraphics[width=0.55\linewidth]{fig_descent_iteration.pdf}
+  \end{center}
+
+  \begin{alertblock}{Key Insight}
+    The challenge is not whether to move downhill --- that is easy ---
+    but \emph{how far} to move (the step size) and in \emph{exactly
+    which downhill direction} (the descent direction).  Different answers
+    give methods with very different convergence speeds and computational
+    costs, as we will see throughout this chapter.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}[fragile]{Algorithm 4.1: Descent Direction Iteration (Python)}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{The Four-Step Template of Every Descent Method}
+
+  Nearly every gradient-based optimization algorithm in use today is a
+  specialisation of the following four-step template.  Understanding this
+  template deeply makes it straightforward to analyse any new method you
+  encounter.
+
+  \begin{block}{Descent Direction Iteration (Algorithm 4.1)}
+    \begin{enumerate}
+      \item \textbf{Check convergence.}  Evaluate the local gradient
+            $\grad f(\bx^{(k)})$ (read: ``nabla f of x-k'', where $\grad$
+            is the nabla symbol representing the gradient, i.e.\ the
+            vector of all partial derivatives).  If the gradient is
+            sufficiently small --- meaning the surface is nearly flat ---
+            stop and report $\bx^{(k)}$ as the solution.
+      \item \textbf{Choose a descent direction $\bd^{(k)}$.}  The vector
+            $\bd^{(k)} \in \R^n$ (read: ``d superscript k'') must point
+            in a direction along which $f$ decreases.
+      \item \textbf{Choose a step factor $\alpha^{(k)} > 0$.}  The scalar
+            $\alpha^{(k)}$ (alpha, pronounced ``al-fa'', the first letter
+            of the Greek alphabet) controls how far we move in the chosen
+            direction.
+      \item \textbf{Update the design point:}
+            \[
+              \bx^{(k+1)} \;=\; \bx^{(k)} + \alpha^{(k)}\bd^{(k)}.
+            \]
+    \end{enumerate}
+  \end{block}
+
+  \begin{block}{Notation for the Update Rule}
+    \begin{itemize}
+      \item $\bx^{(k+1)}$ --- the \emph{new} design point after the update.
+      \item $\bx^{(k)}$ --- the \emph{current} design point before the update.
+      \item $\alpha^{(k)}$ (alpha) --- step factor (also called step size
+            or learning rate in machine learning); a positive scalar that
+            scales the length of the step.
+      \item $\bd^{(k)}$ (bold d) --- descent direction vector; it encodes
+            \emph{which way} to move.
+      \item The product $\alpha^{(k)}\bd^{(k)}$ is the actual displacement
+            added to the current point.
+    \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{How to Read This Update Rule}
+    Think of $\bx^{(k)}$ as your current location on a hillside.  The
+    vector $\bd^{(k)}$ is a compass direction pointing downhill.  The
+    scalar $\alpha^{(k)}$ is how many metres you walk in that direction.
+    After walking, your new location is $\bx^{(k+1)}$.  The art of
+    local descent lies entirely in choosing $\bd^{(k)}$ and $\alpha^{(k)}$
+    wisely.
+  \end{alertblock}
+
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{What Makes a Direction a ``Descent'' Direction?}
+
+  Before we can choose a descent direction we need to know precisely what
+  the term means mathematically.  The key tool is the \emph{directional
+  derivative}, which measures how fast $f$ changes as we move from
+  $\bx$ in direction $\bd$.
+
+  \begin{block}{Definition: Directional Derivative}
+    The directional derivative of $f$ at point $\bx$ in direction $\bd$ is
+    \[
+      \nabla_{\bd} f(\bx) \;=\; \grad f(\bx)^{\top}\bd,
+    \]
+    where $\grad f(\bx)$ (nabla f of x) is the gradient vector --- the
+    column vector of all partial derivatives of $f$ evaluated at $\bx$ ---
+    and the superscript ${}^\top$ denotes the transpose (turning a column
+    vector into a row vector so that the dot product is well-defined).
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\nabla_{\bd} f(\bx)$ --- the directional derivative of $f$ at
+            $\bx$ along direction $\bd$; this is a single real number.
+      \item $\grad f(\bx)$ --- the gradient of $f$ at $\bx$; an
+            $n$-dimensional column vector.
+      \item ${}^\top$ --- transpose operator.
+      \item $\grad f(\bx)^{\top}\bd$ --- the dot product (inner product)
+            of the gradient with the direction vector; geometrically it
+            equals $\|\grad f\|\,\|\bd\|\cos\theta$ (theta, pronounced
+            ``thay-ta''), where $\theta$ is the angle between the two
+            vectors.
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{Definition: Descent Direction}
+    A vector $\bd \in \R^n$ is called a \emph{descent direction} at $\bx$
+    if and only if
+    \[
+      \grad f(\bx)^{\top}\bd \;<\; 0.
+    \]
+    This condition means the directional derivative is \emph{negative},
+    so moving any sufficiently small positive distance $\alpha$ along
+    $\bd$ from $\bx$ will decrease the value of $f$.
+  \end{block}
+
+  \framebreak
+
+  \begin{exampleblock}{Worked Example: Verifying a Descent Direction}
+    Let $f(x_1, x_2) = x_1^2 + x_2^2$ (a simple bowl).  At the point
+    $\bx = [3, 4]^{\top}$ the gradient is
+    \[
+      \grad f(\bx) = [2x_1,\; 2x_2]^{\top} = [6,\; 8]^{\top}.
+    \]
+    Is the direction $\bd = [-1, -1]^{\top}$ a descent direction?
+    \[
+      \grad f(\bx)^{\top}\bd
+      = [6, 8] \cdot [-1, -1]
+      = 6\times(-1) + 8\times(-1)
+      = -14 \;<\; 0. \quad \checkmark
+    \]
+    Yes --- moving in the $[-1,-1]$ direction from $[3,4]$ will
+    decrease $f$.
+
+    The negative gradient direction $-\grad f(\bx) = [-6,-8]^{\top}$
+    is also a descent direction (and in fact is the direction of
+    \emph{steepest} descent):
+    \[
+      \grad f(\bx)^{\top}(-\grad f(\bx))
+      = -\|\grad f(\bx)\|^2 = -(6^2+8^2) = -100 < 0. \quad \checkmark
+    \]
+  \end{exampleblock}
+
+  \begin{alertblock}{Key Insight}
+    The gradient $\grad f(\bx)$ points in the direction of \emph{steepest
+    ascent} (uphill).  Therefore the \emph{negative} gradient
+    $-\grad f(\bx)$ always points in the direction of steepest descent
+    (downhill).  This is the basis of gradient descent, the most widely
+    used optimisation method in machine learning.
+  \end{alertblock}
+
+  \begin{block}{Three Important Descent Directions}
+    \begin{itemize}
+      \item \textbf{Steepest descent:} $\bd = -\grad f(\bx)$.  Always a
+            descent direction; easy to compute; may converge slowly.
+      \item \textbf{Newton direction:} $\bd = -\bH^{-1}\grad f(\bx)$,
+            where $\bH$ (bold H) is the Hessian matrix of second
+            derivatives.  Exploits curvature; converges much faster near
+            the minimum but requires computing and inverting $\bH$.
+      \item \textbf{Quasi-Newton directions:} approximate $\bH^{-1}$
+            cheaply from gradient differences.  A practical middle ground
+            (covered in later chapters).
+    \end{itemize}
+  \end{block}
+
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[fragile]{Algorithm 4.1 in Python: Generic Descent Iteration}
+
 \begin{lstlisting}[style=pycode]
 import numpy as np
 
@@ -150,775 +297,1452 @@ def descent_direction_iteration(f, grad_f, x0, direction_fn,
     """
     Generic descent direction iteration.
     Args:
-        f         : objective function  f(x) -> float
-        grad_f    : gradient function   grad_f(x) -> ndarray
-        x0        : initial design point (ndarray)
+        f          : objective function  f(x) -> float
+        grad_f     : gradient function   grad_f(x) -> ndarray
+        x0         : initial design point (ndarray)
         direction_fn: d = direction_fn(x, g) -> descent direction
-        step_fn   : alpha = step_fn(f, grad_f, x, d) -> step factor
+        step_fn    : alpha = step_fn(f, grad_f, x, d) -> step factor
+    Returns:
+        x       : converged design point
+        history : list of all iterates
     """
     x = x0.copy().astype(float)
     history = [x.copy()]
     for k in range(max_iter):
         g = grad_f(x)
-        if np.linalg.norm(g) < tol:
+        if np.linalg.norm(g) < tol:   # gradient-magnitude termination
             break
-        d = direction_fn(x, g)          # choose descent direction
-        alpha = step_fn(f, grad_f, x, d) # choose step factor
-        x = x + alpha * d
+        d = direction_fn(x, g)         # choose descent direction
+        alpha = step_fn(f, grad_f, x, d)  # choose step factor
+        x = x + alpha * d              # update rule: x^(k+1) = x^(k) + alpha*d
         history.append(x.copy())
     return x, history
 \end{lstlisting}
+
+\medskip
+The function takes \texttt{direction\_fn} and \texttt{step\_fn} as
+arguments, making it a \emph{template}: swapping in different choices
+for these two functions gives steepest descent, Newton's method,
+quasi-Newton methods, and so on.
+
 \end{frame}
 
 % ============================================================
 \section{4.2 Step Factors}
 % ============================================================
 
-\begin{frame}{Step Factors (Learning Rate)}
+\begin{frame}[allowframebreaks]{Step Factors: How Far Should We Move?}
+
+  Once we have chosen a descent direction $\bd^{(k)}$, the next decision
+  is how far to walk along it.  The \emph{step factor} $\alpha^{(k)}$
+  (alpha, the first Greek letter, pronounced ``al-fa'') is a positive
+  scalar multiplying the direction vector.  A step factor that is too
+  large causes the algorithm to overshoot and may even diverge; one that
+  is too small wastes iterations and slows convergence dramatically.
+
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
-      The \emph{step factor} (also called \emph{step size} or
-      \emph{learning rate}) $\alpha^{(k)}$ controls how far to move.
-
-      \vspace{0.5em}
-      \textbf{Fixed step factor:}
-      $\alpha^{(k)} = \alpha_0$  for all $k$.
-      \begin{itemize}
-        \item Simple, but must be chosen carefully.
-        \item Too large $\Rightarrow$ divergence.
-        \item Too small $\Rightarrow$ slow convergence.
-      \end{itemize}
+      \begin{block}{Fixed Step Factor}
+        The simplest strategy is to use the same value $\alpha_0$ at
+        every iteration:
+        \[
+          \alpha^{(k)} = \alpha_0 \quad \text{for all } k.
+        \]
+        Here $\alpha_0$ (alpha sub zero) is a constant chosen before
+        the algorithm starts.  This approach is easy to implement but
+        requires careful tuning: if $\alpha_0$ is too large the iterates
+        diverge; if it is too small the method crawls.
+      \end{block}
 
       \vspace{0.4em}
-      \textbf{Decaying step factors} allow large early steps (exploration)
-      and small later steps (fine-tuning).
+      A smarter strategy is to \emph{decrease} the step factor over time.
+      Early in the search, when we are far from the minimum, large steps
+      help us explore.  Later, when we are close, small steps allow
+      fine-tuned convergence without overshooting.  The figure on the
+      right shows several common decay schedules.
     \end{column}
     \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_step_factor_decay.pdf}
     \end{column}
   \end{columns}
-\end{frame}
 
-\begin{frame}{Step Factor Decay Schemes}
+  \framebreak
+
   \begin{block}{Exponential Decay (Eq.\ 4.2)}
     \[
-      \alpha^{(k)} = \gamma^k \alpha^{(0)} = \gamma \alpha^{(k-1)},
-      \qquad 0 < \gamma < 1
+      \alpha^{(k)} \;=\; \gamma^k \alpha^{(0)},
+      \qquad 0 < \gamma < 1.
     \]
-    Total distance bounded: $\sum_{k=0}^{\infty} \delta \alpha^{(0)} \gamma^k
-    = \dfrac{\delta \alpha^{(0)}}{1-\gamma}$ \quad (if $\|\bd^{(k)}\|\le\delta$)
+    At each iteration the step factor is multiplied by $\gamma$ (gamma,
+    the third Greek letter, pronounced ``gam-a''), so after $k$ steps it
+    has been shrunk by a factor of $\gamma^k$.  Since $0 < \gamma < 1$,
+    this converges to zero exponentially fast.
   \end{block}
+
+  \begin{block}{Notation for Exponential Decay}
+    \begin{itemize}
+      \item $\alpha^{(0)}$ (alpha superscript 0) --- the initial step
+            factor, i.e.\ the step size used on the very first iteration.
+      \item $\gamma$ (gamma) --- the decay rate, a number strictly between
+            0 and 1, e.g.\ $\gamma = 0.9$ means each step is 90\% of
+            the previous one.
+      \item $\gamma^k$ (gamma to the power k) --- the cumulative
+            shrinkage after $k$ iterations.
+    \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{How to Read This: Total Distance Bound}
+    If the direction vectors have bounded length ($\|\bd^{(k)}\| \le
+    \delta$, delta pronounced ``del-ta''), the total distance travelled
+    by the algorithm is at most
+    \[
+      \sum_{k=0}^{\infty} \alpha^{(k)} \|\bd^{(k)}\|
+      \;\le\;
+      \delta\, \alpha^{(0)} \sum_{k=0}^{\infty} \gamma^k
+      \;=\;
+      \frac{\delta\, \alpha^{(0)}}{1 - \gamma}.
+    \]
+    Here $\sum_{k=0}^{\infty}$ (Sigma, the capital Greek letter for
+    ``sum'') sums over all iterations from $k=0$ to infinity.  This
+    geometric series converges because $\gamma < 1$, guaranteeing that
+    the algorithm does not wander off to infinity even if it runs forever.
+  \end{alertblock}
+
+  \framebreak
 
   \begin{block}{Polynomial Decay (Eq.\ 4.4)}
     \[
-      \alpha^{(k)} = \frac{\alpha^{(0)}}{(1+\beta k)^p}, \qquad \beta>0,\; p>0
+      \alpha^{(k)} \;=\; \frac{\alpha^{(0)}}{(1 + \beta k)^p},
+      \qquad \beta > 0,\; p > 0.
     \]
-    Unbounded total distance when $0 < p \le 1$.
+    Here $\beta$ (beta, pronounced ``bay-ta'') is a scaling constant that
+    controls how quickly the denominator grows, and $p$ (p) is the
+    polynomial decay exponent.
+  \end{block}
+
+  \begin{block}{Notation for Polynomial Decay}
+    \begin{itemize}
+      \item $\beta$ (beta) --- positive constant; larger $\beta$ means
+            faster initial decay.
+      \item $p$ (p) --- exponent; $p=1$ gives harmonic decay
+            ($\alpha^{(k)} \propto 1/k$), $p=2$ gives faster decay.
+      \item When $0 < p \le 1$, the sum $\sum_k \alpha^{(k)}$ is
+            \emph{unbounded}, meaning the algorithm can in principle
+            reach \emph{any} point in space given enough iterations ---
+            a property required by stochastic gradient descent (SGD)
+            theory to guarantee convergence to a global minimum.
+      \item When $p > 1$, the sum is bounded and the algorithm is
+            constrained to a finite region.
+    \end{itemize}
   \end{block}
 
   \begin{block}{Clamped Exponential Decay (Eq.\ 4.5)}
     \[
-      \alpha^{(k)} = \max\!\left(\alpha_{\min},\, \gamma^k \alpha^{(0)}\right)
+      \alpha^{(k)} \;=\; \max\!\left(\alpha_{\min},\; \gamma^k \alpha^{(0)}\right).
     \]
-    Prevents premature stagnation; fast early decay, stable later.
+    Here $\alpha_{\min}$ (alpha sub min) is a floor value that prevents
+    the step from shrinking all the way to zero.  The $\max$ operator
+    returns whichever of its two arguments is larger, so the step never
+    drops below $\alpha_{\min}$.  This avoids \emph{premature stagnation}:
+    the algorithm keeps making progress rather than grinding to a halt.
   \end{block}
+
 \end{frame}
 
-\begin{frame}[fragile]{Step Factor Decay --- Python Example}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[fragile]{Step Factor Decay Schedules in Python}
+
 \begin{lstlisting}[style=pycode]
 import numpy as np
 
 def exponential_decay(alpha0, gamma, k):
-    """alpha^(k) = gamma^k * alpha0,  0 < gamma < 1"""
+    """Exponential decay: alpha^(k) = gamma^k * alpha0, 0 < gamma < 1."""
     return gamma**k * alpha0
 
 def polynomial_decay(alpha0, beta, p, k):
-    """alpha^(k) = alpha0 / (1 + beta*k)^p,  beta>0, p>0"""
+    """Polynomial decay: alpha^(k) = alpha0 / (1 + beta*k)^p, beta>0, p>0."""
     return alpha0 / (1.0 + beta * k)**p
 
 def clamped_decay(alpha0, gamma, alpha_min, k):
-    """alpha^(k) = max(alpha_min, gamma^k * alpha0)"""
+    """Clamped decay: alpha^(k) = max(alpha_min, gamma^k * alpha0)."""
     return max(alpha_min, gamma**k * alpha0)
 
-# Example: gradient descent on f(x) = x^2 with decaying lr
+# ── Worked numerical example ───────────────────────────────
+# f(x) = x^2, initial point x0 = 3.0, exponential decay
 def f(x):   return x**2
-def df(x):  return 2*x
+def df(x):  return 2 * x     # gradient of f(x) = x^2 is f'(x) = 2x
 
 x = 3.0
-for k in range(20):
-    alpha = exponential_decay(alpha0=1.0, gamma=0.85, k=k)
-    x = x - alpha * df(x)
-    if abs(df(x)) < 1e-6:
+print(f"k=0: x={x:.4f}, f(x)={f(x):.4f}, grad={df(x):.4f}")
+for k in range(10):
+    alpha = exponential_decay(alpha0=0.5, gamma=0.85, k=k)
+    x = x - alpha * df(x)   # x_{k+1} = x_k - alpha * f'(x_k)
+    print(f"k={k+1}: alpha={alpha:.4f}, x={x:.4f}, f(x)={f(x):.6f}")
+    if abs(df(x)) < 1e-4:
+        print("Converged!")
         break
-print(f"Converged to x={x:.6f}, f(x)={f(x):.2e}")
 \end{lstlisting}
+
+\medskip
+In the loop, \texttt{x = x - alpha * df(x)} is the steepest descent
+update: we subtract $\alpha \cdot f'(x)$ because the gradient $f'(x)$
+points \emph{uphill}, so subtracting it moves us \emph{downhill}.
+
 \end{frame}
 
 % ============================================================
 \section{4.3 Line Search}
 % ============================================================
 
-\begin{frame}{Line Search: Optimizing Along a Direction}
+\begin{frame}[allowframebreaks]{Line Search: Finding the Best Step Along a Direction}
+
+  Once we have fixed the descent direction $\bd$, choosing the step
+  factor $\alpha^{(k)}$ reduces to a one-dimensional problem: how far
+  along the ray $\bx + \alpha\bd$ should we walk?  This is called a
+  \emph{line search}.
+
+  \begin{block}{Exact Line Search}
+    Exact line search selects the $\alpha$ that minimises $f$ along the
+    ray:
+    \[
+      \alpha^* \;=\; \operatorname*{arg\,min}_{\alpha \,\ge\, 0}
+                     f\!\left(\bx + \alpha\bd\right).
+    \]
+    The notation $\operatorname*{arg\,min}$ (``argument of the minimum'')
+    means: find the value of $\alpha$ (alpha) that makes the expression
+    $f(\bx + \alpha\bd)$ as small as possible, subject to $\alpha \ge 0$
+    (we do not want to step backwards).
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\alpha^*$ (alpha-star) --- the optimal step size; the unique
+            minimiser of the one-dimensional function
+            $\phi(\alpha) = f(\bx + \alpha\bd)$.
+      \item $\phi(\alpha)$ --- a shorthand for the 1-D function we are
+            minimising during line search; it depends on the fixed current
+            point $\bx$ and direction $\bd$.
+      \item The constraint $\alpha \ge 0$ ensures we move in the direction
+            $\bd$, not opposite to it.
+    \end{itemize}
+  \end{block}
+
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
-      \textbf{Exact line search:} choose $\alpha$ that \emph{minimizes}
-      $f$ along the direction $\bd$:
-      \[
-        \alpha^* = \operatorname*{arg\,min}_{\alpha \ge 0}
-                   f\!\left(\bx + \alpha\bd\right)
-      \]
-      \begin{itemize}
-        \item Reduces to 1-D optimization (Chapter 3 methods).
-        \item Expensive per iteration if $f$ is costly.
-        \item Quadratic $f$: closed-form solution exists.
-      \end{itemize}
-      \vspace{0.4em}
-      \textbf{Quadratic example:}
-      For $f(\bx) = \tfrac{1}{2}\bx^{\top}\bH\bx - \bg^{\top}\bx$,
-      steepest descent direction $\bd = -\grad f$:
-      \[
-        \alpha^* = \frac{\bd^{\top}\bd}{\bd^{\top}\bH\bd}
-      \]
+      \begin{block}{Exact Line Search for Quadratic Functions}
+        For a quadratic objective
+        $f(\bx) = \tfrac{1}{2}\bx^{\top}\bH\bx - \bg^{\top}\bx$,
+        with steepest descent direction $\bd = -\grad f$,
+        the optimal step has a closed form:
+        \[
+          \alpha^* \;=\; \frac{\bd^{\top}\bd}{\bd^{\top}\bH\bd}.
+        \]
+        Here $\bH$ (bold H) is the \emph{Hessian matrix} --- the matrix
+        of second partial derivatives of $f$ --- and the two dot products
+        measure the squared length of $\bd$ and the curvature of $f$
+        along $\bd$, respectively.
+      \end{block}
     \end{column}
     \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_exact_line_search.pdf}
     \end{column}
   \end{columns}
+
+  \framebreak
+
+  \begin{alertblock}{How to Read the Quadratic Step Formula}
+    The numerator $\bd^{\top}\bd = \|\bd\|^2$ is the squared length of
+    the descent direction.  The denominator $\bd^{\top}\bH\bd$ measures
+    how much the function curves along $\bd$ (the curvature).  When the
+    curvature is high (the function is sharply curved), the optimal step
+    is small.  When the curvature is low (the function is nearly flat),
+    the optimal step is large.  This makes intuitive sense: on a flat
+    slope you should take big steps; on a tight curve you should take
+    small ones to avoid overshooting.
+  \end{alertblock}
+
+  \begin{exampleblock}{Worked Example: Exact Line Search for a Quadratic}
+    Let $f(x_1, x_2) = x_1^2 + x_1 x_2 + x_2^2$.  Starting at
+    $\bx = [3, 2]^{\top}$:
+    \begin{enumerate}
+      \item Gradient: $\grad f = [2x_1 + x_2,\; x_1 + 2x_2]^{\top}
+            = [8, 7]^{\top}$.
+      \item Descent direction: $\bd = -\grad f = [-8, -7]^{\top}$.
+      \item Hessian: $\bH = \begin{bmatrix} 2 & 1 \\ 1 & 2\end{bmatrix}$.
+      \item Numerator: $\bd^{\top}\bd = 64 + 49 = 113$.
+      \item Denominator: $\bd^{\top}\bH\bd
+            = [-8,-7]\begin{bmatrix}2&1\\1&2\end{bmatrix}[-8,-7]^{\top}
+            = [-8,-7][-23,-22]^{\top} = 184 + 154 = 338$.
+      \item Optimal step: $\alpha^* = 113/338 \approx 0.334$.
+      \item New point: $\bx' = [3,2] + 0.334\times[-8,-7]
+            \approx [0.33, -0.34]$.
+    \end{enumerate}
+  \end{exampleblock}
+
 \end{frame}
 
-\begin{frame}[fragile]{Exact Line Search — Python (SciPy)}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[fragile]{Exact Line Search in Python (using SciPy)}
+
 \begin{lstlisting}[style=pycode]
 import numpy as np
 from scipy.optimize import minimize_scalar
 
 def exact_line_search(f, x, d):
     """
-    Minimize f(x + alpha * d) over alpha >= 0.
-    Returns optimal step size alpha*.
+    Minimize the 1-D function phi(alpha) = f(x + alpha * d)
+    over alpha >= 0.  Returns optimal step size alpha*.
     """
     phi = lambda alpha: f(x + alpha * d)
     result = minimize_scalar(phi, bounds=(0, 10), method='bounded')
     return result.x
 
-# ── Example: f(x1,x2) = x1^2 + x1*x2 + x2^2 ──────────────
+# ── Example: f(x1, x2) = x1^2 + x1*x2 + x2^2 ─────────────
 def f(x):
     return x[0]**2 + x[0]*x[1] + x[1]**2
 
 def grad_f(x):
-    return np.array([2*x[0] + x[1], x[0] + 2*x[1]])
+    return np.array([2*x[0] + x[1],   # partial derivative w.r.t. x1
+                     x[0] + 2*x[1]])  # partial derivative w.r.t. x2
 
 x = np.array([3.0, 2.0])
-d = -grad_f(x)                 # steepest descent direction
+d = -grad_f(x)                   # steepest descent direction
 alpha_star = exact_line_search(f, x, d)
 x_new = x + alpha_star * d
 
-print(f"alpha* = {alpha_star:.4f}")
-print(f"x_new  = {x_new}")
-print(f"f(x_new) = {f(x_new):.4f}")
+print(f"Gradient at x:   {grad_f(x)}")
+print(f"Descent dir d:   {d}")
+print(f"Optimal alpha*:  {alpha_star:.6f}")
+print(f"New point x':    {x_new}")
+print(f"f(x_new):        {f(x_new):.6f}")
 \end{lstlisting}
+
+\medskip
+The lambda \texttt{phi} converts the $n$-dimensional function $f$ into
+a 1-D function of $\alpha$ alone.  \texttt{minimize\_scalar} then finds
+the minimum of this 1-D function efficiently using golden-section search.
+
 \end{frame}
 
-\begin{frame}{Backtracking Line Search}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{Backtracking Line Search: A Cheaper Alternative}
+
+  Exact line search guarantees the best possible step in a given
+  direction, but evaluating $f$ many times along the ray is expensive
+  when $f$ is costly (e.g.\ running a simulation).  \emph{Backtracking
+  line search} is a much cheaper alternative that merely asks: is this
+  step \emph{good enough}?
+
+  The ``good enough'' criterion is the \emph{Armijo condition} (also
+  called the first Wolfe condition or the sufficient decrease condition).
+  It requires that the function value drops by at least a fixed fraction
+  of what a linear model would predict:
+
+  \begin{block}{Armijo (Sufficient Decrease) Condition}
+    \[
+      f(\bx + \alpha\bd)
+      \;\le\;
+      f(\bx) + \beta\,\alpha\,\grad f(\bx)^{\top}\bd.
+    \]
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $f(\bx + \alpha\bd)$ --- the actual function value at the
+            proposed new point.
+      \item $f(\bx) + \beta\,\alpha\,\grad f(\bx)^{\top}\bd$ --- a linear
+            prediction of how much $f$ should decrease, scaled by $\beta$
+            (beta, the second Greek letter, pronounced ``bay-ta'').
+      \item $\beta$ (beta) --- a small positive constant, typically
+            $\beta = 10^{-4}$.  It sets how much decrease we require:
+            $\beta = 0$ would accept any decrease; $\beta$ close to 1
+            would require almost the full predicted decrease.
+      \item $\grad f(\bx)^{\top}\bd$ --- the directional derivative at
+            $\bx$ along $\bd$; this is negative (since $\bd$ is a descent
+            direction), so the right-hand side is \emph{less than}
+            $f(\bx)$.
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{How to Read the Armijo Condition}
+    The right-hand side of the inequality is a line that starts at
+    $f(\bx)$ when $\alpha = 0$ and slopes downward (since
+    $\grad f^{\top}\bd < 0$).  The slope is scaled by $\beta < 1$, so
+    it decreases more slowly than the tangent to $\phi(\alpha) = f(\bx
+    + \alpha\bd)$.  The condition says: the actual function value must
+    lie \emph{below} this gentle downward-sloping line.  Intuitively,
+    we require a \emph{sufficient} decrease --- not just any decrease.
+  \end{alertblock}
+
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
-      \textbf{Idea:} Start with a large $\alpha$ and reduce it until the
-      \emph{sufficient decrease condition} (Armijo, first Wolfe) is met:
-      \[
-        f(\bx + \alpha\bd) \le f(\bx) + \beta\,\alpha\,\grad f(\bx)^{\top}\bd
-      \]
-      \begin{itemize}
-        \item $\beta \in (0,1)$, typically $10^{-4}$.
-        \item Each iteration: $\alpha \leftarrow p\,\alpha$, $p\in(0,1)$,
-              typically $p=0.5$.
-        \item Guaranteed to terminate if $\bd$ is a descent direction.
-        \item Much cheaper than exact line search.
-      \end{itemize}
+      \textbf{The backtracking algorithm} starts with a large trial step
+      $\alpha$ (often $\alpha = 1$) and repeatedly reduces it by a
+      factor $p \in (0,1)$ (p, the reduction factor, typically $p = 0.5$)
+      until the Armijo condition is satisfied.
+
+      \begin{block}{Backtracking Algorithm}
+        \begin{enumerate}
+          \item Compute $y = f(\bx)$ and $\bg = \grad f(\bx)$.
+          \item \textbf{While} $f(\bx + \alpha\bd) > y + \beta\alpha(\bg^{\top}\bd)$:
+                \[ \alpha \;\leftarrow\; p\,\alpha. \]
+          \item Return $\alpha$.
+        \end{enumerate}
+      \end{block}
+
+      The loop terminates because $\bd$ is a descent direction
+      ($\bg^{\top}\bd < 0$), so for small enough $\alpha$ the condition
+      must eventually be met.
     \end{column}
     \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_sufficient_decrease.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
-\begin{frame}{Backtracking on Rosenbrock}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{Numerical Example: Backtracking Line Search (Example 4.2)}
+
+  Let us trace through the backtracking algorithm step by step on a
+  concrete example so there is no ambiguity about how the computation
+  proceeds.
+
+  \begin{block}{Setup}
+    \begin{itemize}
+      \item Objective: $f(x_1, x_2) = x_1^2 + x_1 x_2 + x_2^2$.
+      \item Current point: $\bx = [1, 2]^{\top}$.
+      \item Descent direction: $\bd = [-1, -1]^{\top}$.
+      \item Parameters: $\alpha_{\max} = 10$, reduction factor $p = 0.5$,
+            Armijo parameter $\beta = 10^{-4}$.
+    \end{itemize}
+  \end{block}
+
+  First, compute the quantities that stay constant throughout the search:
+  \begin{align*}
+    f(\bx) &= 1^2 + 1\cdot 2 + 2^2 = 1 + 2 + 4 = 7, \\
+    \grad f(\bx) &= [2x_1 + x_2,\; x_1 + 2x_2]^{\top}
+                  = [2\cdot1+2,\; 1+2\cdot2]^{\top}
+                  = [4, 5]^{\top}, \\
+    \bg^{\top}\bd &= [4, 5]\cdot[-1,-1] = -4 - 5 = -9.
+  \end{align*}
+  The threshold at step size $\alpha$ is:
+  \[
+    y + \beta\alpha(\bg^{\top}\bd)
+    = 7 + 10^{-4}\cdot\alpha\cdot(-9)
+    = 7 - 0.0009\alpha.
+  \]
+
+  \framebreak
+
+  \begin{exampleblock}{Iteration 1: $\alpha = 10$}
+    \begin{align*}
+      \bx + \alpha\bd &= [1,2] + 10\cdot[-1,-1] = [-9,-8], \\
+      f([-9,-8]) &= 81 + 72 + 64 = 217, \\
+      \text{Threshold} &= 7 - 0.009 = 6.991.\\
+      217 &> 6.991 \quad \Rightarrow \quad \text{FAIL.} \quad \alpha \leftarrow 5.
+    \end{align*}
+  \end{exampleblock}
+
+  \begin{exampleblock}{Iteration 2: $\alpha = 5$}
+    \begin{align*}
+      \bx + \alpha\bd &= [1,2] + 5\cdot[-1,-1] = [-4,-3], \\
+      f([-4,-3]) &= 16 + 12 + 9 = 37, \\
+      \text{Threshold} &= 7 - 0.0045 = 6.9955.\\
+      37 &> 6.9955 \quad \Rightarrow \quad \text{FAIL.} \quad \alpha \leftarrow 2.5.
+    \end{align*}
+  \end{exampleblock}
+
+  \begin{exampleblock}{Iteration 3: $\alpha = 2.5$}
+    \begin{align*}
+      \bx + \alpha\bd &= [1,2] + 2.5\cdot[-1,-1] = [-1.5,-0.5], \\
+      f([-1.5,-0.5]) &= 2.25 + 0.75 + 0.25 = 3.25, \\
+      \text{Threshold} &= 7 - 0.00225 = 6.99775.\\
+      3.25 &\le 6.998 \quad \Rightarrow \quad \textbf{ACCEPT.}\quad \alpha^* = 2.5.
+    \end{align*}
+  \end{exampleblock}
+
+  \begin{alertblock}{Summary}
+    After only 3 halvings the algorithm accepts $\alpha^* = 2.5$,
+    moving the design point from $[1,2]$ to $[-1.5,-0.5]$ and reducing
+    $f$ from 7 to 3.25.  Three function evaluations --- much cheaper
+    than a full 1-D optimisation.
+  \end{alertblock}
+
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{Backtracking on the Rosenbrock Function}
+
+  The Rosenbrock function is a classic test problem with a curved,
+  narrow valley that is hard to navigate.  The figure below shows the
+  path traced by backtracking line search with steepest descent on this
+  function, illustrating how the algorithm follows the valley floor.
+
   \begin{columns}[T]
     \begin{column}{0.48\textwidth}
-      \textbf{Algorithm 4.3: Backtracking Line Search}
-      \begin{enumerate}
-        \item $y, \bg \leftarrow f(\bx),\; \grad f(\bx)$
-        \item \textbf{while} $f(\bx + \alpha\bd) > y + \beta\alpha(\bg^{\top}\bd)$:
-              \begin{itemize}
-                \item $\alpha \leftarrow p\,\alpha$
-              \end{itemize}
-        \item \textbf{return} $\alpha$
-      \end{enumerate}
-      \vspace{0.5em}
-      \textbf{Parameters:}
-      \begin{tabular}{ll}
-        $\alpha$ & initial step (max step) \\
-        $p$      & reduction factor (0.5) \\
-        $\beta$  & Armijo parameter ($10^{-4}$) \\
-      \end{tabular}
+      \begin{block}{Algorithm 4.3 Parameters}
+        \begin{tabular}{ll}
+          Symbol      & Meaning \\
+          \midrule
+          $\alpha$    & initial (maximum) step size \\
+          $p$         & reduction factor, e.g.\ $p=0.5$ \\
+          $\beta$     & Armijo parameter, e.g.\ $\beta=10^{-4}$ \\
+        \end{tabular}
+      \end{block}
+      \medskip
+      At each outer iteration the algorithm evaluates $f$ at
+      $\bx + \alpha\bd$, $\bx + p\alpha\bd$, $\bx + p^2\alpha\bd$,
+      and so on, until the Armijo condition is satisfied.
+      In the best case only one evaluation is needed; in the worst
+      case a few dozen.
     \end{column}
     \begin{column}{0.48\textwidth}
       \includegraphics[width=\linewidth]{fig_backtracking_rosenbrock.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
-\begin{frame}[fragile]{Backtracking Line Search — Python}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[fragile]{Backtracking Line Search in Python}
+
 \begin{lstlisting}[style=pycode]
 import numpy as np
 
-def backtracking_line_search(f, grad_f, x, d, alpha=1.0,
-                              p=0.5, beta=1e-4):
+def backtracking_line_search(f, grad_f, x, d,
+                              alpha=1.0, p=0.5, beta=1e-4):
     """
-    Backtracking line search (Armijo condition).
-    Reduces alpha by factor p until sufficient decrease is met.
+    Backtracking line search enforcing the Armijo condition.
+    Reduces alpha by factor p until sufficient decrease is satisfied.
+
+    Parameters
+    ----------
+    f       : objective function
+    grad_f  : gradient function
+    x       : current design point
+    d       : descent direction (must satisfy grad_f(x) @ d < 0)
+    alpha   : initial (maximum) step size (default 1.0)
+    p       : reduction factor in (0, 1) (default 0.5)
+    beta    : Armijo parameter in (0, 1) (default 1e-4)
     """
-    y = f(x)
-    g = grad_f(x)
-    slope = g @ d           # directional derivative (must be < 0)
+    y     = f(x)               # current function value
+    g     = grad_f(x)
+    slope = g @ d              # directional derivative; must be < 0
+
     while f(x + alpha * d) > y + beta * alpha * slope:
-        alpha *= p
+        alpha *= p             # shrink step by factor p
+
     return alpha
 
-# ── Numerical example (Example 4.2 from book) ──────────────
-# f(x1,x2) = x1^2 + x1*x2 + x2^2, x=[1,2], d=[-1,-1]
+# ── Reproduce the Example 4.2 trace from the slides ────────
 def f(x):      return x[0]**2 + x[0]*x[1] + x[1]**2
 def grad_f(x): return np.array([2*x[0]+x[1], x[0]+2*x[1]])
 
-x = np.array([1.0, 2.0])   # f(x) = 1 + 2 + 4 = 7
-d = np.array([-1.0, -1.0]) # descent direction
-g = grad_f(x)               # g = [4, 5]
+x = np.array([1.0, 2.0])
+d = np.array([-1.0, -1.0])
 
-# Iteration 1: alpha=10  ->  f([1,2]+10[-1,-1]) = f([-9,-8]) = 217 > 6.991
-# Iteration 2: alpha=5   ->  f([-4,-3])  = 37   > 6.996
-# Iteration 3: alpha=2.5 ->  f([-1.5,-0.5]) = 3.25 <= 6.998  *accept*
 alpha = backtracking_line_search(f, grad_f, x, d, alpha=10.0, beta=1e-4)
-print(f"Accepted alpha = {alpha}")   # => 2.5
-print(f"f(x + alpha*d) = {f(x + alpha*d):.4f}")
+print(f"Accepted alpha = {alpha}")          # => 2.5
+print(f"New point:     {x + alpha * d}")   # => [-1.5, -0.5]
+print(f"f(new point):  {f(x + alpha*d):.4f}")  # => 3.25
 \end{lstlisting}
+
 \end{frame}
 
 % ============================================================
-\section{4.4 Approximate Line Search — Wolfe Conditions}
+\section{4.4 Approximate Line Search --- Wolfe Conditions}
 % ============================================================
 
-\begin{frame}{Why Approximate Line Search?}
-  \begin{itemize}
-    \item Exact line search is too costly in practice.
-    \item \textbf{Backtracking} only enforces \emph{sufficient decrease} —
-          it may accept very small steps.
-    \item We want conditions that guarantee the step is:
-          \begin{enumerate}
-            \item Not too small (\emph{sufficient decrease}).
-            \item Not too large (\emph{curvature condition}).
-          \end{enumerate}
-  \end{itemize}
-  \vspace{0.4em}
-  \begin{block}{Wolfe Conditions (sufficient decrease + curvature)}
-    \textbf{First Wolfe (Armijo):}
+\begin{frame}[allowframebreaks]{Why Backtracking Alone Is Not Enough}
+
+  The Armijo (backtracking) condition prevents steps that are too
+  \emph{large} --- it ensures we decrease $f$ by at least a fraction of
+  the predicted decrease.  However, it places \emph{no lower bound} on
+  the step size: a step of $\alpha = 10^{-100}$ would satisfy the Armijo
+  condition trivially (any tiny decrease counts), yet it would make no
+  practical progress.
+
+  We therefore need a \emph{second condition} that prevents steps from
+  being too small.  The \emph{Wolfe conditions} combine the Armijo
+  condition with a curvature condition to give a pair of requirements
+  that together guarantee the step is both ``not too big'' and ``not too
+  small''.
+
+  \begin{block}{The Two Wolfe Conditions}
+    \textbf{First Wolfe Condition (Armijo / sufficient decrease):}
     \[
-      f(\bx + \alpha\bd) \le f(\bx) + \beta\alpha\,\grad f(\bx)^{\top}\bd
+      f(\bx + \alpha\bd)
+      \;\le\;
+      f(\bx) + \beta\,\alpha\,\grad f(\bx)^{\top}\bd.
     \]
-    \textbf{Second Wolfe (curvature):}
+    \textbf{Second Wolfe Condition (curvature condition):}
     \[
-      \grad f(\bx + \alpha\bd)^{\top}\bd \ge \sigma\,\grad f(\bx)^{\top}\bd
+      \grad f(\bx + \alpha\bd)^{\top}\bd
+      \;\ge\;
+      \sigma\,\grad f(\bx)^{\top}\bd.
     \]
-    with $0 < \beta < \sigma < 1$; typically $\beta=10^{-4}$, $\sigma=0.9$.
+    The parameters satisfy $0 < \beta < \sigma < 1$, with typical
+    values $\beta = 10^{-4}$ and $\sigma = 0.9$.
   \end{block}
-\end{frame}
 
-\begin{frame}{Strong Wolfe Conditions}
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\sigma$ (sigma, the eighteenth Greek letter, pronounced
+            ``sig-ma'') --- the curvature parameter; controls how tight
+            the curvature condition is.
+      \item $\grad f(\bx + \alpha\bd)^{\top}\bd$ --- the directional
+            derivative at the \emph{new} point $\bx + \alpha\bd$ along
+            direction $\bd$; it is the slope of $\phi(\alpha)$ at the
+            proposed step.
+      \item $\grad f(\bx)^{\top}\bd$ --- the directional derivative at
+            the \emph{current} point; it is the initial slope (negative,
+            since $\bd$ is a descent direction).
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{How to Read the Curvature Condition}
+    The second Wolfe condition says that the slope of $\phi(\alpha)$
+    at the accepted step must be \emph{less negative} than $\sigma$
+    times the initial slope.  In other words, the function must have
+    ``flattened out'' somewhat by the time we stop.  If the slope is
+    still very steep (very negative) at the accepted point, the step is
+    too short and we could profitably have gone further.  Setting $\sigma$
+    close to 1 is lenient (allows nearly any step); setting $\sigma$
+    close to $\beta$ is strict (nearly exact line search).
+  \end{alertblock}
+
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
-      The \emph{strong Wolfe conditions} add an absolute value to the curvature:
-      \begin{enumerate}
-        \item \textbf{Sufficient decrease:}
-              $f(\bx+\alpha\bd) \le f(\bx) + \beta\alpha\,\grad f(\bx)^{\top}\bd$
-        \item \textbf{Strong curvature:}
-              $\left|\grad f(\bx+\alpha\bd)^{\top}\bd\right| \le
-               \sigma\left|\grad f(\bx)^{\top}\bd\right|$
-      \end{enumerate}
-      \vspace{0.4em}
-      \textbf{Why strong?}
-      \begin{itemize}
-        \item Prevents steps near a local max of $\phi(\alpha)$.
-        \item Required by conjugate gradient and quasi-Newton methods.
-        \item $\sigma$ close to 1: loose curvature (backtracking-like).
-        \item $\sigma$ close to $\beta$: tight, near-exact line search.
-      \end{itemize}
+      \begin{block}{Strong Wolfe Conditions}
+        The \emph{strong} version of the curvature condition uses an
+        absolute value:
+        \[
+          \left|\grad f(\bx+\alpha\bd)^{\top}\bd\right|
+          \;\le\;
+          \sigma\left|\grad f(\bx)^{\top}\bd\right|.
+        \]
+        This prevents accepting a step where the slope has merely
+        changed sign (passed through a local maximum of $\phi$),
+        which the weak condition would allow.  The strong Wolfe
+        conditions are required by conjugate gradient and quasi-Newton
+        methods (e.g.\ L-BFGS) to guarantee convergence.
+      \end{block}
     \end{column}
     \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_curvature_condition.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
-\begin{frame}{Strong Backtracking Algorithm}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{The Strong Backtracking Algorithm}
+
+  Finding a step that satisfies the \emph{strong} Wolfe conditions
+  requires a more sophisticated procedure than simple backtracking.
+  The standard approach proceeds in two phases.
+
+  \begin{block}{Phase 1 --- Bracket Phase: Find a Bracketing Interval}
+    Start from $\alpha = 0$ and double the trial step until one of
+    three \emph{bracketing conditions} is triggered, which guarantees
+    that a qualifying step exists somewhere in the bracket
+    $[\alpha_{\rm prev},\, \alpha]$:
+    \begin{enumerate}
+      \item $f(\bx+\alpha\bd) > f(\bx) + \beta\alpha\,g_0$
+            (Armijo violated --- overshot).
+      \item $f(\bx+\alpha\bd) \ge f_{\rm prev}$
+            (function increased --- passed a local minimum).
+      \item $\grad f(\bx+\alpha\bd)^{\top}\bd \ge 0$
+            (gradient changed sign --- passed through a minimum of
+            $\phi$).
+    \end{enumerate}
+    Here $g_0 = \grad f(\bx)^{\top}\bd$ (the initial directional
+    derivative, which is negative) and $f_{\rm prev}$ is the function
+    value at the previous trial step.
+  \end{block}
+
+  \begin{block}{Phase 2 --- Zoom Phase: Narrow Down the Bracket}
+    With the bracket $[\alpha_{\rm lo}, \alpha_{\rm hi}]$ in hand,
+    bisect the interval repeatedly.  At each bisection step, the
+    bracket is updated so that it always contains a qualifying step.
+    This is guaranteed to terminate with a step satisfying the strong
+    Wolfe conditions.
+  \end{block}
+
   \begin{columns}[T]
-    \begin{column}{0.52\textwidth}
-      \textbf{Algorithm 4.4: Strong Backtracking}
-
-      \textbf{Bracket phase:} Find an interval $[\alpha_{\rm lo},\alpha_{\rm hi}]$
-      guaranteed to contain a strong-Wolfe step:
-      \begin{itemize}
-        \item If $f(\bx+\alpha\bd) > f(\bx) + \beta\alpha g_0$
-              or $f(\bx+\alpha\bd) \ge f_{\rm prev}$:
-              bracket $[\alpha_{\rm prev}, \alpha]$, go to zoom.
-        \item Compute $g = \grad f(\bx+\alpha\bd)^{\top}\bd$.
-              If $|g| \le {-\sigma g_0}$: \textbf{return} $\alpha$.
-        \item If $g \ge 0$: bracket $[\alpha, \alpha_{\rm prev}]$, zoom.
-        \item Else: $\alpha_{\rm prev}\leftarrow\alpha$, $\alpha\leftarrow 2\alpha$.
-      \end{itemize}
-
-      \textbf{Zoom phase:} Bisect $[\alpha_{\rm lo},\alpha_{\rm hi}]$ until
-      strong Wolfe conditions are satisfied.
-    \end{column}
-    \begin{column}{0.45\textwidth}
+    \begin{column}{0.55\textwidth}
       \includegraphics[width=\linewidth]{fig_strong_backtracking.pdf}
-      \vspace{0.2em}
+    \end{column}
+    \begin{column}{0.42\textwidth}
       \small
-      Left: bracket phase expands $\alpha$ until a bracketing condition
-      is triggered. Right: zoom phase bisects the bracket.
+      The left panel shows the bracket phase doubling $\alpha$ until a
+      bracketing condition fires.  The right panel shows the zoom phase
+      bisecting the bracket.  Each bisection halves the interval,
+      giving rapid convergence to a qualifying step.
     \end{column}
   \end{columns}
+
+  \framebreak
+
+  \begin{block}{Bracketing Guarantee (Theorem)}
+    An interval $[0, a]$ is guaranteed to contain a step satisfying
+    the strong Wolfe conditions whenever any of the following holds:
+    \begin{enumerate}
+      \item $f(\bx+a\bd) \ge f(\bx)$ \quad (function has not decreased).
+      \item $f(\bx+a\bd) > f(\bx) + \beta\,a\,\nabla_{\bd}f(\bx)$
+            \quad (Armijo violated).
+      \item $\nabla_{\bd}f(\bx+a\bd) \ge 0$
+            \quad (slope has become non-negative).
+    \end{enumerate}
+    This theorem underpins the correctness of the strong backtracking
+    algorithm: as soon as any of these conditions fires, we know a
+    good step must lie in the current bracket.
+  \end{block}
+
+  \begin{alertblock}{Key Insight}
+    The Wolfe conditions are the gold standard for line searches in
+    quasi-Newton methods such as BFGS and L-BFGS.  Satisfying them
+    guarantees that the Hessian approximation matrices remain positive
+    definite (so the Newton-like direction remains a descent direction),
+    a property that backtracking alone cannot guarantee.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}[fragile]{Strong Backtracking — Python}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[fragile]{Strong Backtracking Line Search in Python}
+
 \begin{lstlisting}[style=pycode]
 import numpy as np
 
-def strong_backtracking(f, grad_f, x, d, alpha=1.0, beta=1e-4, sigma=0.1):
-    """Strong backtracking line search satisfying strong Wolfe conditions."""
+def strong_backtracking(f, grad_f, x, d,
+                         alpha=1.0, beta=1e-4, sigma=0.1):
+    """Strong backtracking: finds alpha satisfying strong Wolfe conditions.
+
+    Phase 1 (bracket): expand alpha until a bracketing condition fires.
+    Phase 2 (zoom):    bisect the bracket until strong Wolfe is met.
+    """
     y0 = f(x)
-    g0 = grad_f(x) @ d          # directional derivative at alpha=0
+    g0 = grad_f(x) @ d          # initial directional derivative (< 0)
     y_prev, alpha_prev = float('nan'), 0.0
     alpha_lo = alpha_hi = float('nan')
 
-    # Bracket phase
+    # ── Phase 1: Bracket ───────────────────────────────────
     while True:
         y = f(x + alpha * d)
-        if y > y0 + beta * alpha * g0 or (not np.isnan(y_prev) and y >= y_prev):
+        # Bracketing condition: Armijo violated or function increased
+        if y > y0 + beta * alpha * g0 or \
+           (not np.isnan(y_prev) and y >= y_prev):
             alpha_lo, alpha_hi = alpha_prev, alpha
             break
         g = grad_f(x + alpha * d) @ d
-        if abs(g) <= -sigma * g0:
-            return alpha                    # strong Wolfe satisfied
-        if g >= 0:
+        if abs(g) <= -sigma * g0:    # strong Wolfe curvature satisfied
+            return alpha
+        if g >= 0:                   # slope non-negative: bracket found
             alpha_lo, alpha_hi = alpha, alpha_prev
             break
-        y_prev, alpha_prev, alpha = y, alpha, 2 * alpha
+        y_prev, alpha_prev, alpha = y, alpha, 2 * alpha  # double step
 
-    # Zoom phase (bisection)
+    # ── Phase 2: Zoom (bisection) ──────────────────────────
     y_lo = f(x + alpha_lo * d)
     while True:
-        alpha = (alpha_lo + alpha_hi) / 2.0
+        alpha = (alpha_lo + alpha_hi) / 2.0   # bisect
         y = f(x + alpha * d)
         if y > y0 + beta * alpha * g0 or y >= y_lo:
-            alpha_hi = alpha
+            alpha_hi = alpha              # upper end of bracket narrows
         else:
             g = grad_f(x + alpha * d) @ d
             if abs(g) <= -sigma * g0:
-                return alpha
+                return alpha              # strong Wolfe satisfied
             if g * (alpha_hi - alpha_lo) >= 0:
                 alpha_hi = alpha_lo
-            alpha_lo = alpha
+            alpha_lo, y_lo = alpha, y
 \end{lstlisting}
-\end{frame}
 
-\begin{frame}{Wolfe Conditions: Bracketing Guarantee}
-  \begin{columns}[T]
-    \begin{column}{0.55\textwidth}
-      An interval $[0, a]$ is \textbf{guaranteed to contain} a step
-      satisfying the strong Wolfe conditions when \emph{any} of the
-      three bracketing conditions holds:
-      \begin{enumerate}
-        \item $f(\bx+\alpha\bd) \ge f(\bx)$ \hfill (overshot)
-        \item $f(\bx+\alpha\bd) > f(\bx) + \beta\alpha\grad_{\bd}f(\bx)$
-              \hfill (violated Armijo)
-        \item $\grad_{\bd}f(\bx+\alpha\bd) \ge 0$
-              \hfill (gradient changed sign)
-      \end{enumerate}
-      \vspace{0.5em}
-      The zoom phase narrows the interval by bisection, preserving the
-      bracket invariant.
-    \end{column}
-    \begin{column}{0.42\textwidth}
-      \begin{block}{Condition Numbers (Eq.\ 4.11--4.13)}
-        \[
-          f(\bx+\alpha\bd) \ge f(\bx)
-        \]
-        \[
-          f(\bx+\alpha\bd) > f(\bx) + \beta\alpha\nabla_{\bd}f(\bx)
-        \]
-        \[
-          \nabla_{\bd}f(\bx+\alpha\bd) \ge 0
-        \]
-      \end{block}
-    \end{column}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Numerical Example: Backtracking (Example 4.2)}
-  \begin{block}{Setup}
-    $f(x_1, x_2) = x_1^2 + x_1 x_2 + x_2^2$,\quad
-    $\bx = [1,2]^{\top}$,\quad
-    $\bd = [-1,-1]^{\top}$,\quad
-    $\alpha_{\max}=10$,\quad $p=0.5$,\quad $\beta=10^{-4}$.
-  \end{block}
-
-  \begin{itemize}
-    \item $f(\bx) = 1 + 2 + 4 = 7$,\quad
-          $\bg = \grad f(\bx) = [4,5]^{\top}$
-  \end{itemize}
-
-  \begin{columns}[T]
-    \begin{column}{0.52\textwidth}
-      \textbf{Iteration 1:} $\alpha = 10$
-      \begin{align*}
-        f([1,2] + 10[-1,-1]) &= f([-9,-8]) = 217\\
-        7 + 10^{-4}\cdot10\cdot[4,5]^{\top}[-1,-1] &= 6.991\\
-        217 \le 6.991 &\;\Rightarrow\; \text{FAIL}
-      \end{align*}
-      \textbf{Iteration 2:} $\alpha = 5$
-      \begin{align*}
-        f([-4,-3]) &= 37\\
-        37 \le 6.996 &\;\Rightarrow\; \text{FAIL}
-      \end{align*}
-    \end{column}
-    \begin{column}{0.45\textwidth}
-      \textbf{Iteration 3:} $\alpha = 2.5$
-      \begin{align*}
-        f([-1.5,-0.5]) &= 3.25\\
-        3.25 \le 6.998 &\;\Rightarrow\; \textbf{ACCEPT}
-      \end{align*}
-      \vspace{0.5em}
-      Final step: $\alpha^* = 2.5$,
-      \[
-        \bx_{\rm new} = [-1.5, -0.5]
-      \]
-    \end{column}
-  \end{columns}
 \end{frame}
 
 % ============================================================
 \section{4.5 Trust Region Methods}
 % ============================================================
 
-\begin{frame}{Trust Region: Concept}
+\begin{frame}[allowframebreaks]{Trust Region: A Different Philosophy}
+
+  Line search methods first choose a direction and then determine how
+  far to step in that direction.  Trust region methods flip this
+  strategy: they choose \emph{both} the direction and the step length
+  simultaneously by solving a constrained subproblem within a local
+  region where the model is trusted to be accurate.
+
+  \begin{block}{The Core Idea}
+    At the current point $\bx^{(k)}$, build a simple (quadratic) model
+    $\hat{f}$ of the objective function, then minimise that model within
+    a ball of radius $\delta$ (delta, the fourth Greek letter, pronounced
+    ``del-ta'') centred at $\bx^{(k)}$:
+    \[
+      \hat{f}(\bx') \;\approx\;
+      f(\bx^{(k)})
+      + \grad f(\bx^{(k)})^{\top}(\bx' - \bx^{(k)})
+      + \tfrac{1}{2}(\bx' - \bx^{(k)})^{\top}\bH(\bx' - \bx^{(k)}).
+    \]
+    The ball $\{\bx' : \|\bx' - \bx^{(k)}\| \le \delta\}$ is the
+    \emph{trust region} --- the region within which we trust the model
+    to be a good approximation to $f$.
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\bx'$ (x-prime) --- the candidate next point (the variable
+            we optimise over in the subproblem).
+      \item $\hat{f}(\bx')$ (f-hat of x-prime) --- the quadratic model
+            approximating $f$ near $\bx^{(k)}$.
+      \item $\bH$ (bold H) --- the Hessian matrix (matrix of second
+            partial derivatives) of $f$ at $\bx^{(k)}$; or a
+            quasi-Newton approximation thereof.
+      \item $\delta$ (delta) --- the trust region radius; a positive
+            scalar that is adapted at each iteration.
+    \end{itemize}
+  \end{block}
+
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
-      \textbf{Idea:} Instead of choosing a \emph{direction} and then a
-      \emph{step}, simultaneously choose the step within a trusted region.
-
-      \begin{itemize}
-        \item Local quadratic model:
-              \[
-                \hat{f}(\bx') \approx f(\bx) +
-                \grad f(\bx)^{\top}(\bx'-\bx) +
-                \tfrac{1}{2}(\bx'-\bx)^{\top}\bH(\bx'-\bx)
-              \]
-        \item Solve: minimize $\hat{f}$ subject to $\|\bx'-\bx\|\le\delta$
-        \item Trust region radius $\delta$ is adapted based on how well
-              the model predicts the actual decrease.
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_trust_region.pdf}
     \end{column}
+    \begin{column}{0.42\textwidth}
+      The circle in the figure is the trust region boundary.  Inside the
+      circle the quadratic model (smooth curved surface) is a reliable
+      approximation to the true function.  The algorithm finds the
+      minimum of the model inside the circle and uses that as the next
+      iterate.
+    \end{column}
   \end{columns}
+
+  \framebreak
+
+  \begin{block}{Trust Region Subproblem (Eq.\ 4.14)}
+    \[
+      \bx^{(k+1)}
+      = \operatorname*{arg\,min}_{\bx'}
+      \Bigl[
+        f(\bx^{(k)})
+        + \grad f(\bx^{(k)})^{\top}(\bx'-\bx^{(k)})
+        + \tfrac{1}{2}(\bx'-\bx^{(k)})^{\top}\bH(\bx'-\bx^{(k)})
+      \Bigr]
+      \quad
+      \text{subject to } \|\bx' - \bx^{(k)}\| \le \delta.
+    \]
+    This is a \emph{quadratic program with a quadratic constraint} (a
+    spherical constraint).  It can be solved efficiently in $O(n^3)$
+    time using eigenvalue methods or iterative solvers.
+  \end{block}
+
+  \begin{alertblock}{Contrast with Line Search}
+    Line search: pick direction $\bd$, then optimise $f(\bx + \alpha\bd)$
+    over $\alpha$.  Trust region: pick the step $\bx' - \bx^{(k)}$ that
+    minimises the model, subject to the step length not exceeding $\delta$.
+    The direction and step size emerge \emph{together} from the
+    subproblem.  When $\delta$ is large the unconstrained Newton step
+    may be taken; when $\delta$ is small the gradient descent step is
+    taken.  The trust region radius thus interpolates between gradient
+    descent and Newton's method automatically.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{Trust Region: Improvement Ratio}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{Adapting the Trust Region Radius}
+
+  The trust region radius $\delta$ must be managed carefully: too small
+  and we make tiny steps; too large and the quadratic model becomes
+  inaccurate.  The algorithm adapts $\delta$ by measuring how well the
+  model predicted the actual decrease.
+
+  \begin{block}{Improvement Ratio $\eta$ (Eq.\ 4.15)}
+    \[
+      \eta \;=\;
+      \frac{f(\bx^{(k)}) - f(\bx')}
+           {f(\bx^{(k)}) - \hat{f}(\bx')}
+      \;=\;
+      \frac{\Delta f_{\rm actual}}{\Delta f_{\rm predicted}}.
+    \]
+    This ratio (eta, the seventh Greek letter, pronounced ``ay-ta'')
+    compares the actual decrease in $f$ to the decrease predicted by
+    the quadratic model.
+  \end{block}
+
+  \begin{block}{Notation}
+    \begin{itemize}
+      \item $\eta$ (eta) --- the improvement ratio; a dimensionless
+            number comparing model quality to actual progress.
+      \item $f(\bx^{(k)}) - f(\bx')$ --- the \emph{actual} decrease in
+            the objective function; positive means the step helped.
+      \item $f(\bx^{(k)}) - \hat{f}(\bx')$ --- the \emph{predicted}
+            decrease according to the quadratic model; this is always
+            positive (the model always predicts improvement from its
+            own minimum).
+    \end{itemize}
+  \end{block}
+
+  \framebreak
+
+  \begin{alertblock}{How to Read the Improvement Ratio}
+    \begin{itemize}
+      \item $\eta \approx 1$: the model is excellent; the actual and
+            predicted decreases nearly match.  Expand the trust region
+            ($\delta \leftarrow \gamma_2 \delta$, gamma-two times
+            delta) so future steps can be bolder.
+      \item $\eta_1 \le \eta \le \eta_2$: the model is adequate; keep
+            $\delta$ unchanged.
+      \item $\eta < \eta_1$: the model is poor (or the actual decrease
+            was far less than predicted).  Shrink the trust region
+            ($\delta \leftarrow \gamma_1 \delta$) and reject the step.
+      \item $\eta < 0$: the function actually \emph{increased} (bad
+            step).  Reject the step and shrink $\delta$ substantially.
+    \end{itemize}
+  \end{alertblock}
+
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
-      \begin{block}{Improvement Ratio (Eq.\ 4.15)}
-        \[
-          \eta = \frac{f(\bx) - f(\bx')}
-                      {f(\bx) - \hat{f}(\bx')}
-               = \frac{\Delta f_{\rm actual}}
-                      {\Delta f_{\rm predicted}}
-        \]
-        \begin{tabular}{ll}
-          $\bx'$ & candidate next point \\
-          $\hat{f}(\bx')$ & quadratic model prediction \\
-        \end{tabular}
+      \begin{block}{Trust Region Update Rules}
+        Typical parameters: $\eta_1 = 0.25$, $\eta_2 = 0.75$,
+        $\gamma_1 = 0.5$, $\gamma_2 = 2.0$.
+        \begin{itemize}
+          \item If $\eta < \eta_1$: \textbf{reject} the step; set
+                $\delta \leftarrow \gamma_1 \delta$.
+          \item If $\eta_1 \le \eta \le \eta_2$: \textbf{accept} the
+                step; keep $\delta$.
+          \item If $\eta > \eta_2$: \textbf{accept} the step; set
+                $\delta \leftarrow \gamma_2 \delta$.
+        \end{itemize}
       \end{block}
-      \vspace{0.5em}
-      \textbf{Trust region update rules:}
-      \begin{itemize}
-        \item $\eta < \eta_1$ (bad model): shrink $\delta \leftarrow \gamma_1\delta$
-        \item $\eta_1 \le \eta \le \eta_2$: keep $\delta$
-        \item $\eta > \eta_2$ (good model): expand $\delta \leftarrow \gamma_2\delta$
-      \end{itemize}
-      Typical: $\eta_1=0.25$, $\eta_2=0.75$, $\gamma_1=0.5$, $\gamma_2=2$.
     \end{column}
     \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_trust_region_ratio.pdf}
     \end{column}
   \end{columns}
-\end{frame}
 
-\begin{frame}{Trust Region Subproblem}
-  \begin{block}{Circular Trust Region Subproblem (Eq.\ 4.14)}
+  \framebreak
+
+  \begin{block}{Elliptical Trust Region (Eq.\ 4.16)}
+    The circular trust region can be generalised to an \emph{elliptical}
+    trust region:
     \[
-      \bx^{(k+1)} = \operatorname*{arg\,min}_{\bx'}
-      \left[ f(\bx^{(k)}) + \grad f(\bx^{(k)})^{\top}(\bx'-\bx^{(k)})
-      + \tfrac{1}{2}(\bx'-\bx^{(k)})^{\top}\bH(\bx'-\bx^{(k)}) \right]
+      \|\bx - \bx_0\|_{\bE}^2
+      \;=\;
+      (\bx - \bx_0)^{\top}\bE\,(\bx - \bx_0)
+      \;\le\; 1,
     \]
-    subject to $\|\bx' - \bx^{(k)}\| \le \delta$
+    where $\bE$ (bold E) is a positive-definite matrix that defines the
+    shape of the ellipse.  By elongating the trust region along
+    directions of high curvature confidence, an elliptical region can
+    model the actual function more accurately than a sphere.
   \end{block}
 
-  \vspace{0.5em}
   \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \textbf{Elliptical trust region (Eq.\ 4.16):}
-      \[
-        \|\bx - \bx_0\|_{\bE}^2 = (\bx-\bx_0)^{\top}\bE(\bx-\bx_0) \le 1
-      \]
-      The matrix $\bE$ elongates the region along directions of
-      higher confidence; adapts with each descent step.
+    \begin{column}{0.55\textwidth}
+      \begin{block}{Notation}
+        \begin{itemize}
+          \item $\bE$ --- the ellipse-shaping matrix; a positive-definite
+                symmetric matrix.  When $\bE = \mathbf{I}$ (the identity
+                matrix) the ellipse is a circle.
+          \item $\|\bx\|_{\bE}^2 = \bx^{\top}\bE\bx$ --- the
+                $\bE$-weighted norm (``energy norm''); it measures length
+                in a geometry distorted by $\bE$.
+        \end{itemize}
+      \end{block}
     \end{column}
-    \begin{column}{0.48\textwidth}
+    \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_elliptical_trust_region.pdf}
     \end{column}
   \end{columns}
+
 \end{frame}
 
-\begin{frame}[fragile]{Trust Region Descent — Python (SciPy)}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[fragile]{Trust Region Descent in Python (using SciPy)}
+
 \begin{lstlisting}[style=pycode]
 import numpy as np
 from scipy.optimize import minimize
 
-def trust_region_step(grad, hess, x, delta):
-    """Solve the trust region subproblem (circular)."""
-    n = len(x)
-    def model(s):
-        return grad @ s + 0.5 * s @ hess @ s
-    def model_grad(s):
-        return grad + hess @ s
+def trust_region_step(grad, hess, delta):
+    """
+    Solve the circular trust region subproblem:
+       min  grad @ s + 0.5 * s @ hess @ s
+       s.t. ||s|| <= delta
+    Returns the step vector s.
+    """
+    n = len(grad)
+    def model(s):       return grad @ s + 0.5 * s @ hess @ s
+    def model_grad(s):  return grad + hess @ s
     constraints = {'type': 'ineq',
                    'fun': lambda s: delta - np.linalg.norm(s)}
-    s0 = np.zeros(n)
-    res = minimize(model, s0, jac=model_grad,
+    res = minimize(model, np.zeros(n), jac=model_grad,
                    constraints=constraints, method='SLSQP')
     return res.x
 
 def trust_region_descent(f, grad_f, hess_f, x0, delta=1.0,
                           eta1=0.25, eta2=0.75,
                           gamma1=0.5, gamma2=2.0, max_iter=100):
+    """Trust region method with adaptive radius delta."""
     x = x0.copy().astype(float)
     for _ in range(max_iter):
-        g = grad_f(x);  H = hess_f(x)
-        s = trust_region_step(g, H, x, delta)
-        rho = (f(x) - f(x+s)) / (-(g @ s + 0.5 * s @ H @ s))
-        if rho > eta1:
-            x = x + s          # accept step
-        delta = gamma1*delta if rho < eta1 else (gamma2*delta if rho > eta2 else delta)
-        if np.linalg.norm(g) < 1e-6: break
+        g = grad_f(x)
+        H = hess_f(x)
+        if np.linalg.norm(g) < 1e-6:
+            break
+        s = trust_region_step(g, H, delta)       # solve subproblem
+        # Improvement ratio eta = actual_decrease / predicted_decrease
+        actual    = f(x) - f(x + s)
+        predicted = -(g @ s + 0.5 * s @ H @ s)  # model decrease (>0)
+        eta = actual / (predicted + 1e-14)
+        if eta > eta1:
+            x = x + s                    # accept step
+        # Adapt trust region radius
+        if eta < eta1:
+            delta *= gamma1              # poor model: shrink
+        elif eta > eta2:
+            delta *= gamma2              # good model: expand
     return x
 \end{lstlisting}
+
 \end{frame}
 
 % ============================================================
 \section{4.6 Termination Conditions}
 % ============================================================
 
-\begin{frame}{Termination Conditions}
+\begin{frame}[allowframebreaks]{When Should We Stop Iterating?}
+
+  Every iterative algorithm needs a stopping criterion.  Stopping too
+  early wastes the accuracy we could have achieved; stopping too late
+  wastes computation (and sometimes causes numerical instability as
+  we try to squeeze out the last few decimal places).
+
+  There are four standard termination conditions for descent methods.
+  In practice, good implementations check \emph{all four} and stop as
+  soon as \emph{any} of them is triggered.
+
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
-      When should we stop iterating? Four common criteria:
-      \vspace{0.5em}
-      \begin{enumerate}
-        \item \textbf{Maximum iterations (Eq.\ 4.17):}
-              \[ k > k_{\max} \]
-        \item \textbf{Absolute improvement (Eq.\ 4.18):}
-              \[ f(\bx^{(k)}) - f(\bx^{(k+1)}) < \epsilon_a \]
-        \item \textbf{Relative improvement (Eq.\ 4.19):}
-              \[ f(\bx^{(k)}) - f(\bx^{(k+1)}) < \epsilon_r \left|f(\bx^{(k)})\right| \]
-        \item \textbf{Gradient magnitude (Eq.\ 4.20):}
-              \[ \|\grad f(\bx^{(k+1)})\| < \epsilon_g \]
-      \end{enumerate}
+      \begin{block}{Condition 1: Maximum Iterations (Eq.\ 4.17)}
+        \[
+          k \;>\; k_{\max}.
+        \]
+        Here $k$ (k) is the current iteration number and $k_{\max}$
+        (k-sub-max) is a user-specified upper limit, e.g.\
+        $k_{\max} = 10\,000$.  This is a \emph{safety net}: the
+        algorithm always terminates in finite time regardless of
+        whether it has converged.
+      \end{block}
+
+      \begin{block}{Condition 2: Absolute Improvement (Eq.\ 4.18)}
+        \[
+          f(\bx^{(k)}) - f(\bx^{(k+1)}) \;<\; \epsilon_a.
+        \]
+        Here $\epsilon_a$ (epsilon sub a, epsilon pronounced
+        ``ep-si-lon'') is a small positive threshold, e.g.\
+        $\epsilon_a = 10^{-8}$.  The condition fires when the function
+        value barely changes from one iteration to the next, suggesting
+        we are near a minimum.
+      \end{block}
     \end{column}
     \begin{column}{0.42\textwidth}
       \includegraphics[width=\linewidth]{fig_termination.pdf}
     \end{column}
   \end{columns}
+
+  \framebreak
+
+  \begin{block}{Condition 3: Relative Improvement (Eq.\ 4.19)}
+    \[
+      f(\bx^{(k)}) - f(\bx^{(k+1)})
+      \;<\;
+      \epsilon_r \left|f(\bx^{(k)})\right|.
+    \]
+    Here $\epsilon_r$ (epsilon sub r) is the relative tolerance,
+    e.g.\ $\epsilon_r = 10^{-6}$.  The condition fires when the
+    improvement is small \emph{relative to the current function value}.
+    This is important when $f$ takes very large values: an absolute
+    improvement of $10^{-8}$ on a function with value $10^6$ may
+    well be worth continuing.  The relative criterion is
+    \emph{scale-invariant}: it automatically adapts to the magnitude
+    of $f$.
+  \end{block}
+
+  \begin{block}{Condition 4: Gradient Magnitude (Eq.\ 4.20)}
+    \[
+      \norm{\grad f(\bx^{(k+1)})} \;<\; \epsilon_g.
+    \]
+    Here $\epsilon_g$ (epsilon sub g) is the gradient tolerance, e.g.\
+    $\epsilon_g = 10^{-6}$, and $\norm{\cdot}$ denotes the Euclidean
+    norm (length of a vector).  This condition is the most theoretically
+    principled: at a local minimum the gradient is exactly zero, so a
+    small gradient is direct evidence of convergence.
+  \end{block}
+
+  \begin{alertblock}{How to Read the Gradient Condition}
+    The gradient $\grad f(\bx)$ is the slope of the surface.  When the
+    slope is nearly zero the surface is nearly flat, meaning we are
+    near a critical point (possibly a minimum, a maximum, or a saddle
+    point).  Combined with the fact that $f$ has been decreasing at
+    each step, a small gradient strongly suggests we have reached a
+    local minimum.
+  \end{alertblock}
+
+  \framebreak
+
+  \begin{block}{Why Multiple Conditions?}
+    Each individual condition has a failure mode:
+    \begin{itemize}
+      \item \emph{Max iterations only:} may stop too early (before
+            convergence) or too late (after convergence, wasting time).
+      \item \emph{Gradient only:} fails on flat functions or very
+            slowly converging sequences where $\|\grad f\|$ stays
+            above $\epsilon_g$ for a very long time.
+      \item \emph{Absolute improvement only:} fails when $f$ is very
+            large (a tiny relative change gives a large absolute change)
+            or when the algorithm makes slow but steady progress.
+      \item \emph{Relative improvement only:} can terminate too early
+            when $f$ is near zero (any improvement looks small relative
+            to a tiny value).
+    \end{itemize}
+    Using all four conditions simultaneously handles all failure modes.
+    A robust implementation typically uses: gradient + relative improvement
+    + max iterations as the primary safety net.
+  \end{block}
+
+  \begin{block}{Typical Parameter Values}
+    \centering
+    \begin{tabular}{lll}
+      \toprule
+      Condition        & Symbol        & Typical value \\
+      \midrule
+      Max iterations   & $k_{\max}$    & $10^3$--$10^5$ \\
+      Abs.\ improvement & $\epsilon_a$ & $10^{-8}$ \\
+      Rel.\ improvement & $\epsilon_r$ & $10^{-6}$ \\
+      Gradient norm    & $\epsilon_g$  & $10^{-6}$ \\
+      \bottomrule
+    \end{tabular}
+  \end{block}
+
 \end{frame}
 
-\begin{frame}{Why Use Multiple Termination Conditions?}
-  \begin{columns}[T]
-    \begin{column}{0.55\textwidth}
-      \textbf{Single condition is fragile:}
-      \begin{itemize}
-        \item \emph{Max iterations only}: may stop too early or too late.
-        \item \emph{Gradient only}: may not converge if $f$ is flat.
-        \item \emph{Abs.\ improvement only}: may stall on slow but
-              non-zero progress.
-      \end{itemize}
-      \vspace{0.5em}
-      \textbf{Best practice:} combine at least two:
-      \begin{itemize}
-        \item Gradient + max iterations (safety net).
-        \item Add relative improvement for scale-invariance.
-      \end{itemize}
-      \vspace{0.5em}
-      \textbf{Random restarts:} if multiple local minima are likely,
-      restart from randomly chosen initial points after each convergence.
-    \end{column}
-    \begin{column}{0.42\textwidth}
-      \begin{block}{Typical Tolerances}
-        \centering
-        \begin{tabular}{lll}
-          \toprule
-          Condition & Symbol & Typical value \\
-          \midrule
-          Max iters     & $k_{\max}$ & $10^3$--$10^5$ \\
-          Abs.\ improv. & $\epsilon_a$ & $10^{-8}$ \\
-          Rel.\ improv. & $\epsilon_r$ & $10^{-6}$ \\
-          Gradient      & $\epsilon_g$ & $10^{-6}$ \\
-          \bottomrule
-        \end{tabular}
-      \end{block}
-    \end{column}
-  \end{columns}
-\end{frame}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[fragile]{Termination Conditions in Python}
 
-\begin{frame}[fragile]{Termination Conditions — Python}
 \begin{lstlisting}[style=pycode]
 import numpy as np
 
 def check_termination(x_prev, x_curr, f_prev, f_curr, grad_curr,
-                       k, k_max=10000, eps_a=1e-8,
-                       eps_r=1e-6, eps_g=1e-6):
+                       k, k_max=10000,
+                       eps_a=1e-8, eps_r=1e-6, eps_g=1e-6):
     """
-    Returns (terminated: bool, reason: str).
-    Checks all four standard termination conditions.
-    """
-    if k >= k_max:
-        return True, f"max iterations ({k_max})"
+    Check all four standard termination conditions.
 
+    Parameters
+    ----------
+    x_prev, x_curr  : design points at iterations k and k+1
+    f_prev, f_curr  : function values at those points
+    grad_curr       : gradient at x_curr
+    k               : current iteration number
+    k_max           : max iterations (safety net)
+    eps_a           : absolute improvement tolerance
+    eps_r           : relative improvement tolerance
+    eps_g           : gradient-norm tolerance
+
+    Returns
+    -------
+    (terminated: bool, reason: str)
+    """
+    # Condition 1: maximum iterations
+    if k >= k_max:
+        return True, f"max iterations ({k_max}) reached"
+
+    # Condition 2: absolute improvement
     abs_improv = f_prev - f_curr
     if abs_improv < eps_a:
-        return True, f"absolute improvement {abs_improv:.2e} < {eps_a}"
+        return True, f"abs improvement {abs_improv:.2e} < {eps_a}"
 
+    # Condition 3: relative improvement
     rel_improv = abs_improv / (abs(f_prev) + 1e-12)
     if rel_improv < eps_r:
-        return True, f"relative improvement {rel_improv:.2e} < {eps_r}"
+        return True, f"rel improvement {rel_improv:.2e} < {eps_r}"
 
+    # Condition 4: gradient magnitude
     grad_norm = np.linalg.norm(grad_curr)
     if grad_norm < eps_g:
         return True, f"gradient norm {grad_norm:.2e} < {eps_g}"
 
     return False, "continuing"
 \end{lstlisting}
+
 \end{frame}
 
 % ============================================================
 \section{4.7 Summary \& Exercises}
 % ============================================================
 
-\begin{frame}{Chapter 4 Summary}
-  \begin{itemize}
-    \item \textbf{Descent direction iteration} provides a general framework:
-          choose direction $\bd^{(k)}$ and step $\alpha^{(k)}$,
-          update $\bx^{(k+1)} = \bx^{(k)} + \alpha^{(k)}\bd^{(k)}$.
+\begin{frame}[allowframebreaks]{Chapter 4 Summary}
 
-    \item \textbf{Step factors} can be fixed, exponentially decayed,
-          polynomially decayed, or chosen by line search.
+  This chapter introduced the general framework of \emph{local descent}
+  and the key design choices involved in making it work well in practice.
+  Here is a concise recap of the main ideas.
 
-    \item \textbf{Exact line search} minimizes $f$ exactly along $\bd$
-          (costly); \textbf{backtracking} is a cheap alternative.
+  \begin{block}{Descent Direction Iteration}
+    Every method in this chapter is a special case of the four-step
+    template:
+    \[
+      \bx^{(k+1)} \;=\; \bx^{(k)} + \alpha^{(k)}\bd^{(k)},
+    \]
+    where $\bd^{(k)}$ is a descent direction (satisfying
+    $\grad f(\bx^{(k)})^{\top}\bd^{(k)} < 0$) and $\alpha^{(k)}$
+    is a step factor chosen to ensure sufficient decrease.
+  \end{block}
 
-    \item \textbf{Approximate line search} (Wolfe conditions) balances
-          cost and quality:
-          \begin{itemize}
-            \item First Wolfe (Armijo / sufficient decrease)
-            \item Second Wolfe (curvature condition)
-            \item Strong Wolfe: $|\grad_{\bd}f(\bx+\alpha\bd)| \le \sigma|\grad_{\bd}f(\bx)|$
-          \end{itemize}
+  \begin{block}{Step Factors}
+    The step factor $\alpha^{(k)}$ (alpha) can be:
+    \begin{itemize}
+      \item \textbf{Fixed:} constant $\alpha_0$ --- simple but fragile.
+      \item \textbf{Exponentially decaying:}
+            $\alpha^{(k)} = \gamma^k \alpha^{(0)}$ --- bounded total
+            distance; $\gamma$ (gamma) controls speed of decay.
+      \item \textbf{Polynomially decaying:}
+            $\alpha^{(k)} = \alpha^{(0)}/(1+\beta k)^p$ --- unbounded
+            distance when $p \le 1$; needed for stochastic methods.
+      \item \textbf{Chosen by line search:} most principled but more costly.
+    \end{itemize}
+  \end{block}
 
-    \item \textbf{Trust region methods} replace line search with a
-          subproblem constrained to a trust ball of radius $\delta$;
-          $\delta$ adapts via the improvement ratio $\eta$.
+  \framebreak
 
-    \item \textbf{Termination conditions:} use multiple criteria
-          (max iterations, absolute/relative improvement, gradient magnitude).
-  \end{itemize}
+  \begin{block}{Line Search Methods}
+    \begin{itemize}
+      \item \textbf{Exact line search:} minimises $f$ along $\bd$
+            exactly.  Costly; has a closed form for quadratic $f$.
+      \item \textbf{Backtracking (Armijo):} reduces $\alpha$ by factor
+            $p$ (p) until the sufficient-decrease condition
+            $f(\bx+\alpha\bd) \le f(\bx) + \beta\alpha\,\grad
+            f(\bx)^{\top}\bd$ is satisfied.  Cheap; no curvature
+            guarantee.
+      \item \textbf{Wolfe conditions:} add a curvature condition
+            (second Wolfe) to prevent steps from being too small.
+            The \emph{strong} Wolfe conditions use an absolute value
+            on the curvature check, required by quasi-Newton methods.
+      \item \textbf{Strong backtracking:} two-phase algorithm
+            (bracket + zoom) that efficiently finds a step satisfying
+            the strong Wolfe conditions.
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{Trust Region Methods}
+    Trust region methods simultaneously choose direction and step length
+    by solving a quadratic subproblem within a ball of radius $\delta$
+    (delta).  The radius is adapted at each iteration via the improvement
+    ratio $\eta$ (eta) = actual decrease / predicted decrease.  A high
+    $\eta$ means the model is good and $\delta$ can be expanded; a low
+    $\eta$ means the model is poor and $\delta$ must shrink.
+  \end{block}
+
+  \begin{block}{Termination Conditions}
+    Use at least two of the four conditions (max iterations, absolute
+    improvement $\epsilon_a$, relative improvement $\epsilon_r$, gradient
+    norm $\epsilon_g$) to ensure robust and efficient stopping.  Each
+    condition alone has a failure mode; combining them covers all cases.
+  \end{block}
+
+  \begin{alertblock}{The Big Picture}
+    Local descent is the foundation of virtually all practical
+    optimisation algorithms.  The differences between methods --- gradient
+    descent, Newton, quasi-Newton, conjugate gradient --- arise entirely
+    from different choices of the descent direction $\bd^{(k)}$.  The
+    step factor selection strategies (fixed, decaying, line search, trust
+    region) apply equally to all of them.
+  \end{alertblock}
+
 \end{frame}
 
-\begin{frame}{Key Formulas at a Glance}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{Key Formulas at a Glance}
+
+  The following table collects every major formula from this chapter
+  with its full notation explained.
+
   \begin{columns}[T]
     \begin{column}{0.48\textwidth}
       \begin{block}{Descent Update}
-        $\bx^{(k+1)} = \bx^{(k)} + \alpha^{(k)}\bd^{(k)}$
+        \[
+          \bx^{(k+1)} = \bx^{(k)} + \alpha^{(k)}\bd^{(k)}
+        \]
+        $\bx^{(k)}$: current point;
+        $\alpha^{(k)}$ (alpha): step size;
+        $\bd^{(k)}$: descent direction.
       \end{block}
-      \begin{block}{Step Decay}
-        $\alpha^{(k)} = \gamma^k\alpha^{(0)}$
-        \quad ($0<\gamma<1$)
+
+      \begin{block}{Exponential Step Decay}
+        \[
+          \alpha^{(k)} = \gamma^k\alpha^{(0)},\quad 0<\gamma<1
+        \]
+        $\gamma$ (gamma): decay rate; $\alpha^{(0)}$: initial step.
       \end{block}
+
       \begin{block}{First Wolfe (Armijo)}
-        $f(\bx+\alpha\bd)\le f(\bx)+\beta\alpha\grad_{\bd}f(\bx)$
+        \[
+          f(\bx+\alpha\bd)\le f(\bx)+\beta\alpha\grad_{\bd}f(\bx)
+        \]
+        $\beta$ (beta): Armijo parameter, typically $10^{-4}$;
+        $\grad_{\bd}f(\bx) = \grad f(\bx)^{\top}\bd < 0$.
       \end{block}
-      \begin{block}{Second Wolfe (curvature)}
-        $\grad_{\bd}f(\bx+\alpha\bd)\ge\sigma\grad_{\bd}f(\bx)$
+
+      \begin{block}{Second Wolfe (Curvature)}
+        \[
+          \grad_{\bd}f(\bx+\alpha\bd)\ge\sigma\,\grad_{\bd}f(\bx)
+        \]
+        $\sigma$ (sigma): curvature parameter, typically $0.9$.
       \end{block}
     \end{column}
     \begin{column}{0.48\textwidth}
       \begin{block}{Trust Region Subproblem}
-        $\min_{\|\bx'-\bx\|\le\delta}\hat{f}(\bx')$
+        \[
+          \min_{\|\bx'-\bx\|\le\delta}\hat{f}(\bx')
+        \]
+        $\delta$ (delta): trust region radius;
+        $\hat{f}$: quadratic model of $f$.
       \end{block}
+
       \begin{block}{Improvement Ratio}
-        $\eta = \dfrac{f(\bx)-f(\bx')}{f(\bx)-\hat{f}(\bx')}$
+        \[
+          \eta = \frac{f(\bx)-f(\bx')}{f(\bx)-\hat{f}(\bx')}
+        \]
+        $\eta$ (eta): improvement ratio;
+        numerator: actual decrease; denominator: predicted decrease.
       \end{block}
-      \begin{block}{Termination}
-        $\|\grad f(\bx^{(k+1)})\|<\epsilon_g$\\
-        $f(\bx^{(k)})-f(\bx^{(k+1)})<\epsilon_a$
+
+      \begin{block}{Termination: Gradient}
+        \[
+          \|\grad f(\bx^{(k+1)})\|<\epsilon_g
+        \]
+        $\epsilon_g$ (epsilon sub g): gradient tolerance.
+      \end{block}
+
+      \begin{block}{Termination: Abs.\ Improvement}
+        \[
+          f(\bx^{(k)})-f(\bx^{(k+1)})<\epsilon_a
+        \]
+        $\epsilon_a$ (epsilon sub a): absolute tolerance.
       \end{block}
     \end{column}
   \end{columns}
+
 \end{frame}
 
-\begin{frame}{Exercises}
-  \begin{block}{Exercise 4.1}
-    Why is it important to have more than one termination condition?
-    Give a specific scenario where relying on \emph{only} the gradient
-    magnitude condition $\|\grad f\| < \epsilon_g$ would be insufficient.
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{Exercises}
+
+  \begin{block}{Exercise 4.1: Failure Modes of Single Termination Conditions}
+    Explain in detail why relying on the gradient magnitude condition
+    $\|\grad f\| < \epsilon_g$ alone can be insufficient.  Give two
+    specific scenarios: (a) a case where the gradient is small but the
+    algorithm has not found a good solution, and (b) a case where the
+    gradient remains large for many iterations even though the function
+    value has essentially converged.
   \end{block}
 
-  \begin{block}{Exercise 4.2}
-    Consider descent applied to $f(x) = \sin(x)$ starting at $x^{(1)}=-2$.
-    What is the maximum step size such that $f$ still decreases at each
-    iteration (with the negative gradient direction)? Use the first Wolfe
-    condition with $\beta=0.1$.
+  \begin{block}{Exercise 4.2: First Wolfe Condition on a Sinusoid}
+    Consider gradient descent on $f(x) = \sin(x)$ starting at
+    $x^{(1)} = -2$.  The gradient is $f'(x) = \cos(x)$.
+    \begin{enumerate}
+      \item Compute the steepest descent direction at $x^{(1)} = -2$.
+      \item Using the first Wolfe condition with $\beta = 0.1$, determine
+            whether $\alpha = 0.5$ is an acceptable step.
+      \item What is the approximate maximum $\alpha$ that satisfies the
+            Armijo condition?
+    \end{enumerate}
   \end{block}
 
-  \begin{block}{Exercise 4.3 (second-order methods preview)}
-    For $f(x_1,x_2)=x_1^2+2x_2^2$, starting at $\bx=[1,1]^{\top}$,
-    show that the steepest descent direction is $[-2,-4]^{\top}$ and
-    find the exact line search step size $\alpha^*$.
+  \framebreak
+
+  \begin{block}{Exercise 4.3: Exact Line Search for a Quadratic}
+    For $f(x_1, x_2) = x_1^2 + 2x_2^2$, starting at
+    $\bx = [1, 1]^{\top}$:
+    \begin{enumerate}
+      \item Compute the gradient $\grad f(\bx)$ and verify that the
+            steepest descent direction is $\bd = [-2, -4]^{\top}$.
+      \item Write down the Hessian matrix $\bH$ of $f$.
+      \item Apply the quadratic line search formula
+            $\alpha^* = \bd^{\top}\bd / (\bd^{\top}\bH\bd)$
+            to find the exact step size.
+      \item Compute the new point $\bx' = \bx + \alpha^*\bd$ and verify
+            that $f(\bx') < f(\bx)$.
+    \end{enumerate}
   \end{block}
+
+  \begin{block}{Exercise 4.4: Trust Region Radius Adaptation}
+    Suppose the trust region algorithm produces the following data at
+    one iteration:
+    \[
+      f(\bx^{(k)}) = 10.0,\quad
+      f(\bx') = 9.2,\quad
+      \hat{f}(\bx') = 8.5.
+    \]
+    Compute the improvement ratio $\eta$.  With parameters $\eta_1 =
+    0.25$, $\eta_2 = 0.75$, $\gamma_1 = 0.5$, $\gamma_2 = 2.0$, and
+    current radius $\delta = 1.0$:
+    \begin{enumerate}
+      \item Should the step be accepted or rejected?
+      \item What should the new trust region radius $\delta'$ be?
+    \end{enumerate}
+  \end{block}
+
 \end{frame}
 
-\begin{frame}{Further Reading}
+% ─────────────────────────────────────────────────────────────
+\begin{frame}[allowframebreaks]{Further Reading}
+
+  The material in this chapter forms the foundation of a large body
+  of numerical optimisation literature.  The following references
+  provide rigorous proofs and deeper treatments.
+
   \begin{itemize}
     \item J.\ Nocedal and S.\ J.\ Wright,
           \textit{Numerical Optimization}, 2nd ed.\ Springer, 2006.
-          (Convergence analysis of descent methods; trust-region methods.)
+          Chapters 2--4 cover descent direction iteration, line search,
+          and trust region methods with full convergence proofs.
+          This is the definitive graduate-level reference.
+
     \item A.\ Conn, N.\ Gould, and P.\ Toint,
           \textit{Trust Region Methods}, SIAM, 2000.
-          (Definitive reference for trust-region algorithms.)
-    \item SciPy documentation: \texttt{scipy.optimize.line\_search\_wolfe2}
-          (Strong Wolfe line search),
-          \texttt{scipy.optimize.minimize} with \texttt{method='trust-ncg'}.
+          The authoritative reference for trust region algorithms,
+          including the subproblem solvers and convergence theory.
+
+    \item Y.\ Nesterov,
+          \textit{Introductory Lectures on Stochastic Optimization},
+          Springer, 2004.  Covers polynomial step-decay schedules and
+          their role in convergence of stochastic gradient methods.
+
+    \item SciPy documentation:
+          \begin{itemize}
+            \item \texttt{scipy.optimize.line\_search\_wolfe2} ---
+                  Strong Wolfe line search implementation.
+            \item \texttt{scipy.optimize.minimize} with
+                  \texttt{method='trust-ncg'} or
+                  \texttt{method='trust-krylov'} --- trust region
+                  methods for general nonlinear objectives.
+            \item \texttt{scipy.optimize.minimize\_scalar} ---
+                  Exact 1-D line search (golden section, bounded
+                  Brent).
+          \end{itemize}
   \end{itemize}
 
   \vspace{1em}
   \begin{center}
     \Large\textbf{End of Chapter 4}
   \end{center}
+
 \end{frame}
 
 \end{document}

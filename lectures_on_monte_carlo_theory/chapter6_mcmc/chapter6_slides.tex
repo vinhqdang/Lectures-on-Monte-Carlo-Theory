@@ -1,6 +1,6 @@
 % ============================================================
 % Chapter 6: Markov Chain Monte Carlo Methods
-% Lectures on Monte Carlo Theory — Leskelä & Vihola (Lorek & Rolski)
+% Lectures on Monte Carlo Theory
 % Reader-friendly version: complete sentences, full derivations,
 % worked examples. Every symbol is defined. Self-contained.
 % ============================================================
@@ -51,6 +51,7 @@
 \newcommand{\bff}{\mathbf{f}}
 \newcommand{\bfpi}{\bm{\pi}}
 \newcommand{\bfmu}{\bm{\mu}}
+\newcommand{\bfv}{\bm{\nu}}
 
 \title[Chapter 6: MCMC]{Chapter 6: Markov Chain Monte Carlo Methods}
 \subtitle{Lectures on Monte Carlo Theory --- Lorek \& Rolski}
@@ -75,53 +76,76 @@
 
 \begin{frame}[allowframebreaks]{6.1 Introduction: The Problem with Direct Sampling}
 
-In previous chapters the goal was to estimate
+In the previous chapters the goal was to estimate
 \[
   I = \EE Y \quad \text{or} \quad I = \EE f(Y),
 \]
-where $Y$ follows a prescribed distribution $\pi$ on some state space $\mathcal{S}$.
+where $Y$ follows a prescribed distribution $\pi$ (the Greek letter \emph{pi}, pronounced ``pie'') on some state space $\mathcal{S}$.
 The standard Monte Carlo approach generates $R$ independent samples $Y_1, \ldots, Y_R \sim \pi$ and uses the sample mean
 \[
   \hat{Y}_R = \frac{1}{R} \sum_{i=1}^{R} f(Y_i) \approx I.
 \]
-This works beautifully when $\pi$ is easy to sample from.
 
-\medskip
-However, in many real problems the target distribution $\pi$ is \emph{intractable}:
+\begin{block}{Notation}
+Here $\hat{Y}_R$ (``Y-hat sub R'') denotes our estimate of $I$ using $R$ samples.
+The symbol $\sum$ (capital Sigma, meaning ``sum'') adds up $f(Y_i)$ for each index $i$ running from $1$ to $R$.
+The function $f$ is the quantity of interest applied to each sample.
+The symbol $\approx$ means ``approximately equal to''.
+\end{block}
+
+This estimator works beautifully when $\pi$ is easy to sample from directly (e.g.\ using inverse-CDF or rejection sampling).
+
+\framebreak
+
+However, in many real problems the target distribution $\pi$ is \emph{intractable} for one of two fundamental reasons.
 
 \begin{block}{Two Sources of Intractability}
 \begin{enumerate}
-  \item The state space $\mathcal{S}$ is \textbf{combinatorially large}: for example, $|\mathcal{S}| = 2^d$ grows exponentially in the problem dimension $d$, making enumeration hopeless.
-  \item The distribution $\pi$ involves an \textbf{unknown normalising constant}: $\pi_\sigma = e^{\lambda f(\sigma)}/z_\lambda$, where $z_\lambda = \sum_\sigma e^{\lambda f(\sigma)}$ cannot be computed.
+  \item The state space $\mathcal{S}$ is \textbf{combinatorially large}: for example, $|\mathcal{S}| = 2^d$ grows exponentially in the problem dimension $d$ (``d''), making enumeration of all states completely hopeless even for moderate $d$.
+  \item The distribution $\pi$ involves an \textbf{unknown normalising constant}: $\pi_\sigma = e^{\lambda f(\sigma)}/z_\lambda$, where the denominator $z_\lambda = \sum_\sigma e^{\lambda f(\sigma)}$ (a sum over all states $\sigma$) cannot be computed because there are too many states to sum over.
 \end{enumerate}
+\end{block}
+
+In the formula $\pi_\sigma = e^{\lambda f(\sigma)}/z_\lambda$, the symbol $\sigma$ (sigma, pronounced ``sig-ma'') is a specific configuration or state, $\lambda$ (lambda, pronounced ``lam-da'') is a real parameter controlling the shape of the distribution, and $z_\lambda$ is the \emph{partition function} or \emph{normalising constant} that makes all the probabilities sum to 1.
+
+\framebreak
+
+\textbf{Running example.}
+Consider the set $\mathcal{S}_n$ of all permutations of $n$ (``n'') elements.
+A permutation $\sigma$ is just an arrangement: for example, with $n=3$ elements, $\{1,2,3\}$, one permutation is $(3,1,2)$, meaning element 1 goes to position 3, element 2 goes to position 1, element 3 goes to position 2.
+There are $n! = 1 \times 2 \times \cdots \times n$ total permutations (e.g.\ $3! = 6$ for $n=3$).
+
+In the uniform case, $\pi_\sigma = 1/n!$ for every $\sigma \in \mathcal{S}_n$, and direct sampling is easy (the Fisher-Yates shuffle algorithm).
+The function of interest counts \emph{fixed points}: $f(\sigma) = \#\{i : \sigma(i) = i\}$, the number of elements that map to themselves.
+
+Now make $\pi$ non-uniform:
+\[
+  \pi_\sigma = \frac{1}{z_\lambda} \exp(\lambda f(\sigma)), \qquad z_\lambda = \sum_{\sigma \in \mathcal{S}_n} \exp(\lambda f(\sigma)).
+\]
+
+\begin{block}{Notation for the Non-uniform Case}
+$\exp(\cdot)$ is the exponential function $e^{(\cdot)}$.
+The parameter $\lambda$ (lambda) controls how strongly we weight permutations with many fixed points: when $\lambda > 0$, permutations with more fixed points are assigned higher probability; when $\lambda = 0$ the distribution is uniform.
+Computing $z_\lambda$ requires summing over all $n!$ permutations, which is completely infeasible for large $n$ (for $n = 20$, there are $20! \approx 2.4 \times 10^{18}$ permutations).
 \end{block}
 
 \framebreak
 
-\textbf{Running example.} Consider the set $\mathcal{S}_n$ of all permutations of $n$ elements.
-A random permutation $Y \sim \pi_n$ is drawn uniformly, i.e.\ $\pi_\sigma = 1/n!$ for every $\sigma \in \mathcal{S}_n$.
-The function of interest counts fixed points: $f(\sigma) = \#\{i : \sigma(i) = i\}$.
-In this uniform case direct sampling is easy (Fisher-Yates algorithm), and we simply average $f$ over the samples.
-
-Now complicate the scenario by making $\pi$ non-uniform:
-\[
-  \pi_\sigma = \frac{1}{z_\lambda} \exp(\lambda f(\sigma)), \qquad z_\lambda = \sum_{\sigma \in \mathcal{S}_n} \exp(\lambda f(\sigma)).
-\]
-Here $\lambda$ is a real parameter controlling how strongly we weight permutations with many fixed points.
-Computing $z_\lambda$ requires summing over all $n!$ permutations, which is completely infeasible for large $n$.
-
-\begin{alertblock}{Key Insight: MCMC}
-The \textbf{Markov Chain Monte Carlo} (MCMC) paradigm resolves this by constructing a Markov chain $(X_n)_{n \ge 0}$ on $\mathcal{S}$ whose \emph{stationary distribution} is exactly $\pi$.
-The ergodic theorem then guarantees
+\begin{alertblock}{Key Insight: The MCMC Idea}
+The \textbf{Markov Chain Monte Carlo} (MCMC) paradigm resolves the intractability problem by constructing a Markov chain (a sequence of random states) $(X_n)_{n \ge 0}$ on $\mathcal{S}$ whose \emph{stationary distribution} is exactly $\pi$.
+The ergodic theorem (a mathematical guarantee for long-run averages) then ensures
 \[
   \hat{Y}_R = \frac{1}{R} \sum_{j=1}^{R} f(X_j) \xrightarrow{R \to \infty} I \quad \text{almost surely.}
 \]
-Crucially, only \emph{ratios} $\pi_{s'}/\pi_s = e^{\lambda(f(s')-f(s))}$ are needed; the constant $z_\lambda$ cancels!
+The symbol $\xrightarrow{R \to \infty}$ means ``converges to as $R$ grows to infinity''.
+The phrase ``almost surely'' means ``with probability 1'' --- the convergence happens except on a set of outcomes so rare they have zero probability.
+
+Crucially, the algorithms only need \emph{ratios} $\pi_{s'}/\pi_s = e^{\lambda(f(s')-f(s))}$: the unknown constant $z_\lambda$ appears in both numerator and denominator and cancels out!
 \end{alertblock}
 
-MCMC allows us to achieve two goals:
+MCMC thus allows us to pursue two goals without ever computing $z_\lambda$:
 \begin{enumerate}
-  \item[(A1)] Generate approximate (or in some cases exact) samples from $\pi$.
+  \item[(A1)] Generate approximate (or exact) samples from $\pi$.
   \item[(A2)] Estimate probabilities $\pi(A) = \sum_{s \in A} \pi_s$ for subsets $A \subseteq \mathcal{S}$.
 \end{enumerate}
 
@@ -133,49 +157,72 @@ MCMC allows us to achieve two goals:
 
 \begin{frame}[allowframebreaks]{6.2 Markov Chains: Core Definitions}
 
-A \emph{Markov chain} is a sequence of random variables $(X_n)_{n \ge 0}$ that evolves on a \emph{finite} state space $\mathcal{S} = \{s_1, \ldots, s_N\}$ according to the Markov (memoryless) property.
+A \emph{Markov chain} (named after Russian mathematician Andrei Markov) is a sequence of random variables $(X_n)_{n \ge 0}$ that evolves on a \emph{finite} state space $\mathcal{S} = \{s_1, \ldots, s_N\}$ according to the \emph{Markov property}: the future depends on the past only through the current state (the chain has no memory beyond where it currently is).
 
 \begin{block}{Definition: Markov Chain and Transition Matrix}
 The sequence $(X_n)_{n \ge 0}$ is a \textbf{Markov chain} with \textbf{transition matrix} $\bfP = (p_{ss'})_{s,s' \in \mathcal{S}}$ if
 \[
   \PP(X_{n+1} = s' \mid X_0, X_1, \ldots, X_n) = p_{X_n,\, s'} \quad \text{for all } n \ge 0.
 \]
-Here $p_{ss'} \ge 0$ is the probability of moving from state $s$ to state $s'$ in one step, and $\sum_{s'} p_{ss'} = 1$ for every $s$.
+Here $p_{ss'}$ (``p sub s, s-prime'') is the probability of moving from state $s$ to state $s'$ in one step, and $\sum_{s'} p_{ss'} = 1$ for every $s$ (the probabilities out of any state sum to 1).
 \end{block}
 
-The matrix $\bfP$ is time-homogeneous (does not depend on step $n$).
+\begin{block}{Notation}
+The symbol $\PP(\cdot \mid \cdot)$ denotes conditional probability: $\PP(A \mid B)$ is the probability of event $A$ given that event $B$ has already occurred.
+The notation $X_0, X_1, \ldots, X_n$ is the entire history of the chain up to step $n$ (``n'').
+The Markov property says that, given the current state $X_n$, this entire history is irrelevant for predicting $X_{n+1}$.
+\end{block}
+
+\framebreak
+
+The matrix $\bfP$ is \emph{time-homogeneous}: the transition probabilities do not change with the step number $n$.
 The distribution of the chain at step $n$ is the row vector
 \[
   \bfmu^n = (\PP(X_n = s_1), \ldots, \PP(X_n = s_N)),
 \]
-and by induction $\bfmu^n = \bfmu^0 \bfP^n$, where $\bfmu^0$ is the \emph{initial distribution}.
+and by a simple induction argument $\bfmu^n = \bfmu^0 \bfP^n$, where $\bfmu^0$ (``mu-naught'', $\mu$ is the Greek letter mu pronounced ``myoo'') is the \emph{initial distribution}, and $\bfP^n$ means the transition matrix multiplied by itself $n$ times.
+
+\begin{alertblock}{How to Read $\bfmu^n = \bfmu^0 \bfP^n$}
+This formula says: to find the probability distribution of the chain at step $n$, start with the initial distribution $\bfmu^0$ and multiply by the transition matrix $n$ times.
+Each multiplication by $\bfP$ advances the chain one step.
+If you start with all probability on state $s_1$ (i.e.\ $\bfmu^0 = (1, 0, \ldots, 0)$), then $\bfmu^n$ is just the first row of $\bfP^n$, which gives the probability of being in each state after $n$ steps starting from $s_1$.
+\end{alertblock}
 
 \framebreak
 
-Several properties of $\bfP$ are central to MCMC theory.
+Several structural properties of $\bfP$ are central to MCMC theory.
 
-\begin{block}{Key Properties}
+\begin{block}{Key Properties of a Transition Matrix}
 \begin{itemize}
-  \item \textbf{Stationary distribution.} A probability vector $\bfpi = (\pi_s)_{s \in \mathcal{S}}$ is \emph{stationary} if $\bfpi \bfP = \bfpi$, equivalently $\pi_{s'} = \sum_{s} \pi_s p_{ss'}$ for all $s'$. If the chain starts from $\bfpi$, it remains there: $\bfmu^n = \bfpi$ for all $n$.
-  \item \textbf{Irreducibility.} Two states $s, s'$ \emph{communicate} if there exist $n_0, n_1 \ge 0$ such that $p_{ss'}^{(n_0)} > 0$ and $p_{s's}^{(n_1)} > 0$, where $p_{ss'}^{(n)} = (\bfP^n)_{ss'}$ is the $n$-step transition probability. The chain is \emph{irreducible} if all states communicate.
-  \item \textbf{Aperiodicity.} The \emph{period} of state $s$ is $\gcd\{n \ge 1 : p_{ss}^{(n)} > 0\}$. The chain is \emph{aperiodic} if every state has period 1.
-  \item \textbf{Ergodicity (regularity).} $\bfP$ is \emph{ergodic} (or \emph{regular}) if $\exists\, n_0$ such that $\bfP^{n_0}$ has all positive entries. Equivalently, $\bfP$ is irreducible and aperiodic.
+  \item \textbf{Stationary distribution.} A probability vector $\bfpi = (\pi_s)_{s \in \mathcal{S}}$ (pi, pronounced ``pie'') is \emph{stationary} if $\bfpi \bfP = \bfpi$, which means $\pi_{s'} = \sum_{s} \pi_s p_{ss'}$ for all $s'$.
+  In words: if the chain starts from $\bfpi$, it stays there forever --- $\bfmu^n = \bfpi$ for all $n \ge 0$.
+
+  \item \textbf{Irreducibility.} Two states $s, s'$ \emph{communicate} if each can be reached from the other in a finite number of steps: there exist $n_0, n_1 \ge 0$ with $p_{ss'}^{(n_0)} > 0$ and $p_{s's}^{(n_1)} > 0$, where $p_{ss'}^{(n)} = (\bfP^n)_{ss'}$ (``p sub s,s-prime superscript n'') is the $n$-step transition probability.
+  The chain is \emph{irreducible} if all states communicate with each other --- from any state you can reach any other state.
+
+  \item \textbf{Aperiodicity.} The \emph{period} of state $s$ is $\gcd\{n \ge 1 : p_{ss}^{(n)} > 0\}$ (the greatest common divisor of all step-counts at which the chain can return to $s$).
+  A period of 1 means the chain can return at any time; a period of 2 means it can only return at even times.
+  The chain is \emph{aperiodic} if every state has period 1.
+
+  \item \textbf{Ergodicity (regularity).} $\bfP$ is \emph{ergodic} (or \emph{regular}) if there exists some step $n_0$ such that $\bfP^{n_0}$ has all strictly positive entries.
+  Equivalently, $\bfP$ is both irreducible and aperiodic.
+  This is the key property guaranteeing that the chain converges to a unique stationary distribution from any starting point.
 \end{itemize}
 \end{block}
 
 \framebreak
 
-The following example illustrates these concepts.
+The following example illustrates all of these concepts on a simple four-state chain.
 
-\begin{exampleblock}{Example 6.2.1: Two chains on $\{1,2,3,4\}$}
+\begin{exampleblock}{Example 6.2.1: Two Chains on $\{1,2,3,4\}$}
 Consider
 \[
   \bfP_1 = \begin{pmatrix} 1/2 & 1/2 & 0 & 0 \\ 1/2 & 1/2 & 0 & 0 \\ 0 & 0 & 1/2 & 1/2 \\ 0 & 0 & 1/2 & 1/2 \end{pmatrix}, \qquad
   \bfP_2 = \begin{pmatrix} 0 & 0 & 1/2 & 1/2 \\ 0 & 0 & 1/2 & 1/2 \\ 1/2 & 1/2 & 0 & 0 \\ 1/2 & 1/2 & 0 & 0 \end{pmatrix}.
 \]
-$\bfP_1$ is \emph{reducible}: states $\{1,2\}$ and $\{3,4\}$ do not communicate.
-$\bfP_2$ is \emph{irreducible} (all states communicate), but the period of every state is 2, so it is \emph{periodic} and not ergodic.
-Adding a self-loop (probability of staying at the current state) breaks periodicity.
+The matrix $\bfP_1$ is \emph{reducible}: states $\{1,2\}$ and $\{3,4\}$ form two isolated groups that cannot communicate with each other (there are zeros in every cross-group entry).
+The matrix $\bfP_2$ is \emph{irreducible} (all states do communicate), but every state has period 2 because the chain alternates between groups $\{1,2\}$ and $\{3,4\}$, so it is \emph{periodic} and not ergodic.
+Adding a self-loop (a positive probability of staying at the current state) to $\bfP_2$ would break the strict alternation and make the chain aperiodic.
 \end{exampleblock}
 
 \begin{columns}[T]
@@ -184,12 +231,13 @@ Adding a self-loop (probability of staying at the current state) breaks periodic
   \end{column}
   \begin{column}{0.46\textwidth}
     \textbf{Two-state chain:}
-    $\bfP = \begin{pmatrix}1-\alpha & \alpha \\ \beta & 1-\beta\end{pmatrix}$
-    with $\alpha, \beta \in (0,1)$.
+    $\bfP = \begin{pmatrix}1-\alpha & \alpha \\ \beta & 1-\beta\end{pmatrix}$,
+    where $\alpha$ (alpha, ``al-fa'') is the probability of moving from state 1 to state 2, and $\beta$ (beta, ``bay-ta'') is the probability of moving from state 2 to state 1, with $\alpha, \beta \in (0,1)$.
 
     \smallskip
     The unique stationary distribution is
     $\pi = \bigl(\tfrac{\beta}{\alpha+\beta},\, \tfrac{\alpha}{\alpha+\beta}\bigr)$.
+    For example, with $\alpha = 0.3$ and $\beta = 0.1$: $\pi = (0.25, 0.75)$.
   \end{column}
 \end{columns}
 
@@ -197,73 +245,93 @@ Adding a self-loop (probability of staying at the current state) breaks periodic
 
 \begin{frame}[allowframebreaks]{6.2 Ergodic Theorem and Convergence}
 
-The key theoretical guarantee for MCMC is the following fundamental result.
+The following result is the theoretical foundation for all of MCMC.
+It guarantees that a well-behaved chain will always converge to a unique stationary distribution, regardless of where it starts.
 
 \begin{block}{Proposition 6.2.2 (Ergodic Theorem for Markov Chains)}
-If $\bfP$ is \textbf{regular} (ergodic), then there exists a \textbf{unique} stationary distribution $\pi$ with all entries strictly positive, and
+If $\bfP$ is \textbf{regular} (ergodic: irreducible and aperiodic), then there exists a \textbf{unique} stationary distribution $\pi$ with all entries strictly positive ($\pi_s > 0$ for all $s$), and
 \[
   \bfP^n \to \bm{\Pi} \quad \text{as } n \to \infty,
 \]
-where $\bm{\Pi}$ is the matrix all of whose rows equal $\pi$.
+where $\bm{\Pi}$ (capital Pi, ``pie'') is the matrix all of whose rows are equal to $\pi$.
 \end{block}
 
-In other words, regardless of the initial state, after a sufficiently long time the distribution of the chain converges to $\pi$.
+\begin{block}{Notation}
+The expression $\bfP^n \to \bm{\Pi}$ as $n \to \infty$ means that every entry $p_{ss'}^{(n)}$ of $\bfP^n$ converges to $\pi_{s'}$ as the number of steps $n$ grows without bound.
+In other words, after sufficiently many steps, the probability of being in state $s'$ is approximately $\pi_{s'}$, \emph{regardless} of the starting state $s$.
+\end{block}
+
+\begin{alertblock}{How to Read This Theorem}
+Think of the chain as a ball bouncing randomly between states.
+No matter which state the ball starts in, after a long time it will have spent approximately a fraction $\pi_s$ of its time in state $s$.
+The ergodic theorem is what makes MCMC work: it guarantees the long-run average of $f(X_j)$ equals $\EE_\pi[f]$.
+\end{alertblock}
 
 \begin{block}{Corollary 6.2.3}
-For any initial distribution $\bfmu$:
+For any initial distribution $\bfmu^0$ (mu-naught):
 \[
-  \bfmu \bfP^n \to \bfpi \quad \text{as } n \to \infty.
+  \bfmu^0 \bfP^n \to \bfpi \quad \text{as } n \to \infty.
 \]
+Starting from any distribution, the chain's distribution after $n$ steps converges to $\pi$ as $n$ grows.
 \end{block}
 
 \framebreak
 
-To quantify \emph{how fast} the chain converges, we use the \textbf{total variation distance}.
+To quantify \emph{how fast} the chain converges to $\pi$, we use the \textbf{total variation distance}, which measures the maximum discrepancy between two probability distributions.
 
 \begin{block}{Total Variation Distance and Mixing Time}
-For two probability vectors $\bfmu$ and $\bfv$ on $\mathcal{S}$:
+For two probability vectors $\bfmu$ and $\bfv$ (``nu'', $\nu$) on $\mathcal{S}$:
 \[
   \dTV(\bfmu, \bfv) = \frac{1}{2} \sum_{s \in \mathcal{S}} |\mu_s - v_s| = \max_{A \subseteq \mathcal{S}} |\mu(A) - \nu(A)|.
 \]
-The factor $1/2$ ensures $\dTV \in [0,1]$: when $\dTV = 0$ the distributions are identical; when $\dTV = 1$ they have disjoint supports.
+The factor $1/2$ ensures $\dTV \in [0,1]$: when $\dTV = 0$ the distributions are identical; when $\dTV = 1$ they assign probability zero to entirely different sets of states.
 
-The \textbf{mixing time} $\tau(\varepsilon)$ is the number of steps needed to get within $\varepsilon$ of $\pi$:
+The \textbf{mixing time} $\tau(\varepsilon)$ ($\tau$ is tau, pronounced ``taw''; $\varepsilon$ is epsilon, pronounced ``ep-si-lon'') is the number of steps needed to get within $\varepsilon$ (in total variation distance) of the stationary distribution $\pi$:
 \[
-  \tau(\varepsilon) = \min_{n \in \mathbb{N}} \bigl\{ \dTV(\bfmu \bfP^n, \bfpi) \le \varepsilon \bigr\}.
+  \tau(\varepsilon) = \min\bigl\{ n \in \mathbb{N} : \dTV(\bfmu \bfP^n, \bfpi) \le \varepsilon \bigr\}.
 \]
 \end{block}
 
-Corollary 6.2.3 implies $\lim_{n \to \infty} \dTV(\bfmu \bfP^n, \bfpi) = 0$ for every $\bfmu$.
+\begin{block}{Notation}
+$\dTV(\bfmu, \bfv)$ (``d-TV of mu and nu'') measures how different two probability distributions are.
+The sum $\sum_{s \in \mathcal{S}} |\mu_s - v_s|$ adds the absolute differences in probability for every state.
+The equivalent formulation $\max_{A \subseteq \mathcal{S}} |\mu(A) - \nu(A)|$ says: find the set $A$ for which the two distributions disagree most about how much probability to assign to $A$.
+\end{block}
+
+\begin{alertblock}{How to Read the Mixing Time}
+The mixing time $\tau(\varepsilon)$ answers the practical question: ``How many steps do I need to run the chain before its distribution is close enough to $\pi$ to be useful?''
+A small $\tau(\varepsilon)$ means the chain mixes fast (good); a large $\tau(\varepsilon)$ means slow mixing (the chain takes a very long time to forget its starting point, which makes MCMC estimation expensive).
+\end{alertblock}
 
 \framebreak
 
-The following proposition explains how to simulate a Markov chain in practice.
+The following result shows how to \emph{simulate} a Markov chain in practice using a stream of uniform random numbers.
 
 \begin{block}{Proposition 6.2.4 (Update Function Representation)}
-For any transition matrix $\bfP$ and initial distribution $\bfmu$, there exist functions $\varphi : \mathcal{S} \times [0,1] \to \mathcal{S}$ and $\psi : [0,1] \to \mathcal{S}$ such that
+For any transition matrix $\bfP$ and initial distribution $\bfmu$, there exist functions $\varphi : \mathcal{S} \times [0,1] \to \mathcal{S}$ (``phi'', the update function) and $\psi : [0,1] \to \mathcal{S}$ (``psi'', the initialisation function) such that
 \[
   X_0 = \psi(U_0), \qquad X_{n+1} = \varphi(X_n,\, U_{n+1}),
 \]
-where $U_0, U_1, \ldots$ are i.i.d.\ $\mathcal{U}[0,1]$.
+where $U_0, U_1, \ldots$ are independent and identically distributed (i.i.d.) uniform random variables on $[0,1]$.
 \end{block}
 
-The function $\varphi$ is called the \textbf{update function} and $\psi$ the \textbf{initialisation function}.
-A canonical construction of $\varphi$ is
-\[
-  \varphi(s, u) = s_k \quad \text{if } u \in \Bigl[\sum_{j<k} p_{s,s_j},\, \sum_{j \le k} p_{s,s_j}\Bigr).
-\]
-This representation is essential for the Coupling from the Past algorithm (Section~6.4).
+\begin{block}{Notation}
+$\varphi$ (phi, ``fye'') maps the current state $X_n$ and a fresh random number $U_{n+1}$ to the next state $X_{n+1}$.
+$\psi$ (psi, ``sigh'') maps the first random number $U_0$ to the initial state $X_0$.
+$\mathcal{U}[0,1]$ denotes the uniform distribution on the interval $[0,1]$.
+A canonical construction of $\varphi$ is: $\varphi(s, u) = s_k$ if $u$ falls in the interval $\bigl[\sum_{j<k} p_{s,s_j},\, \sum_{j \le k} p_{s,s_j}\bigr)$, which is the standard inverse-CDF (inverse cumulative distribution function) trick for discrete distributions.
+\end{block}
 
 \begin{alertblock}{Key Takeaway}
 Every Markov chain can be driven by a stream of i.i.d.\ uniform random variables through an update function.
-This means we can run \emph{multiple chains simultaneously using the same randomness}, which is the basis of the coupling idea.
+This means we can run \emph{multiple chains simultaneously using the same sequence of random numbers}, which is the basis of the coupling idea used in the CFTP perfect simulation algorithm in Section 6.4.
 \end{alertblock}
 
 \end{frame}
 
 \begin{frame}[allowframebreaks]{6.2 Detailed Balance and Random Walks on Graphs}
 
-Instead of solving $\bfpi \bfP = \bfpi$ directly, the \emph{detailed balance condition} (DBC) provides a simpler sufficient condition for stationarity.
+Instead of solving $\bfpi \bfP = \bfpi$ directly (which requires knowing all of $\bfP$), the \emph{detailed balance condition} (DBC) provides a simpler, pairwise sufficient condition for stationarity.
 
 \begin{block}{Proposition 6.2.5 (Detailed Balance Condition)}
 Suppose there exist strictly positive weights $(w_s)_{s \in \mathcal{S}}$ satisfying
@@ -273,38 +341,58 @@ Suppose there exist strictly positive weights $(w_s)_{s \in \mathcal{S}}$ satisf
 Then $\pi_s = w_s / \sum_{s''} w_{s''}$ is a stationary distribution for $\bfP$.
 \end{block}
 
-\textbf{Proof sketch.} Setting $w_s = \pi_s$ and summing over $s$:
-$\sum_s \pi_s p_{ss'} = \sum_s \pi_{s'} p_{s's} = \pi_{s'} \sum_s p_{s's} = \pi_{s'}$. $\square$
+\begin{block}{Notation}
+$w_s$ (``w sub s'') is the unnormalised weight assigned to state $s$.
+The DBC says: the probability \emph{flow} from $s$ to $s'$ (which is $w_s \cdot p_{ss'}$, the weight of $s$ times the probability of moving from $s$ to $s'$) must exactly equal the flow from $s'$ to $s$ (which is $w_{s'} \cdot p_{s's}$).
+The stationary probability $\pi_s = w_s / \sum_{s''} w_{s''}$ is obtained by normalising the weights so they sum to 1.
+\end{block}
 
-The DBC is equivalent to \textbf{time-reversibility}: if $X_0 \sim \pi$ then $(X_0, X_1, \ldots, X_n) \overset{d}{=} (X_n, X_{n-1}, \ldots, X_0)$.
-A chain satisfying DBC is called \emph{reversible}.
+\begin{alertblock}{How to Read the DBC}
+Imagine water flowing through a network of pipes, where each state is a reservoir and each transition is a pipe.
+The DBC says that at stationarity, the flow in each pipe is the same in both directions: what flows from $s$ to $s'$ exactly balances what flows from $s'$ to $s$.
+This ``balance'' condition ensures the water level (probability) at each reservoir stays constant over time.
+\end{alertblock}
+
+\textbf{Proof sketch.}
+Setting $w_s = \pi_s$ and summing the DBC over all $s$:
+$\sum_s \pi_s p_{ss'} = \sum_s \pi_{s'} p_{s's} = \pi_{s'} \sum_s p_{s's} = \pi_{s'}$.
+This is exactly the stationary condition $\bfpi \bfP = \bfpi$. $\square$
+
+The DBC is equivalent to \textbf{time-reversibility}: if $X_0 \sim \pi$ then the sequence $(X_0, X_1, \ldots, X_n)$ has the same joint distribution as its time-reverse $(X_n, X_{n-1}, \ldots, X_0)$.
+A chain satisfying DBC is called \emph{reversible} because running it backward in time gives the same statistics as running it forward.
 
 \begin{block}{Corollary 6.2.6}
-If $\bfP$ is symmetric ($p_{ss'} = p_{s's}$ for all $s,s'$), then the stationary distribution is \emph{uniform}: $\pi_s = 1/|\mathcal{S}|$.
+If $\bfP$ is symmetric ($p_{ss'} = p_{s's}$ for all $s,s'$), then the stationary distribution is \emph{uniform}: $\pi_s = 1/|\mathcal{S}|$ for all $s$.
 \end{block}
+
+\textbf{Proof.} Take $w_s = 1$ for all $s$.
+Then $w_s p_{ss'} = p_{ss'} = p_{s's} = w_{s'} p_{s's}$ by symmetry.
+Normalising gives $\pi_s = 1/|\mathcal{S}|$. $\square$
 
 \framebreak
 
-\begin{block}{Example 6.2.7: Simple Random Walk on Graph $G = (V,E)$}
-The simple random walk moves from vertex $v$ to any of its neighbours with equal probability:
+\begin{block}{Example 6.2.7: Simple Random Walk on a Graph $G = (V,E)$}
+A graph $G$ consists of a set of vertices $V$ (points) and edges $E$ (connections between pairs of points).
+The \emph{degree} $\deg(v)$ of vertex $v$ is the number of edges attached to $v$.
+The simple random walk moves from the current vertex $v$ to any of its neighbours (directly connected vertices) with equal probability:
 \[
-  q_{vv'} = \begin{cases} \tfrac{1}{\deg(v)}, & \text{if } \{v,v'\} \in E, \\ 0, & \text{otherwise.} \end{cases}
+  q_{vv'} = \begin{cases} \tfrac{1}{\deg(v)}, & \text{if } \{v,v'\} \in E \text{ (they are connected)}, \\ 0, & \text{otherwise.} \end{cases}
 \]
-Setting $w_v = \deg(v)$, we check DBC:
-$w_v\, q_{vv'} = \deg(v) \cdot \tfrac{1}{\deg(v)} = 1 = \deg(v') \cdot \tfrac{1}{\deg(v')} = w_{v'} q_{v'v}$
-(since for neighbors $q_{vv'} > 0$ iff $q_{v'v} > 0$).
-Thus the stationary distribution is
+Setting $w_v = \deg(v)$ and checking the DBC:
+$w_v\, q_{vv'} = \deg(v) \cdot \tfrac{1}{\deg(v)} = 1 = \deg(v') \cdot \tfrac{1}{\deg(v')} = w_{v'} q_{v'v}$.
+Thus the DBC holds and the stationary distribution is
 \[
   \pi_v = \frac{\deg(v)}{\sum_{v'} \deg(v')} = \frac{\deg(v)}{2|E|}.
 \]
-The stationary distribution is proportional to degree; for regular graphs (all degrees equal) it is uniform.
+The stationary distribution assigns probability proportional to the degree of each vertex.
+On a regular graph (where every vertex has the same degree $\Delta$), $\pi$ is uniform.
 \end{block}
 
 \begin{block}{Example 6.2.9: Adding Self-loops for Aperiodicity}
-If the graph is bipartite (e.g.\ a path graph $1-2-3-\cdots$), the simple random walk is periodic with period 2.
-Adding a self-loop probability $\beta \in (0,1)$:
-$q_{vv} = \beta$, $q_{vv'} = (1-\beta)/\deg(v)$ for $\{v,v'\} \in E$,
-makes the chain aperiodic without changing the stationary distribution.
+If the graph is bipartite (e.g.\ a path graph $1-2-3-\cdots-n$, where vertices alternate between two groups), the simple random walk is periodic with period 2 because the chain always alternates between the two groups of vertices.
+Adding a self-loop probability $\beta \in (0,1)$ (so the chain stays put with probability $\beta$) cures this:
+$q_{vv} = \beta$, $q_{vv'} = (1-\beta)/\deg(v)$ for neighbours $\{v,v'\} \in E$.
+This makes the chain aperiodic (it can now return to any state in any number of steps) without changing the stationary distribution.
 \end{block}
 
 \end{frame}
@@ -315,25 +403,32 @@ makes the chain aperiodic without changing the stationary distribution.
 
 \begin{frame}[allowframebreaks]{6.3 The MCMC Construction Problem}
 
-We now address the central challenge: given a target distribution $\pi$ on a large or complex state space $\mathcal{S}$, how do we construct a Markov chain that has $\pi$ as its stationary distribution and is easy to simulate?
+We now address the central challenge of MCMC: given a target distribution $\pi$ on a large or complex state space $\mathcal{S}$ where direct sampling is impossible, how do we construct a Markov chain that (a) has $\pi$ as its stationary distribution, and (b) is easy to simulate step by step?
 
-The \textbf{Markov Chain Monte Carlo} (MCMC) framework builds such a chain.
-A key observation is that to check the DBC (or to compute acceptance ratios in the algorithms below), we only need to evaluate \emph{ratios} $\pi_{s'}/\pi_s$.
-If $\pi_s = c \cdot \tilde{\pi}_s$ for some known $\tilde{\pi}_s$ but unknown constant $c$, the constant cancels:
+The key observation is that to verify the DBC or to compute acceptance ratios in the algorithms below, we only ever need to evaluate \emph{ratios} $\pi_{s'}/\pi_s$.
+If $\pi_s = c \cdot \tilde{\pi}_s$ for some known unnormalised weights $\tilde{\pi}_s$ but unknown normalising constant $c$, the constant cancels:
 \[
-  \frac{\pi_{s'}}{\pi_s} = \frac{\tilde{\pi}_{s'}}{\tilde{\pi}_s}.
+  \frac{\pi_{s'}}{\pi_s} = \frac{c \cdot \tilde{\pi}_{s'}}{c \cdot \tilde{\pi}_s} = \frac{\tilde{\pi}_{s'}}{\tilde{\pi}_s}.
 \]
-This is why MCMC works even when the normalising constant is unknown.
+
+\begin{alertblock}{How to Read This Cancellation}
+The fact that the unknown constant $c$ appears in both numerator and denominator and cancels is the single most important practical observation in MCMC.
+It means we can work with $\pi$ even when we only know it up to a multiplicative constant --- which is exactly the situation in Bayesian statistics, statistical physics, and combinatorics.
+\end{alertblock}
 
 \framebreak
 
 The two canonical MCMC algorithms are:
 \begin{itemize}
-  \item \textbf{Metropolis-Hastings} (Section~6.3.1): propose a new state from an arbitrary ``proposal'' distribution, then accept or reject the proposal based on a ratio test that guarantees stationarity.
-  \item \textbf{Gibbs sampler} (Section~6.3.2): applicable when the state space has a product structure $\mathcal{S} = C^V$; update one coordinate at a time by sampling from the exact conditional distribution of that coordinate given all others.
+  \item \textbf{Metropolis-Hastings} (Section 6.3.1): propose a move to a new state from an arbitrary ``proposal'' distribution, then accept or reject that proposed move based on a ratio test.
+  The ratio test is designed so that the chain has $\pi$ as its stationary distribution, regardless of the proposal chosen.
+
+  \item \textbf{Gibbs sampler} (Section 6.3.2): applicable when the state space has a product structure $\mathcal{S} = C^V$ (every configuration assigns a value from alphabet $C$ to each vertex in set $V$).
+  The Gibbs sampler updates one coordinate at a time, sampling from the exact conditional distribution of that coordinate given all others.
+  No acceptance/rejection is needed: every proposal is accepted.
 \end{itemize}
 
-Both algorithms produce a Markov chain satisfying the DBC with weights $w_s = \pi_s$, hence having stationary distribution $\pi$.
+Both algorithms produce a Markov chain satisfying the DBC with weights $w_s = \pi_s$, and therefore having stationary distribution exactly $\pi$.
 
 \end{frame}
 
@@ -343,12 +438,14 @@ Both algorithms produce a Markov chain satisfying the DBC with weights $w_s = \p
 
 \begin{frame}[allowframebreaks]{6.3.1 The Metropolis Algorithm}
 
-\textbf{Setting.} We are given a target distribution $\pi$ on $\mathcal{S}$ and a \emph{symmetric}, regular transition matrix $\bfQ = (q_{ss'})$ called the \emph{candidate-generating matrix} or \emph{proposal matrix}.
-From the current state $s$, we propose moving to $s' \sim \mathbf{q}_s$.
-The proposal is accepted with probability $\min(1, \pi_{s'}/\pi_s)$; otherwise we stay at $s$.
+\textbf{Setting.}
+We are given a target distribution $\pi$ on $\mathcal{S}$ and a \emph{symmetric}, regular transition matrix $\bfQ = (q_{ss'})$ called the \emph{candidate-generating matrix} or \emph{proposal matrix}.
+The word ``symmetric'' here means $q_{ss'} = q_{s's}$ for all $s, s'$: the probability of proposing a move from $s$ to $s'$ is the same as from $s'$ to $s$.
+From the current state $s$, we propose moving to a new state $s'$ drawn from the distribution $\mathbf{q}_s$ (the row of $\bfQ$ corresponding to state $s$).
+The proposal is then either accepted (and we move to $s'$) or rejected (and we stay at $s$), with an acceptance probability that ensures $\pi$ is the stationary distribution.
 
 \begin{block}{The Metropolis Transition Matrix}
-The resulting transition matrix $\bfP$ has entries
+The resulting transition matrix $\bfP$ has entries:
 \[
   p_{ss'} = \begin{cases}
     q_{ss'} \min\!\left(1, \dfrac{\pi_{s'}}{\pi_s}\right), & s \neq s', \\[6pt]
@@ -357,40 +454,57 @@ The resulting transition matrix $\bfP$ has entries
 \]
 \end{block}
 
-\begin{block}{Algorithm 42 (Metropolis, one step)}
-\textbf{Given:} Current state $Y_k = s$; symmetric proposal $\bfQ$; target $\pi$.
-\begin{enumerate}
-  \item Sample proposed state $X \sim \mathbf{q}_s = (q_{s,s_1}, \ldots, q_{s,s_N})$.
-  \item Compute acceptance probability $\alpha = \min\!\left(1,\, \pi_X / \pi_s\right)$.
-  \item Draw $U \sim \mathcal{U}[0,1]$ independently of $X$.
-  \item If $U \le \alpha$: \textbf{accept} and set $Y_{k+1} = X$; otherwise $Y_{k+1} = Y_k$.
-\end{enumerate}
+\begin{block}{Notation}
+For $s \neq s'$: $p_{ss'}$ is the probability of moving from $s$ to $s'$, which equals the probability $q_{ss'}$ of proposing $s'$ times the probability $\min(1, \pi_{s'}/\pi_s)$ of accepting.
+For $s = s'$: $p_{ss}$ is the probability of staying put, which is 1 minus the total probability of moving anywhere.
+The function $\min(1, x)$ equals 1 when $x \ge 1$ and equals $x$ when $x < 1$.
 \end{block}
+
+\begin{alertblock}{How to Read the Acceptance Probability $\min(1, \pi_{s'}/\pi_s)$}
+If the proposed state $s'$ has higher probability than the current state $s$ (i.e.\ $\pi_{s'} > \pi_s$), the ratio $\pi_{s'}/\pi_s > 1$ and the move is always accepted (probability 1).
+If the proposed state $s'$ has lower probability, the move is accepted with probability $\pi_{s'}/\pi_s < 1$.
+This asymmetry means the chain spends more time in high-probability states, which is exactly what we want: we are trying to sample from $\pi$, so high-$\pi$ states should be visited more often.
+\end{alertblock}
 
 \framebreak
 
-\textbf{Why does this work?} We verify the DBC with $w_s = \pi_s$.
-For $s \neq s'$ (assuming $q_{ss'} > 0$):
+\begin{block}{Algorithm 42 (Metropolis, one step)}
+\textbf{Given:} Current state $Y_k = s$; symmetric proposal matrix $\bfQ$; target $\pi$.
+\begin{enumerate}
+  \item Sample a proposed new state $X$ from the proposal distribution $\mathbf{q}_s = (q_{s,s_1}, \ldots, q_{s,s_N})$.
+  \item Compute the acceptance probability $\alpha$ (alpha) $= \min\!\left(1,\, \pi_X / \pi_s\right)$.
+  \item Draw an independent uniform random variable $U \sim \mathcal{U}[0,1]$.
+  \item \textbf{Accept} the proposal (set $Y_{k+1} = X$) if $U \le \alpha$; otherwise \textbf{reject} (set $Y_{k+1} = Y_k = s$).
+\end{enumerate}
+\end{block}
+
+\textbf{Why does this work?}
+We verify the detailed balance condition (DBC) with weights $w_s = \pi_s$.
+For any two distinct states $s \neq s'$ with $q_{ss'} > 0$:
 \begin{align*}
   \pi_s \, p_{ss'} &= \pi_s \, q_{ss'} \min(1, \pi_{s'}/\pi_s) = q_{ss'} \min(\pi_s, \pi_{s'}).
 \end{align*}
-By symmetry of $\bfQ$ ($q_{ss'} = q_{s's}$) and symmetry of $\min$:
+By symmetry of $\bfQ$ ($q_{ss'} = q_{s's}$) and symmetry of the $\min$ function:
 \[
-  \pi_{s'} \, p_{s's} = q_{s's} \min(\pi_{s'}, \pi_s) = \pi_s \, p_{ss'}. \checkmark
+  \pi_{s'} \, p_{s's} = q_{s's} \min(\pi_{s'}, \pi_s) = q_{ss'} \min(\pi_s, \pi_{s'}) = \pi_s \, p_{ss'}. \checkmark
 \]
 
 \begin{block}{Proposition 6.3.1 (Metropolis)}
 If $\bfQ$ is symmetric and regular, then the Metropolis transition matrix $\bfP$ is regular with stationary distribution $\pi$.
 \end{block}
 
+\framebreak
+
 \begin{exampleblock}{Worked Example: Two-State Metropolis}
-Let $\mathcal{S} = \{0,1\}$, $\pi_0 = 0.3$, $\pi_1 = 0.7$, and $\bfQ = \begin{pmatrix}0 & 1\\ 1 & 0\end{pmatrix}$ (always propose the other state).
+Let $\mathcal{S} = \{0,1\}$, $\pi_0 = 0.3$ (30\% probability on state 0), $\pi_1 = 0.7$ (70\% on state 1), and $\bfQ = \begin{pmatrix}0 & 1\\ 1 & 0\end{pmatrix}$ (the only proposal is to switch states).
 
-From state 0: accept probability $= \min(1, 0.7/0.3) = 1$, so $p_{01} = 1$.
+From state 0: the proposed state is 1. Acceptance probability $= \min(1, \pi_1/\pi_0) = \min(1, 0.7/0.3) = \min(1, 2.33) = 1$.
+Since $\pi_1 > \pi_0$ (state 1 is more probable), we always accept a move from the less-probable state 0 to the more-probable state 1. So $p_{01} = 1 \cdot 1 = 1$.
 
-From state 1: accept probability $= \min(1, 0.3/0.7) = 3/7$, so $p_{10} = 3/7$, $p_{11} = 4/7$.
+From state 1: the proposed state is 0. Acceptance probability $= \min(1, \pi_0/\pi_1) = \min(1, 0.3/0.7) = 3/7 \approx 0.43$.
+So $p_{10} = 1 \cdot 3/7 = 3/7$ and $p_{11} = 1 - 3/7 = 4/7$ (stay with probability 4/7).
 
-Stationary check: $\pi_0 \cdot 1 = 0.3 = (3/7) \cdot 0.7 = \pi_1 \cdot p_{10}$. The DBC holds.
+DBC check: $\pi_0 \cdot p_{01} = 0.3 \times 1 = 0.3$ and $\pi_1 \cdot p_{10} = 0.7 \times 3/7 = 0.3$. They are equal, confirming DBC. $\checkmark$
 \end{exampleblock}
 
 \includegraphics[width=0.75\linewidth]{fig_metropolis_acceptance}
@@ -399,47 +513,71 @@ Stationary check: $\pi_0 \cdot 1 = 0.3 = (3/7) \cdot 0.7 = \pi_1 \cdot p_{10}$. 
 
 \begin{frame}[allowframebreaks]{6.3.1 Metropolis-Hastings: Asymmetric Proposals}
 
-The Metropolis algorithm requires a symmetric proposal $\bfQ$.
-The \textbf{Metropolis-Hastings} (MH) algorithm removes this restriction, making it applicable to any regular proposal matrix.
+The Metropolis algorithm requires a symmetric proposal $\bfQ$ (so that $q_{ss'} = q_{s's}$).
+This restriction is often inconvenient: natural proposals on graphs, for example, may visit high-degree vertices more often than low-degree ones.
+The \textbf{Metropolis-Hastings} (MH) algorithm generalises Metropolis by allowing \emph{any} regular proposal matrix and introducing a correction factor to compensate for the proposal's asymmetry.
 
 \begin{block}{Algorithm 43 (Metropolis-Hastings, one step)}
-\textbf{Given:} Current state $Y_k = s$; regular proposal matrix $\bfQ$; target $\pi$.
+\textbf{Given:} Current state $Y_k = s$; regular (possibly asymmetric) proposal matrix $\bfQ$; target $\pi$.
 \begin{enumerate}
-  \item Sample proposed state $X \sim \mathbf{q}_s$.
+  \item Sample proposed state $X$ from $\mathbf{q}_s$ (the row of $\bfQ$ for state $s$).
   \item Compute the \textbf{Hastings acceptance ratio}:
-        $\displaystyle\alpha_{sX} = \min\!\left(1,\, \frac{\pi_X \, q_{Xs}}{\pi_s \, q_{sX}}\right)$.
-  \item Draw $U \sim \mathcal{U}[0,1]$. If $U \le \alpha_{sX}$: set $Y_{k+1} = X$; else $Y_{k+1} = Y_k$.
+        \[
+          \alpha_{sX} = \min\!\left(1,\, \frac{\pi_X \, q_{Xs}}{\pi_s \, q_{sX}}\right).
+        \]
+  \item Draw $U \sim \mathcal{U}[0,1]$ independently. If $U \le \alpha_{sX}$: set $Y_{k+1} = X$; else set $Y_{k+1} = Y_k = s$.
 \end{enumerate}
 \end{block}
 
-The factor $\pi_X q_{Xs} / (\pi_s q_{sX})$ corrects for the asymmetry in the proposal: if $\bfQ$ tends to over-propose moves from $s$ to $s'$ (i.e.\ $q_{ss'} \gg q_{s's}$), the correction factor downweights acceptance.
+\begin{block}{Notation for the Hastings Acceptance Ratio}
+In the ratio $\frac{\pi_X \, q_{Xs}}{\pi_s \, q_{sX}}$:
+\begin{itemize}
+  \item $\pi_X$ is the target probability of the proposed state $X$.
+  \item $\pi_s$ is the target probability of the current state $s$.
+  \item $q_{sX}$ is the proposal probability of moving from $s$ to $X$ (how likely is this proposal?).
+  \item $q_{Xs}$ is the proposal probability of moving from $X$ back to $s$ (how likely would the reverse proposal be?).
+\end{itemize}
+The ratio $q_{Xs}/q_{sX}$ is the correction factor for the proposal's asymmetry.
+If the proposal $\bfQ$ is symmetric ($q_{sX} = q_{Xs}$), this factor is 1 and we recover the original Metropolis acceptance probability $\min(1, \pi_X/\pi_s)$.
+\end{block}
+
+\begin{alertblock}{How to Read the Hastings Ratio}
+The factor $\pi_X q_{Xs} / (\pi_s q_{sX})$ corrects for the asymmetry in the proposal: if $\bfQ$ tends to over-propose moves from $s$ to $X$ (i.e.\ $q_{sX} \gg q_{Xs}$, so we propose this direction much more than the reverse), the correction factor downweights the acceptance probability accordingly.
+This correction is essential: without it, the chain would spend too much time in states that are over-proposed, rather than spending time proportional to $\pi$.
+\end{alertblock}
+
+\framebreak
 
 \begin{block}{Proposition 6.3.2 (Metropolis-Hastings)}
-Let $\bfQ$ be regular with $q_{ss'} > 0 \Leftrightarrow q_{s's} > 0$. Then the MH transition matrix
+Let $\bfQ$ be regular with $q_{ss'} > 0 \Leftrightarrow q_{s's} > 0$ (transitions are possible in both directions or neither). Then the MH transition matrix
 \[
   p_{ss'} = q_{ss'}\, \alpha_{ss'} \quad (s \neq s'), \qquad \alpha_{ss'} = \min\!\left(1,\, \frac{\pi_{s'}\,q_{s's}}{\pi_s\,q_{ss'}}\right),
 \]
 is regular with stationary distribution $\pi$.
 \end{block}
 
-\textbf{Proof.} For $s \neq s'$:
+\textbf{Proof (DBC).} For $s \neq s'$:
+\begin{align*}
+  \pi_s \, p_{ss'} &= \pi_s q_{ss'} \min\!\Bigl(1, \frac{\pi_{s'}q_{s's}}{\pi_s q_{ss'}}\Bigr) = \min\bigl(\pi_s q_{ss'},\, \pi_{s'} q_{s's}\bigr).
+\end{align*}
+By symmetry of $\min$:
 \[
-  \pi_s q_{ss'} \min\!\Bigl(1, \frac{\pi_{s'}q_{s's}}{\pi_s q_{ss'}}\Bigr) = \min(\pi_s q_{ss'},\, \pi_{s'} q_{s's}) = \pi_{s'} q_{s's} \min\!\Bigl(1, \frac{\pi_s q_{ss'}}{\pi_{s'} q_{s's}}\Bigr). \quad \square
+  \pi_{s'} \, p_{s's} = \pi_{s'} q_{s's} \min\!\Bigl(1, \frac{\pi_s q_{ss'}}{\pi_{s'} q_{s's}}\Bigr) = \min\bigl(\pi_{s'} q_{s's},\, \pi_s q_{ss'}\bigr) = \pi_s \, p_{ss'}. \quad \square
 \]
 
 \framebreak
 
 \textbf{Special case: Random Walk MH on a graph.}
-On a connected graph $G = (V,E)$, take $q_{vv'} = 1/K$ if $v' \in \mathcal{N}(v)$ (and $q_{vv} = 1 - \deg(v)/K$ for a self-loop, with $K \ge \Delta = \max\deg$).
-To sample from a target $\pi_v = b_v/B$ (with $B = \sum b_v$ unknown), the acceptance ratio becomes:
+On a connected graph $G = (V,E)$, take $q_{vv'} = 1/K$ for neighbours $v' \in \mathcal{N}(v)$ (where $\mathcal{N}(v)$ is the set of neighbours of $v$), and $q_{vv} = 1 - \deg(v)/K$ for a self-loop, with $K \ge \Delta = \max\deg$ (the maximum degree over all vertices).
+To sample from a target $\pi_v = b_v/B$ with $B = \sum_v b_v$ unknown, the acceptance ratio becomes:
 \[
-  \alpha_{vv'} = \min\!\left(1,\, \frac{\pi_{v'}/K}{\pi_v/K}\right) = \min\!\left(1,\, \frac{b_{v'}}{b_v}\right).
+  \alpha_{vv'} = \min\!\left(1,\, \frac{(\pi_{v'}/K)}{(\pi_v/K)}\right) = \min\!\left(1,\, \frac{\pi_{v'}}{\pi_v}\right) = \min\!\left(1,\, \frac{b_{v'}}{b_v}\right).
 \]
-The normalising constant $B$ cancels completely.
+The unknown normalising constant $B$ cancels completely, and we never need to compute it.
 
-\begin{alertblock}{Key Insight: Normalising Constant Cancels}
-In any MH algorithm, the target $\pi$ enters only through ratios $\pi_{s'}/\pi_s$.
-If $\pi_s = \tilde\pi_s / Z$ for unknown $Z$, then $\pi_{s'}/\pi_s = \tilde\pi_{s'}/\tilde\pi_s$.
+\begin{alertblock}{Key Insight: Normalising Constant Always Cancels}
+In any MH algorithm, the target $\pi$ appears only through ratios $\pi_{s'}/\pi_s$.
+If $\pi_s = \tilde\pi_s / Z$ for some known $\tilde\pi_s$ and unknown $Z$, then $\pi_{s'}/\pi_s = \tilde\pi_{s'}/\tilde\pi_s$ --- the unknown $Z$ cancels.
 This is the single most important practical advantage of MCMC over direct sampling.
 \end{alertblock}
 
@@ -476,7 +614,7 @@ def metropolis_hastings(log_pi, proposal, x0, n_steps):
 def log_pi_mix(x):
     return np.log(0.4*np.exp(-0.5*(x+2)**2) + 0.6*np.exp(-0.5*(x-3)**2/4))
 
-# Symmetric random-walk proposal: q_ratio = 0
+# Symmetric random-walk proposal: log_q_ratio = 0
 def rw_proposal(x, sigma=1.5):
     x_new = x + np.random.normal(0, sigma)
     return x_new, 0.0  # symmetric => log q(x_new->x) = log q(x->x_new)
@@ -488,23 +626,30 @@ print(f"E[X] estimate: {I_hat:.4f}")
 \end{lstlisting}
 \end{frame}
 
-\begin{frame}{6.3.1 MH Trace: Convergence in Practice}
+\begin{frame}[allowframebreaks]{6.3.1 MH Trace: Convergence in Practice}
 
 \includegraphics[width=\linewidth]{fig_mh_trace}
 
-Three phases are visible in a typical MCMC run.
+Three distinct phases are visible in a typical MCMC run, and understanding them is essential for correct use of the output.
+
 \begin{enumerate}
-  \item \textbf{Burn-in}: the chain has not yet reached its stationary distribution, so samples are biased.
-  \item \textbf{Mixing}: the chain traverses the support of $\pi$ and samples become representative.
-  \item \textbf{Estimation}: we average $f(X_j)$ over the post-burn-in samples.
+  \item \textbf{Burn-in}: In the initial phase, the chain has not yet reached its stationary distribution.
+  The samples are biased toward the starting state $x_0$ and should be \emph{discarded} rather than included in the average.
+  How long the burn-in lasts depends on the mixing time $\tau(\varepsilon)$.
+
+  \item \textbf{Mixing}: Once the chain has forgotten its starting state, it begins to traverse the full support of $\pi$, visiting high-probability regions frequently and low-probability regions rarely (in proportion to $\pi$).
+  The running average $\hat{Y}_r$ begins to stabilise.
+
+  \item \textbf{Estimation}: We average $f(X_j)$ over the post-burn-in samples.
+  Because consecutive samples are correlated (the chain does not jump randomly --- it moves by small steps), the effective sample size is smaller than the nominal sample size $R$.
 \end{enumerate}
 
-The choice of proposal step size $\sigma$ is crucial: too small leads to slow exploration (high acceptance, small moves); too large leads to many rejections (low acceptance, chain stays put).
-For a random walk proposal in $\mathbb{R}^d$, the theoretically optimal acceptance rate is approximately 23\%.
+The choice of proposal step size $\sigma$ (sigma) is crucial for performance: too small a $\sigma$ leads to slow exploration (high acceptance rate, but the chain barely moves); too large a $\sigma$ leads to many rejections (low acceptance rate, chain stays put).
+For a random-walk proposal in $\mathbb{R}^d$ (``d-dimensional real space''), theory shows the optimal acceptance rate is approximately 23\%.
 
 \begin{alertblock}{Key Takeaway}
-The burn-in period is discarded; the remaining samples form a (correlated) sequence from $\approx \pi$.
-The convergence diagnostic is monitoring $\hat{Y}_R$ as a running average: once it stabilises, the chain has mixed.
+The burn-in period is discarded; the remaining samples form a (correlated but valid) sequence from $\approx \pi$.
+A practical convergence diagnostic: monitor $\hat{Y}_R$ as a running average; once it stabilises and stops trending, the chain has mixed.
 \end{alertblock}
 
 \end{frame}
@@ -515,59 +660,60 @@ The convergence diagnostic is monitoring $\hat{Y}_R$ as a running average: once 
 
 \begin{frame}[allowframebreaks]{6.3.2 The Gibbs Sampler: Setup and Motivation}
 
-The Gibbs sampler applies when the state space has a \emph{product structure} $\mathcal{S} = C^V$, where $V$ is a finite set of vertices (coordinates) and $C = \{1, \ldots, r\}$ is a finite alphabet.
-A \emph{configuration} $\xi \in \mathcal{S}$ is a function $\xi : V \to C$ assigning a value $\xi(v) \in C$ to each vertex $v \in V$.
+The Gibbs sampler is an MCMC algorithm specifically designed for distributions on product spaces.
+It applies when the state space has the form $\mathcal{S} = C^V$, where $V$ is a finite set of ``sites'' or ``vertices'' (coordinates), and $C = \{1, \ldots, r\}$ is a finite ``alphabet'' of values each site can take.
+A \emph{configuration} $\xi \in \mathcal{S}$ (xi, pronounced ``ksee'') is a function $\xi : V \to C$ that assigns a value $\xi(v) \in C$ to each site $v \in V$.
 
-Many important models have this structure, including spin systems in statistical physics and Markov random fields in machine learning.
+Many important models have this product-space structure: spin systems in statistical physics (where each vertex is an atom with a spin), Markov random fields in machine learning (image segmentation, etc.), and combinatorial models such as graph colourings and independent sets.
 
-The Gibbs sampler updates one coordinate at a time, sampling it from its \emph{full conditional distribution} given all other coordinates.
-This is particularly natural for \textbf{Gibbs distributions}:
-\[
-  \pi_\xi = \frac{1}{z(T)}\, e^{-H(\xi)/T},
-\]
-where $H : \mathcal{S} \to \mathbb{R}$ is an \emph{energy function}, $T > 0$ is the \emph{temperature}, and $z(T) = \sum_{\xi \in \mathcal{S}} e^{-H(\xi)/T}$ is the partition function (normalising constant).
-
-\framebreak
+The key idea of the Gibbs sampler is simple: instead of proposing a new \emph{entire} configuration, update one \emph{coordinate} (site) at a time, sampling it from its exact conditional distribution given all other coordinates.
+Because this conditional distribution comes from $\pi$ exactly, no acceptance/rejection step is needed.
 
 \begin{block}{Full Conditional Distribution}
-Given a configuration $\xi \in \mathcal{S}$ and a vertex $v \in V$, we write $\xi_{-v}$ for the restriction of $\xi$ to all vertices except $v$.
+Given a configuration $\xi \in \mathcal{S}$ and a site $v \in V$, we write $\xi_{-v}$ (``xi minus v'') for the restriction of $\xi$ to all sites except $v$ (i.e., the values of all other coordinates).
 The \textbf{full conditional distribution} of coordinate $v$ given all others is
 \[
   p_{\xi,v}(c) = \PP(Z(v) = c \mid Z_{-v} = \xi_{-v}), \quad c \in C,
 \]
-where $Z \sim \pi$. This is the conditional distribution of the value at $v$, given that all other vertices take their current values according to $\xi$.
-\end{block}
-
-\begin{block}{Algorithm 44 (Gibbs Sampler, one step)}
-\textbf{Given:} Current configuration $X_k = \xi$; target $\pi$.
-\begin{enumerate}
-  \item Choose a vertex $v \in V$ uniformly at random.
-  \item For each $c \in C$, compute the weight $p_{\xi,v}(c)$ proportional to $\pi_{\xi(v \to c)}$, where $\xi(v \to c)$ denotes $\xi$ with the value at $v$ changed to $c$.
-  \item Sample $c^* \sim p_{\xi,v}(\cdot)$ (the full conditional).
-  \item Set $X_{k+1}(v) = c^*$ and $X_{k+1}(w) = \xi(w)$ for $w \neq v$.
-\end{enumerate}
+where $Z \sim \pi$ is a random configuration drawn from $\pi$.
+In words: this is the probability that the value at site $v$ equals $c$, given that all other sites take the values specified by $\xi$.
 \end{block}
 
 \framebreak
 
-The update function for the Gibbs sampler, using $X_{n+1} = \varphi(X_n, W_{n+1}, U_{n+1})$ where $W_{n+1}$ is the randomly chosen vertex and $U_{n+1} \in [0,1]$, is
-\[
-  \varphi(\xi, v, u) = \xi(v \to c) \quad \text{if } u \in \Bigl[\sum_{c' < c} p_{\xi,v}(c'),\; \sum_{c' \le c} p_{\xi,v}(c')\Bigr).
-\]
-
-\begin{block}{Proposition 6.3.5 (Gibbs Sampler Correctness)}
-If the Gibbs sampler chain is ergodic, its stationary distribution is $\pi$.
+\begin{block}{Algorithm 44 (Gibbs Sampler, one step)}
+\textbf{Given:} Current configuration $X_k = \xi$; target distribution $\pi$.
+\begin{enumerate}
+  \item Choose a site $v \in V$ uniformly at random (each site is equally likely to be updated).
+  \item For each possible value $c \in C$, compute the weight of the modified configuration $\xi(v \to c)$ (meaning: $\xi$ with the value at site $v$ changed to $c$, all other values unchanged). The weight is proportional to $\pi_{\xi(v \to c)}$.
+  \item Normalise: $p_{\xi,v}(c) = \pi_{\xi(v \to c)} / \sum_{c' \in C} \pi_{\xi(v \to c')}$. This is the full conditional.
+  \item Sample $c^* \sim p_{\xi,v}(\cdot)$ (draw a random value from the full conditional).
+  \item Set $X_{k+1}(v) = c^*$ (update site $v$) and $X_{k+1}(w) = \xi(w)$ for all $w \neq v$ (leave all other sites unchanged).
+\end{enumerate}
 \end{block}
 
-\textbf{Proof.} We verify DBC for any two configurations $\xi, \xi' \in \mathcal{S}$ that differ at exactly one vertex $v$:
-\[
-  \pi_\xi \cdot p_{\xi\xi'} = \pi_\xi \cdot \frac{1}{|V|} p_{\xi,v}(\xi'(v)) = \frac{\pi_\xi \pi_{\xi'}}{|V| \sum_{c} \pi_{\xi(v \to c)}}.
-\]
-This is symmetric in $\xi$ and $\xi'$, confirming DBC. $\square$
+\begin{block}{Notation}
+$\xi(v \to c)$ (``xi with v replaced by c'') is the configuration identical to $\xi$ at every site except $v$, where it takes value $c$ instead.
+The normalisation denominator $\sum_{c' \in C} \pi_{\xi(v \to c')}$ sums the weights of all possible values at site $v$ (with all other sites fixed), and equals the marginal probability of the pattern $\xi_{-v}$ at all sites except $v$.
+Crucially, any unknown normalising constant in $\pi$ cancels in this ratio, so we only need to evaluate $\pi_{\xi(v \to c)}$ up to a constant.
+\end{block}
+
+\framebreak
+
+\begin{block}{Proposition 6.3.5 (Gibbs Sampler Correctness)}
+If the Gibbs sampler chain is ergodic (which must be verified for each specific model), its unique stationary distribution is $\pi$.
+\end{block}
+
+\textbf{Proof (DBC).} We verify DBC for any two configurations $\xi, \xi'$ that differ at exactly one site $v$ (so $\xi'(v) \neq \xi(v)$ but $\xi'(w) = \xi(w)$ for $w \neq v$):
+\begin{align*}
+  \pi_\xi \cdot p_{\xi\xi'} &= \pi_\xi \cdot \frac{1}{|V|} \cdot p_{\xi,v}(\xi'(v)) = \pi_\xi \cdot \frac{1}{|V|} \cdot \frac{\pi_{\xi'}}{\sum_{c} \pi_{\xi(v \to c)}} = \frac{\pi_\xi \pi_{\xi'}}{|V| \sum_{c} \pi_{\xi(v \to c)}}.
+\end{align*}
+This expression is symmetric in $\xi$ and $\xi'$ (swapping them gives the same formula), so DBC holds. $\square$
 
 \begin{exampleblock}{Note on Ergodicity}
-The Gibbs sampler can fail to be ergodic (e.g., be reducible or periodic).
-Regularity must be checked for each specific model.
+The Gibbs sampler can fail to be ergodic (e.g., be reducible or periodic) for specific models.
+For instance, if the alphabet $C$ has only one valid value at every site (all states are determined), the chain never moves.
+Regularity (irreducibility and aperiodicity) must be checked for each specific model separately.
 \end{exampleblock}
 
 \includegraphics[width=0.80\linewidth]{fig_gibbs_full_conditional}
@@ -580,58 +726,68 @@ Regularity must be checked for each specific model.
 
 \begin{frame}[allowframebreaks]{6.3.2.1 Graph Coloring}
 
-\textbf{Problem.} Given a graph $G = (V,E)$ and a colour set $C = \{1, \ldots, r\}$, a \emph{proper $r$-colouring} is an assignment $\xi : V \to C$ such that no two adjacent vertices share the same colour, i.e.\ $\xi(v) \neq \xi(v')$ for all $\{v,v'\} \in E$.
-Let $\Lambda$ be the set of all proper colourings and $z_G = |\Lambda|$.
+\textbf{Problem.}
+Given a graph $G = (V,E)$ and a colour set $C = \{1, \ldots, r\}$, a \emph{proper $r$-colouring} is an assignment $\xi : V \to C$ of colours to vertices such that no two adjacent (directly connected) vertices share the same colour: $\xi(v) \neq \xi(v')$ for all $\{v,v'\} \in E$.
+The number of proper $r$-colourings of $G$ is denoted $z_G = |\Lambda|$, where $\Lambda$ is the set of all valid colourings.
 
 \begin{block}{Target Distribution: Uniform over Proper Colourings}
 \[
   \pi_\xi = \frac{1}{z_G}\, \mathbf{1}(\xi \in \Lambda).
 \]
+Here $\mathbf{1}(\xi \in \Lambda)$ (``indicator of xi in Lambda'') is 1 if $\xi$ is a valid colouring and 0 otherwise.
+So every valid colouring has equal probability $1/z_G$, and invalid colourings have zero probability.
+Computing $z_G$ exactly is \#P-complete in general (believed to be computationally harder than NP-complete), but sampling from $\pi$ is tractable via Gibbs sampling when $r$ is large enough.
 \end{block}
-
-Computing $z_G$ exactly is \#P-complete in general, but sampling from $\pi$ is tractable via Gibbs sampling when $r$ is sufficiently large.
 
 \framebreak
 
 \textbf{Gibbs sampler for graph colouring (Algorithm 45).}
-Given current colouring $\xi$, pick vertex $v \in V$ uniformly at random.
-Let $\mathcal{C}_{\xi,v} = \{\xi(w) : w \in \mathcal{N}(v)\}$ be the set of colours used by $v$'s neighbours.
-The full conditional distribution is uniform over all \emph{available} colours:
+Given the current colouring $\xi$, pick one vertex $v \in V$ uniformly at random.
+Let $\mathcal{C}_{\xi,v} = \{\xi(w) : w \in \mathcal{N}(v)\}$ be the set of colours already used by $v$'s neighbours.
+These are the \emph{forbidden} colours for $v$.
+The full conditional distribution is then uniform over all \emph{available} (non-forbidden) colours:
 \[
   p_{\xi,v}(c) = \begin{cases}
-    0, & c \in \mathcal{C}_{\xi,v}, \\
-    \dfrac{1}{r - |\mathcal{C}_{\xi,v}|}, & c \in C \setminus \mathcal{C}_{\xi,v}.
+    0, & c \in \mathcal{C}_{\xi,v} \text{ (colour already used by a neighbour)}, \\
+    \dfrac{1}{r - |\mathcal{C}_{\xi,v}|}, & c \in C \setminus \mathcal{C}_{\xi,v} \text{ (colour is available)}.
   \end{cases}
 \]
-Pick $c^*$ uniformly from $C \setminus \mathcal{C}_{\xi,v}$ and set $\xi(v) \leftarrow c^*$.
+We simply pick $c^*$ uniformly from the available colours $C \setminus \mathcal{C}_{\xi,v}$ and set $\xi(v) \leftarrow c^*$.
 
 \begin{columns}[T]
   \begin{column}{0.5\textwidth}
     \includegraphics[width=\linewidth]{fig_graph_coloring}
   \end{column}
   \begin{column}{0.46\textwidth}
-    The Gibbs sampler requires $r \ge \Delta + 1$ to ensure there is always at least one available colour (so the chain is well-defined from any proper colouring).
+    The Gibbs sampler for graph colouring requires $r \ge \Delta + 1$ colours to ensure there is always at least one available colour at every vertex, where $\Delta = \max_{v \in V} \deg(v)$ is the maximum degree.
+    If $r < \Delta + 1$, a vertex with $\Delta$ neighbours might have all $r$ colours forbidden.
 
     \smallskip
-    \textbf{Metropolis alternative (Algorithm 46):} choose $v \in V$ and $c \in C$ uniformly; accept the new colouring $\xi(v \leftarrow c)$ if it is still proper.
-    The acceptance ratio is $\pi_{\xi'}/\pi_\xi = 1$ (if feasible) or $0$ (if not).
+    \textbf{Metropolis alternative (Algorithm 46):} choose $v \in V$ and $c \in C$ uniformly at random; accept the new colouring $\xi(v \leftarrow c)$ if it is still proper.
+    The acceptance ratio is $\pi_{\xi'}/\pi_\xi = 1$ (accept) if feasible, or $0$ (reject) if not.
   \end{column}
 \end{columns}
 
 \framebreak
 
 \begin{block}{Rapid Mixing (Lemma 6.5.15)}
-If $r \ge 2\Delta + 1$ (where $\Delta = \max_{v \in V} \deg(v)$), the Metropolis chain on colourings is \textbf{rapidly mixing} with mixing time
+If $r \ge 2\Delta + 1$ (at least twice the maximum degree plus one), the Metropolis chain on colourings is \textbf{rapidly mixing} with mixing time
 \[
   \tau(\kappa) \le \frac{r}{r - 2\Delta}\, M\, \ln\!\left(\frac{M}{\kappa}\right), \quad M = |V|.
 \]
-This bound is polynomial in $M$ and $\ln(1/\kappa)$, meaning the chain reaches stationarity efficiently even for large graphs.
+Here $\kappa$ (kappa, ``kap-a'') is the desired accuracy in total variation distance, $\ln$ is the natural logarithm, and $M = |V|$ is the number of vertices.
+\end{block}
+
+\begin{block}{Notation}
+A chain is \textbf{rapidly mixing} if its mixing time $\tau(\varepsilon)$ grows polynomially (not exponentially) in the problem size $M$ and $\ln(1/\varepsilon)$.
+The bound above is polynomial in $M$ and $\ln(M/\kappa)$, so the chain reaches stationarity efficiently even for large graphs.
 \end{block}
 
 \begin{alertblock}{Remark on Ergodicity}
 If $r = \Delta$ exactly, the chain may be periodic or reducible.
-For example, on the complete graph $K_3$ with $r = 3$ colours, once a valid 3-colouring is reached, no vertex can change its colour without creating a conflict, so the chain is absorbing (not ergodic).
-Always verify $r > \Delta$ to ensure ergodicity.
+For example, on the complete graph $K_3$ (three vertices, each pair connected) with $r = 3$ colours, every valid 3-colouring assigns a distinct colour to each vertex, and no vertex can change its colour without creating a conflict.
+The chain is then ``trapped'' and is not ergodic.
+Always verify $r > \Delta$ to ensure ergodicity of the Gibbs sampler.
 \end{alertblock}
 
 \end{frame}
@@ -642,37 +798,48 @@ Always verify $r > \Delta$ to ensure ergodicity.
 
 \begin{frame}[allowframebreaks]{6.3.2.2 Hard-core Model}
 
-\textbf{Problem.} Given a graph $G = (V,E)$ and a parameter $\lambda > 0$, each vertex is either \emph{occupied} ($\xi(v) = 1$) or \emph{empty} ($\xi(v) = 0$).
-A configuration $\xi \in \{0,1\}^V$ is \emph{feasible} (an \emph{independent set}) if no two occupied vertices are adjacent: $\xi(v) = \xi(w) = 1 \Rightarrow \{v,w\} \notin E$.
+\textbf{Problem.}
+Given a graph $G = (V,E)$ and a parameter $\lambda > 0$ (lambda, ``lam-da''), each vertex is either \emph{occupied} ($\xi(v) = 1$, representing a particle or an agent) or \emph{empty} ($\xi(v) = 0$).
+A configuration $\xi \in \{0,1\}^V$ is \emph{feasible} (an \emph{independent set}) if no two adjacent vertices are both occupied: $\xi(v) = \xi(w) = 1 \Rightarrow \{v,w\} \notin E$.
+This models the ``hard-core'' constraint that particles cannot be adjacent (like molecules that physically cannot overlap).
 
 \begin{block}{Generalised Hard-core Distribution}
 \[
   \pi_\xi = \frac{\lambda^{m(\xi)}}{z_{G,\lambda}}\, \mathbf{1}(\xi \in \Lambda),
   \quad z_{G,\lambda} = \sum_{\xi \in \Lambda} \lambda^{m(\xi)},
 \]
-where $m(\xi) = \sum_{v \in V} \xi(v)$ is the number of occupied vertices and $\Lambda$ is the set of all independent sets.
-For $\lambda = 1$ this reduces to the uniform distribution over $\Lambda$.
-For $\lambda > 1$, configurations with more particles are favoured.
+where $m(\xi) = \sum_{v \in V} \xi(v)$ is the number of occupied vertices in configuration $\xi$, and $\Lambda$ is the set of all independent sets of $G$.
+The parameter $\lambda$ is called the \emph{activity}: when $\lambda = 1$ this is the uniform distribution over all independent sets; when $\lambda > 1$, configurations with more particles have higher probability (the ``gas'' is denser); when $\lambda < 1$, fewer particles are favoured.
+\end{block}
+
+\begin{block}{Notation}
+$\lambda^{m(\xi)}$ (``lambda to the power m(xi)'') is a weight that increases with the number of particles when $\lambda > 1$.
+$z_{G,\lambda}$ is the partition function (normalising constant), which is intractable to compute for large graphs.
+$\mathbf{1}(\xi \in \Lambda)$ enforces the hard-core constraint: only valid independent sets have positive probability.
 \end{block}
 
 \framebreak
 
 \textbf{Full conditional for the hard-core model.}
-Given configuration $\xi$ and vertex $v$, there are two cases:
+Given configuration $\xi$ and a vertex $v$, the conditional probability of the value at $v$ (given all other vertices) depends on whether $v$'s neighbours are occupied:
+
 \begin{itemize}
-  \item If any neighbour $w \in \mathcal{N}_G(v)$ has $\xi(w) = 1$: the vertex $v$ cannot be occupied, so $p_{\xi,v}(1) = 0$ and $p_{\xi,v}(0) = 1$.
-  \item If all neighbours of $v$ are empty ($\xi(w) = 0$ for all $w \in \mathcal{N}_G(v)$): then
+  \item If \emph{any} neighbour $w \in \mathcal{N}_G(v)$ is occupied ($\xi(w) = 1$): the hard-core constraint forbids $v$ from being occupied, so $p_{\xi,v}(1) = 0$ and $p_{\xi,v}(0) = 1$ (vertex $v$ must be empty).
+
+  \item If \emph{all} neighbours of $v$ are empty ($\xi(w) = 0$ for all $w \in \mathcal{N}_G(v)$): there is no constraint, and the conditional probability is proportional to the weight $\lambda^{m}$, giving:
         \[
           p_{\xi,v}(1) = \frac{\lambda}{\lambda + 1}, \quad p_{\xi,v}(0) = \frac{1}{\lambda + 1}.
         \]
 \end{itemize}
 
+To derive the conditional: the weight of occupying $v$ (with all neighbours empty) is $\lambda^{m(\xi)+1} \cdot 1 = \lambda$ times more than the weight of leaving it empty (weight $\lambda^{m(\xi)} \cdot 1$). Normalising: $p_{\xi,v}(1) = \lambda/(\lambda+1)$.
+
 \begin{block}{Algorithm 47 (Gibbs Sampler for Hard-core Model)}
 \textbf{Given:} Graph $G = (V,E)$, parameter $\lambda > 0$.
 \begin{enumerate}
-  \item Choose $v \in V$ uniformly at random and flip a biased coin: heads with probability $\lambda/(\lambda+1)$.
-  \item If any neighbour of $v$ is occupied: set $\xi(v) = 0$ regardless.
-  \item If all neighbours are empty: set $\xi(v) = 1$ on heads, $\xi(v) = 0$ on tails.
+  \item Choose $v \in V$ uniformly at random. Flip a biased coin that lands heads with probability $\lambda/(\lambda+1)$.
+  \item If any neighbour of $v$ is occupied: forcibly set $\xi(v) = 0$ (regardless of the coin).
+  \item If all neighbours of $v$ are empty: set $\xi(v) = 1$ on heads, $\xi(v) = 0$ on tails.
 \end{enumerate}
 \end{block}
 
@@ -681,8 +848,9 @@ Given configuration $\xi$ and vertex $v$, there are two cases:
     \includegraphics[width=\linewidth]{fig_hardcore_grid}
   \end{column}
   \begin{column}{0.44\textwidth}
-    The figure shows typical configurations of the hard-core model on a grid graph for different values of $\lambda$.
-    For large $\lambda$, configurations concentrate on maximum independent sets (checkerboard patterns on a grid).
+    The figure shows typical configurations of the hard-core model on a grid graph for different values of $\lambda$ (lambda).
+    For small $\lambda$ (low activity), most vertices are empty.
+    For large $\lambda$ (high activity), configurations concentrate on maximum independent sets, which on a grid look like ``checkerboard'' patterns where every other vertex is occupied.
   \end{column}
 \end{columns}
 
@@ -694,39 +862,61 @@ Given configuration $\xi$ and vertex $v$, there are two cases:
 
 \begin{frame}[allowframebreaks]{6.3.2.4 Ising Model}
 
-The Ising model is one of the most studied models in statistical physics and serves as a canonical example for MCMC.
+The Ising model (named after physicist Ernst Ising, who solved the 1D case in 1925) is one of the most studied models in statistical physics and serves as a canonical example for Gibbs sampling.
+It models magnetic materials: each atom has a ``spin'' that can point up or down, and neighbouring atoms tend to align.
 
-\textbf{Setup.} Consider a graph $G = (V,E)$ (typically a 2D grid) where each vertex $v \in V$ carries a \emph{spin} $\xi(v) \in \{-1, +1\}$.
+\textbf{Setup.}
+Consider a graph $G = (V,E)$ (typically a 2D grid) where each vertex $v \in V$ carries a \emph{spin} $\xi(v) \in \{-1, +1\}$.
+A spin of $+1$ represents ``up'' and $-1$ represents ``down''.
 
 \begin{block}{Ising Distribution}
-The energy of a configuration $\xi \in \{-1,+1\}^V$ is
+The \emph{energy} of a configuration $\xi \in \{-1,+1\}^V$ is
 \[
   H(\xi) = -\sum_{\{v,v'\} \in E} \xi(v)\,\xi(v').
 \]
-Note that $H(\xi)$ is low when neighbouring spins align.
-The Ising distribution is the Gibbs measure with inverse temperature $\beta \in \mathbb{R}$:
+The sum is over all edges $\{v,v'\} \in E$ (pairs of adjacent vertices).
+When two adjacent vertices have the same spin ($\xi(v) = \xi(v') = +1$ or both $-1$), they contribute $-1$ to $H$ (lowering the energy).
+When they have opposite spins, they contribute $+1$ (raising the energy).
+So low-energy configurations are those where neighbours align.
+
+The Ising distribution is the Gibbs measure with inverse temperature $\beta$ (beta, ``bay-ta''):
 \[
-  \pi_\xi = \frac{1}{z_\beta}\,\exp(\beta \sum_{\{v,v'\} \in E} \xi(v)\,\xi(v')) = \frac{e^{-\beta H(\xi)}}{z_\beta}.
+  \pi_\xi = \frac{1}{z_\beta}\,\exp\!\Bigl(\beta \sum_{\{v,v'\} \in E} \xi(v)\,\xi(v')\Bigr) = \frac{e^{-\beta H(\xi)}}{z_\beta}.
 \]
-When $\beta > 0$ (ferromagnet), aligned configurations have higher probability. When $\beta < 0$ (anti-ferromagnet), alternating configurations are favoured.
+When $\beta > 0$ (ferromagnet), aligned configurations have higher probability.
+When $\beta < 0$ (anti-ferromagnet), alternating configurations are favoured.
+\end{block}
+
+\begin{block}{Notation}
+$z_\beta$ (``z sub beta'') is the partition function (normalising constant) that makes all probabilities sum to 1.
+$e^{-\beta H(\xi)}$ is the Boltzmann weight of configuration $\xi$ at inverse temperature $\beta$.
+A larger $|\beta|$ makes the distribution more concentrated: at $\beta = 0$, all configurations are equally likely (infinite temperature, no order); as $\beta \to \infty$, the distribution concentrates entirely on minimum-energy configurations.
 \end{block}
 
 \framebreak
 
 \textbf{Full conditional for the Ising model.}
-Let $m_+(v,\xi) = \#\{w \in \mathcal{N}(v) : \xi(w) = +1\}$ and $m_-(v,\xi) = \#\{w \in \mathcal{N}(v) : \xi(w) = -1\}$.
-Then
+When we fix all vertices except $v$, the value at $v$ depends only on $v$'s neighbours.
+Let $m_+(v,\xi) = \#\{w \in \mathcal{N}(v) : \xi(w) = +1\}$ be the number of $+1$ neighbours, and $m_-(v,\xi) = \#\{w \in \mathcal{N}(v) : \xi(w) = -1\}$ be the number of $-1$ neighbours.
+Then the energy difference between setting $\xi(v) = +1$ vs $\xi(v) = -1$ (holding all other spins fixed) is $-2\beta(m_+(v,\xi) - m_-(v,\xi))$.
+
+Therefore, the full conditional probability that $v$ takes spin $+1$ is:
 \[
   \PP(Z(v) = +1 \mid Z_{-v} = \xi_{-v}) = \alpha(\xi, v), \quad \alpha(\xi,v) = \frac{1}{1 + e^{-2\beta(m_+(v,\xi) - m_-(v,\xi))}}.
 \]
-Derivation: the energy difference between $\xi(v) = +1$ and $\xi(v) = -1$ (with all others fixed) is $-2\beta \sum_{w \in \mathcal{N}(v)} \xi(w)$, which simplifies to $-2\beta(m_+ - m_-)$.
+
+\begin{block}{Notation for the Full Conditional}
+$\alpha(\xi, v)$ (``alpha of xi and v'') is the logistic (sigmoid) function applied to $2\beta(m_+ - m_-)$.
+When $m_+ > m_-$ (more $+1$ neighbours than $-1$ neighbours) and $\beta > 0$, the exponent is negative and $\alpha(\xi,v) > 1/2$: spin $+1$ is more likely (alignment with neighbours is favoured).
+When $m_+ = m_-$: $\alpha(\xi,v) = 1/2$ (equal probability of $\pm 1$).
+\end{block}
 
 \begin{block}{Algorithm 48 (Gibbs Sampler for Ising Model)}
 \textbf{Given:} Graph $G = (V,E)$, parameter $\beta$.
 \begin{enumerate}
   \item Choose $v \in V$ uniformly at random; draw $U \sim \mathcal{U}[0,1]$.
   \item Compute $\alpha(\xi, v) = 1/(1 + \exp(-2\beta(m_+(v,\xi) - m_-(v,\xi))))$.
-  \item Set $\xi(v) = +1$ if $U < \alpha(\xi,v)$; else $\xi(v) = -1$.
+  \item Set $\xi(v) = +1$ if $U < \alpha(\xi,v)$; otherwise set $\xi(v) = -1$.
 \end{enumerate}
 \end{block}
 
@@ -735,11 +925,14 @@ Derivation: the energy difference between $\xi(v) = +1$ and $\xi(v) = -1$ (with 
     \includegraphics[width=\linewidth]{fig_ising_sample}
   \end{column}
   \begin{column}{0.44\textwidth}
-    \textbf{Phase transition.} On the 2D integer lattice, the 2D Ising model undergoes a phase transition at the \emph{critical temperature}:
+    \textbf{Phase transition.}
+    On the 2D integer lattice, the Ising model undergoes a famous phase transition at the \emph{critical inverse temperature}:
     \[
       \beta_c = \tfrac{1}{2}\ln(1 + \sqrt{2}) \approx 0.4407.
     \]
-    Below $\beta_c$: no long-range order (disordered phase). Above $\beta_c$: spontaneous magnetisation (ordered phase).
+    Below $\beta_c$: no long-range order (disordered, paramagnetic phase).
+    Above $\beta_c$: spontaneous magnetisation (ordered, ferromagnetic phase) --- most spins align.
+    Near $\beta_c$ the chain mixes extremely slowly (\emph{critical slowing down}).
   \end{column}
 \end{columns}
 
@@ -753,7 +946,7 @@ import matplotlib.pyplot as plt
 def ising_gibbs(n, beta, n_steps=100000, seed=0):
     """
     Gibbs sampler for Ising model on n x n periodic grid.
-    n     : grid size
+    n     : grid size (n x n vertices)
     beta  : inverse temperature (>0 ferromagnet, <0 antiferromagnet)
     """
     np.random.seed(seed)
@@ -780,8 +973,8 @@ print(f"Magnetization: {magnetization:.4f}")
 # depending on initial configuration and finite-size effects
 \end{lstlisting}
 
-The critical temperature $\beta_c \approx 0.4407$ is computed from Onsager's exact solution of the 2D Ising model.
-Near $\beta_c$ the chain mixes very slowly (critical slowing down), so special algorithms (e.g.\ cluster algorithms) are needed.
+The critical temperature $\beta_c \approx 0.4407$ is computed from Onsager's exact solution of the 2D Ising model (1944), one of the landmark results in mathematical physics.
+Near $\beta_c$ the Gibbs sampler mixes very slowly (critical slowing down), and specialised algorithms such as the Swendsen-Wang or Wolff cluster algorithms are used in practice.
 \end{frame}
 
 % ============================================================
@@ -791,55 +984,71 @@ Near $\beta_c$ the chain mixes very slowly (critical slowing down), so special a
 \begin{frame}[allowframebreaks]{6.4 Perfect Simulation: Motivation and CFTP}
 
 \textbf{The problem with standard MCMC.}
-The Markov chain $(X_n)$ only \emph{approximates} $\pi$ after $n$ steps; we never know exactly how close $\bfmu \bfP^n$ is to $\bfpi$ without knowing the mixing time.
-In practice, determining an adequate burn-in requires additional analysis or heuristics.
+The Markov chain $(X_n)$ only \emph{approximates} $\pi$ after $n$ steps: the distribution of $X_n$ is $\bfmu \bfP^n$, which is close to $\bfpi$ but not identical.
+We never know exactly how close $\bfmu \bfP^n$ is to $\bfpi$ without knowing the mixing time (which may itself be hard to compute).
+In practice, choosing an adequate burn-in requires additional analysis or heuristics, and there is always some residual bias.
 
 \begin{block}{Perfect Simulation (Definition)}
-A \textbf{perfect simulation} algorithm generates a sample that has distribution \emph{exactly} $\pi$, in finite (random) time, without knowing the mixing time.
+A \textbf{perfect simulation} algorithm generates a sample that has distribution \emph{exactly} $\pi$ --- not approximately, but with zero error --- in a finite (but random) amount of time, and without needing to know the mixing time in advance.
 \end{block}
 
 The key idea, due to Propp and Wilson (1996), is \textbf{Coupling from the Past (CFTP)}.
+The word ``coupling'' refers to running multiple chains simultaneously using the same sequence of random numbers.
+``From the Past'' refers to the crucial trick of running chains \emph{backward} in time.
 
 \framebreak
 
 \textbf{The CFTP idea.}
-Instead of running the chain forward from a single initial state, we run it \emph{backward} from time $-N$ to time $0$, starting simultaneously from \emph{all} possible initial states, using the \emph{same} sequence of random variables.
-If all chains end up in the same state $Z$ at time $0$, then $Z \sim \pi$ exactly.
+Instead of running a single chain forward from time $0$ to time $R$ (starting from one initial state and hoping the chain has mixed), CFTP runs chains \emph{backward} from time $-N$ to time $0$, starting simultaneously from \emph{every possible initial state}, using the \emph{same} sequence of random variables $U_{-N}, \ldots, U_{-1}, U_0$.
 
-Why backward? If we run chains from time $-N$ to time $0$ using the same $U_{-N}, \ldots, U_{-1}, U_0$, and they all coalesce at time $0$ to some state $Z$, then $Z$ is the same regardless of where the chain started at $-N$.
-Since the ergodic theorem guarantees every initial state eventually produces $Z \sim \pi$, the output of CFTP is exactly $\pi$-distributed.
+If all these chains (one per initial state) end up in the same state $Z$ at time $0$, then two things are true:
+(1) $Z$ is the same regardless of where we started at time $-N$,
+(2) Since the chain would have mixed by time 0 no matter where it started (by the ergodic theorem), the output $Z \sim \pi$ exactly.
 
 \begin{block}{Algorithm 49 (CFTP --- General Version)}
 \textbf{Require:} State space $\mathcal{S}$, ergodic chain $(X_n)$ with update rule $\varphi$.
 \begin{enumerate}
   \item Set $n = 1$.
-  \item For each $s \in \mathcal{S}$, simulate the chain $X^s$ starting from state $s$ at time $-N_n$ using the \emph{same} i.i.d.\ $U_i$, $i = -N_n, \ldots, 0$.
-  \item If all chains end at the same state at time 0: output that state and stop.
-  \item Else set $n = n+1$, double $N_n$, and reuse previously generated $U_i$ (extend backward).
+  \item Simulate, starting from every state $s \in \mathcal{S}$ at time $-N_n$, the chain $X^s$ using the \emph{same} i.i.d.\ $U_i$ for $i = -N_n, \ldots, 0$.
+  \item If all chains reach the same state at time 0: output that state and stop.
+  \item Otherwise, set $n = n+1$, double $N_n = 2N_{n-1}$, and reuse previously generated $U_i$ (extending the sequence further back in time, while keeping the portion from $-N_{n-1}$ to $0$ unchanged).
 \end{enumerate}
 \end{block}
 
+\begin{alertblock}{Why Extend Backward and Keep Old Randomness?}
+The doubling strategy ensures that if $N$ steps were enough for all chains starting at $-N$ to coalesce (but we didn't check far enough back), the next doubling to $-2N$ will cover it.
+Keeping the same random numbers from $-N$ to $0$ means the chains' behaviour from $-N$ to $0$ is preserved exactly; we only add a new random segment from $-2N$ to $-N$.
+\end{alertblock}
+
 \framebreak
 
-Running Algorithm 49 naively requires simulating $|\mathcal{S}|$ chains, which is prohibitive for large $\mathcal{S}$.
+Running Algorithm 49 naively requires simulating $|\mathcal{S}|$ chains, one per starting state, which is prohibitive for large $\mathcal{S}$.
 The key efficiency gain comes from \emph{monotone update functions}.
 
 \begin{block}{Definition 6.4.3 (Realizable Monotone Chain)}
-A Markov chain with update function $\varphi$ is \textbf{realizable monotone} w.r.t.\ a partial order $\preceq$ on $\mathcal{S}$ if
+A Markov chain with update function $\varphi$ is \textbf{realizable monotone} with respect to a partial order $\preceq$ on $\mathcal{S}$ if
 \[
   s \preceq s' \implies \varphi(s, u) \preceq \varphi(s', u) \quad \text{for all } u \in [0,1].
 \]
+In words: if state $s$ is ``smaller'' than state $s'$ (in the partial order), then after applying the same random update $u$, the chain from $s$ is still smaller than the chain from $s'$.
+Order is preserved by the update.
 \end{block}
 
-If the chain is realizable monotone and we track only the \emph{minimum} chain (starting from $s_{\min}$) and the \emph{maximum} chain (starting from $s_{\max}$), then by the sandwich property
-$s_{\min} \preceq s \preceq s_{\max}$ implies
-$\varphi(s_{\min},u) \preceq \varphi(s,u) \preceq \varphi(s_{\max},u)$
-for all $u$.
-Thus, if the min and max chains coalesce, all chains have coalesced.
+\begin{block}{Notation}
+A \emph{partial order} $\preceq$ (``precedes or equals'') on $\mathcal{S}$ is a relation that is reflexive ($s \preceq s$), antisymmetric ($s \preceq s'$ and $s' \preceq s$ implies $s = s'$), and transitive ($s \preceq s'$ and $s' \preceq s''$ implies $s \preceq s''$).
+For product spaces $\mathcal{S} = C^V$, the coordinate-wise order is the natural choice: $\xi \preceq \xi'$ iff $\xi(v) \le \xi'(v)$ for all $v \in V$.
+The \emph{minimum element} $s_{\min}$ satisfies $s_{\min} \preceq s$ for all $s$; the \emph{maximum element} $s_{\max}$ satisfies $s \preceq s_{\max}$ for all $s$.
+\end{block}
+
+If the chain is realizable monotone, then for any initial states $s_{\min} \preceq s \preceq s_{\max}$, the monotonicity of $\varphi$ guarantees
+$\varphi(s_{\min}, u) \preceq \varphi(s, u) \preceq \varphi(s_{\max}, u)$
+for all $u$ (and by induction for all subsequent steps).
+Therefore, if the min-chain and max-chain coalesce (reach the same state), every chain from every starting state must also have coalesced (it is ``sandwiched'' between them).
 
 \begin{block}{Algorithm 50 (Efficient CFTP for Monotone Chains)}
-Only run \emph{two} chains: one starting from $s_{\min}$ and one from $s_{\max}$.
-When they coalesce at time 0, the common value is output.
+Only run \emph{two} chains: one starting from the minimum element $s_{\min}$ and one from the maximum element $s_{\max}$.
+When these two chains coalesce at time 0 (reach the same state), that common state is output as the exact sample from $\pi$.
+This reduces the simulation cost from $|\mathcal{S}|$ chains to just 2 chains.
 \end{block}
 
 \includegraphics[width=0.85\linewidth]{fig_cftp_schematic}
@@ -847,18 +1056,19 @@ When they coalesce at time 0, the common value is output.
 \framebreak
 
 \begin{block}{Theorem 6.4.2 (CFTP Correctness)}
-Suppose $\tau_{\mathrm{cftp}}$ is finite with probability 1.
-Then the output of Algorithm 49 has distribution exactly $\pi$.
+Suppose $\tau_{\mathrm{cftp}}$ (tau-cftp, the coalescence time) is finite with probability 1.
+Then the output of Algorithm 49 (or Algorithm 50 for monotone chains) has distribution \emph{exactly} $\pi$.
 \end{block}
 
 \textbf{Proof sketch.}
-For any $i > 0$, the chain $X_i^0(s) = \PP(X_i^0 = s') = \pi_{s'}$ by the ergodic theorem.
-When the chain is started at $-N_j$ with $-N_j \le \tau_{\mathrm{cftp}}$, all paths coalesce:
-$X_0^{-N_j}(s) = X_0^{\tau_{\mathrm{cftp}}}(s)$ for all $s$.
-The latter is distributed as $\pi$ by the ergodic theorem. $\square$
+Fix any starting time $-N$ with $N \ge \tau_{\mathrm{cftp}}$ (large enough that all chains have coalesced by time 0).
+Because all chains starting at time $-N$ from any initial state $s$ reach the same state $Z$ at time 0, $Z$ is determined entirely by the random numbers $U_{-N}, \ldots, U_0$ and does not depend on the starting state.
+By the ergodic theorem, the chain starting from any $s$ at time $-N$ has distribution $\approx \pi$ at time 0 (for large $N$).
+Since $Z$ is the same regardless of $s$, its distribution must be exactly $\pi$. $\square$
 
 \begin{block}{Proposition 6.4.5 (CFTP Terminates)}
 If the chain is realizable monotone with an ergodic update function, Algorithm 50 terminates with probability 1.
+The expected number of backward steps needed is at most a constant times the mixing time $\tau(1/4)$.
 \end{block}
 
 \end{frame}
@@ -866,21 +1076,21 @@ If the chain is realizable monotone with an ergodic update function, Algorithm 5
 \begin{frame}[allowframebreaks]{6.4 Monotone and Anti-monotone Distributions}
 
 \begin{block}{Definition 6.4.9 (Monotone Distribution)}
-A distribution $\pi$ on $\mathcal{S} = C^V$ is \textbf{monotone} w.r.t.\ the coordinate-wise order $\preceq$ if for all $\xi \preceq \xi'$ and all $v \in V$ with $\pi_{\xi_{-v}} > 0$ and $\pi_{\xi'_{-v}} > 0$:
+A distribution $\pi$ on $\mathcal{S} = C^V$ is \textbf{monotone} with respect to the coordinate-wise order $\preceq$ if, for all $\xi \preceq \xi'$ and all $v \in V$:
 \[
   P(Z(v) \le c \mid Z_{-v} = \xi_{-v}) \ge P(Z(v) \le c \mid Z_{-v} = \xi'_{-v}) \quad \text{for all } c \in C.
 \]
-Intuitively: lower configurations make lower values of $\xi(v)$ more likely.
+Intuitively: a lower surrounding configuration (smaller $\xi_{-v}$) makes lower values at $v$ \emph{more} likely; starting from a higher surrounding configuration makes higher values more likely.
 \end{block}
 
 \begin{block}{Lemma 6.4.10}
-If $\pi$ is monotone, then the Gibbs update function \eqref{6.3.10} is a monotone update function.
-Therefore the Gibbs chain has a realizable monotone update, and Algorithm 50 applies.
+If $\pi$ is monotone, then the Gibbs update function is a monotone update function (in the sense of Definition 6.4.3).
+Therefore the Gibbs chain for a monotone distribution has a realizable monotone update, and the efficient CFTP Algorithm 50 applies directly.
 \end{block}
 
 \textbf{Example 6.4.12 (Generalised Hard-core Model).}
-The generalised hard-core distribution with $\lambda > 0$ is monotone: if $\xi \preceq \xi'$ (fewer particles), the probability of adding a particle at $v$ is at least as large in $\xi$ as in $\xi'$ (fewer occupied neighbours block $v$ in $\xi$).
-Wait --- actually the distribution is \emph{anti-monotone}: more particles nearby \emph{prevents} occupation of $v$.
+The hard-core model is actually \emph{anti-monotone}: if $\xi \preceq \xi'$ (fewer occupied vertices in $\xi$ than $\xi'$), then in the lower configuration $\xi$, fewer neighbours of a given vertex $v$ are occupied, meaning $v$ is \emph{more} likely to be occupied in $\xi$ than in $\xi'$.
+Higher surrounding configurations inhibit occupation of $v$, so conditional probabilities are \emph{decreasing} in the surrounding configuration.
 
 \framebreak
 
@@ -889,17 +1099,20 @@ A distribution $\pi$ on $\mathcal{S} = C^V$ is \textbf{anti-monotone} if for $\x
 \[
   P(Z(v) \le c \mid Z_{-v} = \xi_{-v}) \le P(Z(v) \le c \mid Z_{-v} = \xi'_{-v}).
 \]
-Higher surrounding configurations make lower values at $v$ more likely.
+That is, higher surrounding configurations make lower values at $v$ more likely (the opposite of monotone).
 \end{block}
 
 \textbf{Example 6.4.13: Ising model.}
-For $\beta > 0$ (ferromagnet): $\alpha(\xi,v) = P(Z(v) = +1 | Z_{-v} = \xi_{-v})$ is \emph{increasing} in $\xi$ (more $+1$ neighbours means higher probability of $+1$ at $v$) --- the distribution is \emph{monotone}.
-For $\beta < 0$ (anti-ferromagnet): $\alpha(\xi,v)$ is \emph{decreasing} in $\xi$ --- the distribution is \emph{anti-monotone}.
+For $\beta > 0$ (ferromagnet): a higher surrounding spin sum (more $+1$ neighbours) makes $+1$ at $v$ more likely --- so $\alpha(\xi,v)$ is \emph{increasing} in $\xi$.
+The ferromagnetic Ising model is \emph{monotone}, and Algorithm 50 applies.
 
-For anti-monotone distributions, the efficient CFTP must track a \emph{bivariate} chain $(\xi_{\min}, \xi_{\max})$ with a modified update that swaps the roles of min and max at each step.
+For $\beta < 0$ (anti-ferromagnet): more $+1$ neighbours make $+1$ at $v$ \emph{less} likely (opposing spins are preferred) --- so $\alpha(\xi,v)$ is \emph{decreasing} in $\xi$.
+The anti-ferromagnetic Ising model is \emph{anti-monotone}.
+
+For anti-monotone distributions, the efficient CFTP must track a \emph{bivariate} chain $(\xi_{\min}, \xi_{\max})$ with a modified update that swaps the roles of min and max at each step (because a step that increases one chain decreases the other under anti-monotonicity).
 
 \begin{block}{Proposition 6.4.17}
-If $\pi$ is anti-monotone (and either $\pi_{\xi_{\min}} > 0$ or $\pi_{\xi_{\max}} > 0$), then the modified CFTP Algorithm 51 terminates with probability 1 and outputs a sample from $\pi$ exactly.
+If $\pi$ is anti-monotone, the modified CFTP Algorithm 51 terminates with probability 1 and outputs a sample from $\pi$ exactly, using only two chains (the min and max under the coordinate-wise order).
 \end{block}
 
 \end{frame}
@@ -928,8 +1141,8 @@ def cftp_hardcore(G, lam, max_doublings=20, seed=0):
 
         # Min chain: start from all-empty (xi = 0 everywhere)
         xi_min = {v: 0 for v in vertices}
-        # Max chain: start from all-occupied if feasible, else largest IS
-        xi_max = {v: 1 for v in vertices}  # may not be feasible, OK to start
+        # Max chain: start from all-occupied if feasible
+        xi_max = {v: 1 for v in vertices}
 
         for k in range(N):
             v = vertices[vtx_idx[k]]
@@ -959,44 +1172,60 @@ print("CFTP sample:", {v: sample[v] for v in sorted(sample)})
 
 \begin{frame}[allowframebreaks]{6.5 Approximate Counting: The Problem}
 
-Many combinatorial problems ask: \emph{how many} feasible configurations exist?
+Many important combinatorial problems ask: \emph{how many} feasible configurations exist?
+Computing this count exactly is often computationally intractable.
 For example:
 \begin{itemize}
-  \item How many proper $r$-colourings does a graph $G$ have? (Answer: $z_G = |\Lambda|$ for the uniform colourings distribution.)
+  \item How many proper $r$-colourings does a graph $G$ have? (Answer: $z_G = |\Lambda|$, the number of valid colourings.)
   \item How many independent sets are in $G$?
-  \item How many solutions does a 0-1 knapsack problem have?
+  \item How many binary vectors $\xi \in \{0,1\}^d$ satisfy a given knapsack constraint?
 \end{itemize}
 
-Computing $z_G$ exactly is \#P-complete for most such problems.
-However, we can approximate it efficiently using MCMC.
+Computing $z_G$ exactly is \#P-complete for most such problems (a complexity class even harder than NP).
+However, we can \emph{approximate} it efficiently using MCMC.
 
 \begin{block}{Definition: $(\varepsilon, \delta)$-Approximation Scheme (FPRASC)}
-An estimator $\hat{z}_G$ is a \textbf{fully polynomial randomised approximation scheme} (FPRASC) if
+An estimator $\hat{z}_G$ is a \textbf{fully polynomial randomised approximation scheme} (FPRASC, pronounced ``fp-ras'') if
 \[
   \PP\bigl(|\hat{z}_G - z_G| > \varepsilon\, z_G\bigr) \le \delta,
 \]
-and its running time is polynomial in $1/\varepsilon$, $\ln(1/\delta)$, and the problem size.
+and its running time is polynomial in $1/\varepsilon$ (epsilon, the relative accuracy), $\ln(1/\delta)$ (delta, the failure probability), and the problem size.
+\end{block}
+
+\begin{block}{Notation}
+$\varepsilon$ (epsilon, ``ep-si-lon'') is the desired relative accuracy: we want $\hat{z}_G$ to be within a factor $(1 \pm \varepsilon)$ of the true count $z_G$.
+$\delta$ (delta, ``del-ta'') is the allowed probability of failure: the estimate fails to be accurate only with probability at most $\delta$.
+The condition ``polynomial in $1/\varepsilon$, $\ln(1/\delta)$, and problem size'' means the algorithm is efficient: doubling the required accuracy only polynomially increases the running time.
 \end{block}
 
 \framebreak
 
-\textbf{The naive approach fails.}
-One might estimate $z_G/2^M$ (fraction of feasible configurations among all $2^M$ possible ones) by sampling $R$ random configurations and checking feasibility.
-But $z_G/2^M$ can be exponentially small (e.g., for dense graphs), requiring exponentially many samples to get a reliable estimate.
+\textbf{Why the naive approach fails.}
+One might estimate $z_G/2^M$ (the fraction of all $2^M$ possible configurations that are feasible) by sampling $R$ configurations uniformly at random and checking feasibility.
+But $z_G/2^M$ can be exponentially small (e.g., for dense graphs, almost no assignment is a valid colouring), requiring exponentially many samples to get even one feasible configuration.
+
+The solution is a clever \emph{telescoping} (also called \emph{self-reducibility}) decomposition.
 
 \begin{block}{Telescoping / Self-Reducibility Approach}
 Decompose the count as a product of near-1 ratios:
 \[
-  z_G = z_0 \cdot \frac{z_1}{z_0} \cdot \frac{z_2}{z_1} \cdots \frac{z_m}{z_{m-1}},
+  z_G = z_0 \cdot \frac{z_1}{z_0} \cdot \frac{z_2}{z_1} \cdots \frac{z_m}{z_{m-1}}.
 \]
-where:
+Here:
 \begin{itemize}
-  \item $z_0 = 2^M$ (trivially known),
-  \item $z_m = z_G$ (the target count),
-  \item each ratio $\varrho_i = z_i / z_{i-1} \ge 1/2$ (bounded away from 0),
-  \item each $\varrho_i$ can be estimated efficiently via MCMC.
+  \item $z_0 = 2^M$ (or $r^M$) is known exactly (the count for a trivial base problem),
+  \item $z_m = z_G$ is the target count (unknown),
+  \item each ratio $\varrho_i = z_i / z_{i-1}$ is bounded: $\varrho_i \ge 1/2$ (so no single step changes the count by more than a factor of 2),
+  \item each ratio $\varrho_i$ can be estimated efficiently via MCMC, because $\varrho_i = \PP_{\pi^{(i-1)}}(\text{configuration is still feasible in } G_i)$, which is just the expectation of an indicator function under the chain from step $i-1$.
 \end{itemize}
 \end{block}
+
+\begin{alertblock}{How to Read the Telescoping Product}
+The product $\prod_{i=1}^m (z_i/z_{i-1}) = z_m/z_0$ just says that the product of ratios telescopes to the total ratio $z_G/z_0$.
+Multiplying both sides by $z_0$: $z_G = z_0 \prod_{i=1}^m \varrho_i$.
+We know $z_0$, and we estimate each $\varrho_i$ separately.
+Since each $\varrho_i \in [1/2, 1]$, estimating each one is much easier than estimating the tiny fraction $z_G/z_0$ directly.
+\end{alertblock}
 
 \includegraphics[width=0.80\linewidth]{fig_fpras_decomposition}
 
@@ -1004,40 +1233,52 @@ where:
 
 \begin{frame}[allowframebreaks]{6.5.1 FPRAS for Independent Sets}
 
-\textbf{Setup.} Let $G = (V, E)$ with $M = |V|$ vertices and $m = |E|$ edges.
-Order the edges $E = \{e_1, \ldots, e_m\}$ and define the sequence of graphs $G_i = (V, E_i)$ where $E_i = \{e_1, \ldots, e_i\}$ (add one edge at a time).
-Let $\Lambda_i$ = set of independent sets of $G_i$, and $z_i = |\Lambda_i|$, with $z_0 = 2^M$ (all subsets of $V$ are independent sets of the edgeless graph).
+\textbf{Setup.}
+Let $G = (V, E)$ with $M = |V|$ vertices and $m = |E|$ edges.
+Order the edges $E = \{e_1, \ldots, e_m\}$ and define the sequence of graphs $G_0, G_1, \ldots, G_m$ where $G_0 = (V, \emptyset)$ is the edgeless graph (no edges) and $G_i = (V, \{e_1, \ldots, e_i\})$ adds one edge at a time.
+Define $\Lambda_i$ as the set of independent sets of $G_i$ and $z_i = |\Lambda_i|$.
+
+At $G_0$: every subset of $V$ is trivially an independent set (no edges to violate), so $z_0 = 2^M$.
+At $G_m = G$: $z_m = z_G$ is the unknown count of independent sets in the original graph.
+Each step adds one edge, potentially removing some independent sets from $\Lambda_{i-1}$ to get $\Lambda_i$.
 
 \begin{block}{Key Lemma 6.5.7: Each Ratio is at Least $1/2$}
 For $1 \le i \le m$: $\varrho_i = z_i / z_{i-1} \ge 1/2$.
 
 \textbf{Proof.}
-Adding edge $e_i = \{u,v\}$ removes from $\Lambda_{i-1}$ exactly those independent sets containing \emph{both} $u$ and $v$.
-Let $A$ = independent sets in $\Lambda_{i-1}$ containing both $u$ and $v$.
-We claim $|A| \le z_{i-1}/2$.
-Indeed, the map $\xi \mapsto \xi(v \to 0)$ (remove $v$) is an injection from $A$ into $\Lambda_{i-1} \setminus A$.
-So $|A| \le z_{i-1} - |A|$, giving $|A| \le z_{i-1}/2$.
-Therefore $z_i = z_{i-1} - |A| \ge z_{i-1}/2$.
+Adding edge $e_i = \{u,v\}$ removes from $\Lambda_{i-1}$ exactly those independent sets that contain \emph{both} $u$ and $v$.
+Let $A$ = set of independent sets in $\Lambda_{i-1}$ containing both $u$ and $v$.
+Consider the map $\phi: A \to \Lambda_{i-1} \setminus A$ defined by $\phi(\xi) = \xi(v \to 0)$ (remove $v$ from $\xi$).
+This map is an injection: if $\xi \in A$ then $\phi(\xi)$ is a valid independent set in $G_{i-1}$ (removing a vertex cannot create a conflict) and $\phi(\xi) \notin A$ (vertex $v$ is now 0).
+Since $\phi$ is injective from $A$ into $\Lambda_{i-1} \setminus A$, we have $|A| \le |\Lambda_{i-1} \setminus A| = z_{i-1} - |A|$, giving $2|A| \le z_{i-1}$, i.e.\ $|A| \le z_{i-1}/2$.
+Therefore $z_i = z_{i-1} - |A| \ge z_{i-1} - z_{i-1}/2 = z_{i-1}/2$.
+Hence $\varrho_i \ge 1/2$. $\square$
 \end{block}
 
 \framebreak
 
-\begin{block}{Algorithm 54: $(\varepsilon/(2m), \delta/m)$-FPRASC for $\varrho_i$}
-\textbf{Require:} Graphs $G_{i-1}$, $G_i$; a rapidly mixing chain $(X_n^{(i-1)})$ with stationary distribution $\pi^{(i-1)}$ (uniform on $\Lambda_{i-1}$); parameters $\varepsilon, \delta, m$.
+\begin{block}{Algorithm 54: Estimating a Single Ratio $\varrho_i$}
+\textbf{Require:} Graphs $G_{i-1}$, $G_i$; a rapidly mixing MCMC chain with stationary distribution $\pi^{(i-1)}$ (uniform on $\Lambda_{i-1}$); accuracy parameters $\varepsilon'$ and $\delta'$.
 \begin{enumerate}
-  \item Let $R = \frac{200m^2}{\varepsilon^2}\ln\!\left(\frac{2m}{\delta}\right)$.
+  \item Set $R = \frac{200m^2}{\varepsilon^2}\ln\!\left(\frac{2m}{\delta}\right)$ (number of independent samples needed).
   \item For $j = 1, \ldots, R$:
     \begin{enumerate}
-      \item Run chain $(X_n^{(i-1)})$ for $\tau(\varepsilon/(16m))$ steps to get approximate sample $\xi$ from $\pi^{(i-1)}$.
-      \item Set $\tilde{Y}_j = \mathbf{1}(\xi \in \Lambda_{G_i})$ (check if $\xi$ is still an independent set after adding edge $e_i$).
+      \item Run the MCMC chain for $\tau(\varepsilon/(16m))$ steps (enough to get an approximately stationary sample $\xi$ from $\pi^{(i-1)}$).
+      \item Set $\tilde{Y}_j = \mathbf{1}(\xi \in \Lambda_{G_i})$ (is $\xi$ still a valid independent set in $G_i$, which has the extra edge $e_i$?).
     \end{enumerate}
-  \item Return $\tilde\varrho_i = \frac{1}{R}\sum_{j=1}^R \tilde{Y}_j$.
+  \item Return $\tilde\varrho_i = \frac{1}{R}\sum_{j=1}^R \tilde{Y}_j$ (the sample fraction of $G_{i-1}$-independent sets that are also $G_i$-independent sets).
 \end{enumerate}
+\end{block}
+
+\begin{block}{Notation for Algorithm 54}
+The estimator $\tilde\varrho_i$ (``rho-tilde sub i'') is the average of indicator random variables $\tilde{Y}_j$.
+Since $\EE[\tilde{Y}_j] = \PP_{\pi^{(i-1)}}(\xi \in \Lambda_{G_i}) = z_i/z_{i-1} = \varrho_i$, the estimator is (approximately) unbiased.
+The sample size $R$ is chosen large enough to ensure the estimate is accurate with high probability.
 \end{block}
 
 \begin{block}{Algorithm 55: $(\varepsilon, \delta)$-FPRASC for $z_G$}
 \begin{enumerate}
-  \item For $i = 1, \ldots, m$: compute $\tilde\varrho_i$ via Algorithm 54.
+  \item For each $i = 1, \ldots, m$: compute $\tilde\varrho_i$ using Algorithm 54.
   \item Return $\hat{z}_G = 2^M \prod_{i=1}^m \tilde\varrho_i$.
 \end{enumerate}
 \end{block}
@@ -1045,18 +1286,23 @@ Therefore $z_i = z_{i-1} - |A| \ge z_{i-1}/2$.
 \framebreak
 
 \begin{block}{Proposition 6.5.4 (FPRASC Running Time)}
-Let $(X_n)$ be rapidly mixing with mixing time $\tau(\kappa)$.
-Then Algorithm 55 is an $(\varepsilon, \delta)$-FPRASC for $z_G$ with running time
+Let the MCMC chain be rapidly mixing with mixing time $\tau(\kappa)$.
+Then Algorithm 55 is an $(\varepsilon, \delta)$-FPRASC for $z_G$ with total running time
 \[
   \frac{200\,m^3}{\varepsilon^2}\ln\!\left(\frac{2m}{\delta}\right)\,\tau\!\left(\frac{\varepsilon}{16m}\right).
 \]
-This is polynomial in $m, 1/\varepsilon, \ln(1/\delta), \tau$.
+This is polynomial in $m$ (the number of edges), $1/\varepsilon$, $\ln(1/\delta)$, and the mixing time $\tau$.
 \end{block}
 
-\textbf{Why the union bound works.}
-Each ratio is estimated with error $\le \varepsilon/(2m)$ and failure probability $\le \delta/m$.
-By the union bound, all $m$ estimates are simultaneously good with probability $\ge 1 - \delta$.
-A standard calculation shows the product estimator then satisfies $|\hat{z}_G/z_G - 1| \le \varepsilon$ with probability $\ge 1-\delta$.
+\begin{block}{Notation}
+The factor $m^3$ comes from $m$ ratios, each estimated with $R \propto m^2/\varepsilon^2$ samples.
+The mixing time argument $\varepsilon/(16m)$ ensures each individual sample is close enough to stationarity that the ratio estimates are accurate.
+\end{block}
+
+\textbf{Why the error analysis works.}
+Each ratio $\varrho_i$ is estimated with relative error $\le \varepsilon/(2m)$ and failure probability $\le \delta/m$.
+By the \emph{union bound} (the probability of at least one of $m$ bad events is at most $m$ times the probability of a single bad event), all $m$ estimates are simultaneously good with probability $\ge 1 - m \cdot (\delta/m) = 1 - \delta$.
+A standard calculation shows that when all individual estimates are accurate to relative error $\varepsilon/(2m)$, the product estimate satisfies $|\hat{z}_G/z_G - 1| \le \varepsilon$ with probability $\ge 1-\delta$.
 
 \end{frame}
 
@@ -1065,17 +1311,18 @@ A standard calculation shows the product estimator then satisfies $|\hat{z}_G/z_
 The same telescoping framework applies to graph colourings and 0-1 knapsack problems.
 
 \textbf{For graph colourings.}
-Order the edges $E = \{e_1, \ldots, e_m\}$ and define $z_i$ = number of proper $r$-colourings of $G_i$.
-Here $z_0 = r^M$ (all $r^M$ assignments are proper on the edgeless graph) and each ratio $\varrho_i = z_i/z_{i-1}$ must be bounded from below.
+Order the edges $E = \{e_1, \ldots, e_m\}$ and define $z_i$ as the number of proper $r$-colourings of $G_i = (V, \{e_1,\ldots,e_i\})$.
+The base case $z_0 = r^M$ (all $r^M$ colour assignments are valid on the edgeless graph) is known exactly.
+Each step adds one edge, reducing the number of valid colourings.
 
 \begin{block}{Lemma 6.5.14}
-If $r > 2\Delta^2$ (where $\Delta$ is the maximum degree), then $\varrho_i \ge 1/2$ for all $i$.
+If $r > 2\Delta^2$ (where $\Delta$ is the maximum degree of $G$), then $\varrho_i = z_i/z_{i-1} \ge 1/2$ for all $i$.
 
 \textbf{Proof sketch.}
-Adding edge $e_i = \{u,v\}$ removes colourings where $\xi(u) = \xi(v)$.
-For a random proper colouring of $G_{i-1}$, the probability that $\xi(u) = \xi(v)$ is at most $1/(r-\Delta)$ (since $v$ has at most $\Delta$ forbidden colours).
-Under the condition $r > 2\Delta^2$: $1/(r-\Delta) < 1/(2\Delta^2 - \Delta) < 1/2$.
-So $\varrho_i = 1 - P(\xi(u) = \xi(v)) \ge 1/2$.
+Adding edge $e_i = \{u,v\}$ removes colourings where $\xi(u) = \xi(v)$ (same colour on a newly connected pair).
+For a random proper colouring $\xi$ of $G_{i-1}$, the probability that $\xi(u) = \xi(v)$ is at most $1/(r - \Delta)$, since vertex $v$ has at most $\Delta$ neighbours (in $G_{i-1}$) that restrict its colour.
+Under the condition $r > 2\Delta^2$: $1/(r - \Delta) < 1/(2\Delta^2 - \Delta) \le 1/2$ for $\Delta \ge 1$.
+So $\varrho_i = 1 - P(\xi(u) = \xi(v)) \ge 1 - 1/2 = 1/2$. $\square$
 \end{block}
 
 \framebreak
@@ -1085,16 +1332,20 @@ If $r > 2\Delta^2$, there exists an $(\varepsilon, \delta)$-FPRASC for the numbe
 \[
   \frac{200\,m^3}{\varepsilon^2}\ln\!\left(\frac{2m}{\delta}\right)\cdot\frac{r}{r - 2\Delta}\cdot M \ln\!\left(\frac{16mM}{\varepsilon}\right),
 \]
-where the mixing time bound $\tau(\kappa) \le \frac{r}{r-2\Delta} M \ln(M/\kappa)$ from Lemma 6.5.15 was used.
+where the mixing time bound $\tau(\kappa) \le \frac{r}{r-2\Delta} M \ln(M/\kappa)$ from Lemma 6.5.15 was substituted.
+All factors are polynomial in $M$, $m$, $1/\varepsilon$, and $\ln(1/\delta)$.
 \end{block}
 
 \textbf{For the 0-1 knapsack problem.}
-Given $d$ items with weights $a_1, \ldots, a_d$ and capacity $b$, the feasible set is $\Lambda = \{\xi \in \{0,1\}^d : \sum_i a_i \xi_i \le b\}$.
-A Gibbs-like sampler on a cleverly defined sequence of subproblems gives an FPRASC.
+Given $d$ items with weights $a_1, \ldots, a_d$ (positive integers) and capacity $b$, the feasible set is $\Lambda = \{\xi \in \{0,1\}^d : \sum_{i=1}^d a_i \xi_i \le b\}$ (all subsets of items whose total weight does not exceed $b$).
+We want to count $z = |\Lambda|$.
 
-\begin{block}{Lemma 6.5.18 (Dyer et al.)}
-The Gibbs sampler for the 0-1 knapsack is rapidly mixing with mixing time $O(d^{9/2+\kappa})$.
-This gives an $(\varepsilon,\delta)$-FPRASC with running time polynomial in $d$, $1/\varepsilon$, and $\ln(1/\delta)$.
+A Gibbs-like sampler is defined on a sequence of subproblems $\Lambda_0 \supseteq \Lambda_1 \supseteq \cdots \supseteq \Lambda_m = \Lambda$, where each step tightens the capacity constraint.
+Each ratio $z_i/z_{i-1}$ can be estimated by a MCMC chain.
+
+\begin{block}{Lemma 6.5.18 (Dyer, Frieze \& Kannan)}
+The Gibbs sampler for the 0-1 knapsack is rapidly mixing with mixing time $O(d^{9/2+\kappa})$ for any $\kappa > 0$.
+This gives an $(\varepsilon,\delta)$-FPRASC for $|\Lambda|$ with running time polynomial in $d$, $1/\varepsilon$, and $\ln(1/\delta)$.
 \end{block}
 
 \end{frame}
@@ -1105,53 +1356,64 @@ This gives an $(\varepsilon,\delta)$-FPRASC with running time polynomial in $d$,
 
 \begin{frame}[allowframebreaks]{6.6 Motif Finding in DNA Sequences}
 
-A \emph{motif} is a short, conserved sequence pattern that recurs across a collection of biological sequences.
-For example, a transcription factor binding site appears at similar (but not identical) positions in the regulatory regions of co-regulated genes.
+A \emph{motif} (from French: ``pattern'') in molecular biology is a short, conserved sequence pattern that recurs across a collection of biological sequences, usually because it plays an important functional role.
+For example, a transcription factor binding site --- a specific DNA sequence that a protein ``reads'' to regulate gene expression --- appears at similar (but not identical) positions in the regulatory regions of co-regulated genes.
+Finding such motifs computationally is a fundamental problem in bioinformatics.
 
 \begin{block}{Model Setup}
 \begin{itemize}
-  \item $k$ sequences, each of length $n$, over alphabet $\Sigma = \{A, C, G, T\}$ (encoded as $\{1,2,3,4\}$, so $d = |\Sigma| = 4$).
-  \item A \emph{motif} has length $w$. In sequence $i$, the motif starts at \emph{unknown} position $\xi_i^\bullet \in \{1, \ldots, n-w+1\}$.
-  \item Letters \emph{outside} the motif are generated i.i.d.\ from the \emph{background distribution} $\boldsymbol\theta_0 = (\theta_{1,0}, \ldots, \theta_{d,0})^\top$.
-  \item Letters \emph{inside} the motif at column $j$ ($j = 1, \ldots, w$) are generated from the \emph{motif distribution} $\boldsymbol\theta_j = (\theta_{1,j}, \ldots, \theta_{d,j})^\top$.
-  \item The \emph{position weight matrix} (PWM) is $\boldsymbol\Theta = (\boldsymbol\theta_1, \ldots, \boldsymbol\theta_w)$.
+  \item There are $k$ DNA sequences (``k''), each of length $n$, over the alphabet $\Sigma = \{A, C, G, T\}$ (the four DNA nucleotides, encoded as $\{1,2,3,4\}$, so $d = |\Sigma| = 4$).
+  \item The \emph{motif} has a fixed length $w$ (``w'' for ``width''). In sequence $i$, the motif starts at an \emph{unknown} position $\xi_i^\bullet \in \{1, \ldots, n-w+1\}$ (``xi-i star'').
+  \item Letters \emph{outside} the motif are generated i.i.d.\ from the \emph{background distribution} $\boldsymbol\theta_0 = (\theta_{1,0}, \ldots, \theta_{d,0})^\top$ (a probability vector over the alphabet).
+  \item Letters at column $j$ ($j = 1, \ldots, w$) of the motif are generated from the \emph{motif distribution} $\boldsymbol\theta_j = (\theta_{1,j}, \ldots, \theta_{d,j})^\top$ (a possibly different probability vector for each motif column).
+  \item The \emph{position weight matrix} (PWM) is $\boldsymbol\Theta = (\boldsymbol\theta_0, \boldsymbol\theta_1, \ldots, \boldsymbol\theta_w)$ (theta, ``thay-ta'').
 \end{itemize}
 \end{block}
 
 \framebreak
 
-\textbf{Given:} Observed sequences $\mathbf{R} = (r_{ij})_{1 \le i \le k, 1 \le j \le n}$ and the PWM $\boldsymbol\Theta$.
-\textbf{Find:} The starting positions $\boldsymbol\xi = (\xi_1, \ldots, \xi_k)$ that maximise the likelihood.
+\textbf{Given:} The observed sequences $\mathbf{R} = (r_{ij})_{1 \le i \le k, 1 \le j \le n}$ (the actual DNA letters) and the PWM $\boldsymbol\Theta$ (assumed known or estimated separately).
+\textbf{Find:} The starting positions $\boldsymbol\xi = (\xi_1, \ldots, \xi_k)$ that maximise the likelihood (the probability of observing the sequences given those starting positions).
 
 For a configuration $\boldsymbol\xi = (\xi_1, \ldots, \xi_k)$, define:
 \begin{itemize}
-  \item $\mathbf{A}_\xi$: the $k \times w$ matrix whose row $i$ is the motif segment of sequence $i$ starting at $\xi_i$.
-  \item $\mathbf{C}_\xi$: the $d \times w$ count matrix; $\mathbf{C}_\xi(l,j)$ = number of rows $i$ where $\mathbf{A}_\xi(i,j) = l$.
-  \item $\mathbf{D}_\xi$: the $d$-dimensional vector of background letter counts (letters not in any motif segment).
+  \item $\mathbf{A}_\xi$: the $k \times w$ matrix whose row $i$ is the $w$-letter segment of sequence $i$ starting at position $\xi_i$.
+  \item $\mathbf{C}_\xi$: the $d \times w$ \emph{count matrix}; $\mathbf{C}_\xi(l,j)$ is the number of sequences $i$ where the letter at motif column $j$ is $l$.
+  \item $\mathbf{D}_\xi$: the $d$-vector of background letter counts (letters not in any motif segment).
 \end{itemize}
-The complete-data likelihood factors as:
+The complete-data likelihood factors as a product over background letters and motif columns:
 \[
-  f(\boldsymbol\xi) = \underbrace{\prod_{l=1}^d \theta_{l,0}^{\mathbf{D}_\xi(l)}}_{\text{background}} \times \underbrace{\prod_{j=1}^w \prod_{l=1}^d \theta_{l,j}^{\mathbf{C}_\xi(l,j)}}_{\text{motif}}.
+  f(\boldsymbol\xi) = \underbrace{\prod_{l=1}^d \theta_{l,0}^{\mathbf{D}_\xi(l)}}_{\text{background contribution}} \times \underbrace{\prod_{j=1}^w \prod_{l=1}^d \theta_{l,j}^{\mathbf{C}_\xi(l,j)}}_{\text{motif contribution}}.
 \]
+
+\begin{block}{Notation}
+$\theta_{l,0}^{\mathbf{D}_\xi(l)}$ (``theta-l-zero to the power D-xi-l'') is the probability of seeing letter $l$ exactly $\mathbf{D}_\xi(l)$ times in the background, under the background model.
+$\theta_{l,j}^{\mathbf{C}_\xi(l,j)}$ similarly gives the probability of the observed count of letter $l$ at motif column $j$.
+The product over all $l$ and $j$ gives the total probability of the data given the starting positions $\boldsymbol\xi$.
+\end{block}
 
 \framebreak
 
-To handle the combinatorial optimisation, we adopt a probabilistic approach via the \textbf{Gibbs distribution}:
+To handle the combinatorial optimisation (finding the $\boldsymbol\xi$ that maximises $f$) using MCMC, we adopt a probabilistic approach via the \textbf{Gibbs distribution}:
 \[
   \pi_\xi = \frac{1}{z(T)}\, f(\boldsymbol\xi)^{1/T} = \frac{\exp\!\left(\frac{1}{T}\log f(\boldsymbol\xi)\right)}{z(T)}.
 \]
-Here $T > 0$ is a \emph{temperature} parameter.
-As $T \to 0$, the distribution $\pi$ concentrates on the maximisers of $f$ (the most likely starting positions).
-Running a Gibbs sampler on $\pi$ with decreasing temperature implements \emph{simulated annealing}.
+Here $T > 0$ (``T'' for temperature) controls the concentration of the distribution.
+
+\begin{block}{Notation and Interpretation of the Temperature $T$}
+When $T = 1$: $\pi_\xi \propto f(\boldsymbol\xi)$ is proportional to the likelihood itself.
+When $T \to 0$ (cooling): $\pi_\xi$ concentrates entirely on the maximisers of $f$ (the starting positions that make the observed sequences most probable under the model).
+When $T \to \infty$ (heating): $\pi_\xi$ approaches the uniform distribution (all starting positions equally likely).
+Running a Gibbs sampler on $\pi$ while slowly decreasing $T$ from large to small implements \emph{simulated annealing}: at high $T$ the chain mixes fast and explores widely; at low $T$ it concentrates on the optimum.
+\end{block}
 
 \begin{block}{Gibbs Sampler for Motif Finding (Algorithm 58)}
 \textbf{Given:} Current configuration $\boldsymbol\xi = (\xi_1, \ldots, \xi_k)$; temperature $T$.
 \begin{enumerate}
-  \item Choose row $v \in \{1, \ldots, k\}$ uniformly at random.
-  \item Compute the unnormalised probability of each starting position $s \in \{1, \ldots, n-w+1\}$:
-        $\tilde{p}(s) \propto f(\boldsymbol\xi(v \to s))^{1/T}$.
-  \item Normalise: $p(s) = \tilde{p}(s) / \sum_{r} \tilde{p}(r)$.
-  \item Sample $s^* \sim p(\cdot)$ and set $\xi_v \leftarrow s^*$.
+  \item Choose row $v \in \{1, \ldots, k\}$ (one DNA sequence) uniformly at random.
+  \item For each candidate starting position $s \in \{1, \ldots, n-w+1\}$, compute the unnormalised conditional weight $\tilde{p}(s) = f(\boldsymbol\xi(v \to s))^{1/T}$ (the likelihood if sequence $v$ starts at position $s$).
+  \item Normalise: $p(s) = \tilde{p}(s) / \sum_{r=1}^{n-w+1} \tilde{p}(r)$.
+  \item Sample the new starting position $s^* \sim p(\cdot)$ and update $\xi_v \leftarrow s^*$.
 \end{enumerate}
 \end{block}
 
@@ -1164,17 +1426,17 @@ Running a Gibbs sampler on $\pi$ with decreasing temperature implements \emph{si
   \begin{column}{0.46\textwidth}
     \textbf{Numerical example (Section 6.6.3).}
     Parameters: $k = 30$ sequences, $n = 20$, $w = 13$.
-    True starting positions $\boldsymbol\xi^\bullet$ simulated.
-    Energy $H(\boldsymbol\xi^\bullet) = -\log f(\boldsymbol\xi^\bullet) = 12.62$.
+    True starting positions $\boldsymbol\xi^\bullet$ simulated from the model.
+    The energy (negative log-likelihood) of the true solution is $H(\boldsymbol\xi^\bullet) = -\log f(\boldsymbol\xi^\bullet) = 12.62$.
 
-    After 200 Gibbs steps: $H(\boldsymbol\xi^{(200)}) = 12.64$.
-    Only 2 of the 30 rows differ from $\boldsymbol\xi^\bullet$ (by just 1 position).
-    The Gibbs sampler recovers the true motif positions reliably.
+    After just 200 Gibbs steps: the estimated energy is $H(\boldsymbol\xi^{(200)}) = 12.64$.
+    Only 2 of the 30 starting positions differ from $\boldsymbol\xi^\bullet$ (by at most 1 position each).
+    The Gibbs sampler recovers the true motif positions very reliably and quickly.
   \end{column}
 \end{columns}
 
-The key computational simplification: the ratio $\pi_{\xi(v \to s)} / \pi_{\xi(v \to r)}$ depends only on the \emph{changed} portion of $\mathbf{A}_\xi$ (row $v$), not on the entire configuration.
-This makes each Gibbs step $O(kw)$ rather than $O(k \cdot n \cdot w)$.
+The key computational simplification that makes each Gibbs step fast: the ratio $\pi_{\xi(v \to s)} / \pi_{\xi(v \to r)}$ depends only on the \emph{changed row} of $\mathbf{A}_\xi$ (row $v$), not on the entire configuration.
+This reduces each Gibbs step from $O(k \cdot n \cdot w)$ (recomputing everything) to $O(n \cdot w)$ (updating only the changed row), making the algorithm practical for biological datasets.
 
 \end{frame}
 
@@ -1184,55 +1446,85 @@ This makes each Gibbs step $O(kw)$ rather than $O(k \cdot n \cdot w)$.
 
 \begin{frame}[allowframebreaks]{6.7 MCMC Estimation: Ergodic Theorem and CLT}
 
-The MCMC estimator for $I = \EE_\pi f(X) = \sum_{s \in \mathcal{S}} \pi_s f(s)$ is
+We now return to the fundamental statistical question: given an ergodic Markov chain with stationary distribution $\pi$, how do we use it to estimate the quantity
+\[
+  I = \EE_\pi f(X) = \sum_{s \in \mathcal{S}} \pi_s f(s)?
+\]
+Here $\EE_\pi$ (``expectation under pi'') denotes the expected value when the random state $X$ is drawn from distribution $\pi$, and $f : \mathcal{S} \to \RR$ is any real-valued function of interest.
+
+The MCMC estimator is simply the sample average of $f$ over the chain:
 \[
   \hat{Y}_R = \frac{1}{R} \sum_{j=1}^{R} f(X_j),
 \]
-where $(X_j)_{j \ge 0}$ is an ergodic Markov chain with stationary distribution $\pi$ and $Y_j = f(X_j)$.
+where $(X_j)_{j \ge 0}$ is the ergodic chain and $Y_j = f(X_j)$ are the observed values.
 
-\begin{block}{Proposition 6.7.1 (Strong Law / Ergodic Theorem)}
-If $(X_n)$ is ergodic (irreducible and aperiodic finite chain) and $f$ is real-valued, then with probability 1:
+\begin{block}{Proposition 6.7.1 (Strong Law / Ergodic Theorem for Markov Chains)}
+If $(X_n)$ is ergodic (irreducible and aperiodic with finite state space) and $f : \mathcal{S} \to \RR$ is any real-valued function, then with probability 1 (i.e., almost surely):
 \[
   \hat{Y}_R = \frac{1}{R}\sum_{j=1}^{R} f(X_j) \xrightarrow{R \to \infty} I = \sum_{s \in \mathcal{S}} \pi_s f(s).
 \]
-This holds regardless of the initial distribution $\mu$.
+This convergence holds regardless of the initial distribution $\mu$ (``mu'') of $X_0$.
 \end{block}
+
+\begin{alertblock}{How to Read the Ergodic Theorem}
+This is the Markov chain analogue of the classical law of large numbers.
+Just as the sample average of i.i.d.\ random variables converges to the population mean, the time average of a function of an ergodic Markov chain converges to its expectation under the stationary distribution.
+The crucial difference: the chain samples are \emph{correlated} (each state depends on the previous), which affects how quickly the average converges and how we should estimate its variance.
+\end{alertblock}
 
 \framebreak
 
-Unlike the i.i.d.\ case, the samples $Y_1, Y_2, \ldots$ are \emph{correlated} (dependent).
-This affects the variance of $\hat{Y}_R$.
+Unlike the i.i.d.\ case, the samples $Y_1, Y_2, \ldots$ are correlated (each $Y_j = f(X_j)$ depends on $Y_{j-1} = f(X_{j-1})$ through the chain transition).
+This correlation affects the variance of $\hat{Y}_R$.
 
-\begin{block}{Proposition 6.7.5 (CLT for Markov Chains)}
-If $(X_n)$ is ergodic and $f$ is real-valued, then
+\begin{block}{Proposition 6.7.5 (Central Limit Theorem for Markov Chains)}
+If $(X_n)$ is ergodic and $f$ is real-valued, then as $R \to \infty$:
 \[
   \sqrt{R}\,(\hat{Y}_R - I) \xrightarrow{d} \mathcal{N}(0, \varsigma^2),
 \]
-where the \textbf{asymptotic variance} (also called the \emph{time-average variance constant}, TAVC) satisfies
+where $\varsigma^2$ (``varsigma squared'', or ``zeta squared'' in some notations) is the \textbf{asymptotic variance} (also called the \emph{time-average variance constant}, TAVC) satisfying
 \[
   0 < \varsigma^2 = \lim_{R \to \infty} R\,\mathrm{Var}(\hat{Y}_R) < \infty.
 \]
 Both the limit and the CLT hold independently of the initial distribution $\mu$.
 \end{block}
 
+\begin{block}{Notation}
+$\xrightarrow{d}$ means ``converges in distribution'' (the distribution of $\sqrt{R}(\hat{Y}_R - I)$ approaches the normal distribution as $R \to \infty$).
+$\mathcal{N}(0, \varsigma^2)$ is the normal (Gaussian) distribution with mean 0 and variance $\varsigma^2$.
+$\mathrm{Var}(\hat{Y}_R)$ (``variance of Y-hat-R'') is the expected squared deviation of $\hat{Y}_R$ from $I$: $\mathrm{Var}(\hat{Y}_R) = \EE[(\hat{Y}_R - I)^2]$.
+\end{block}
+
 \framebreak
 
-The TAVC $\varsigma^2$ can be expressed in terms of the covariances of the stationary sequence.
-Let $Y_j = f(X_j)$ when $X_0 \sim \pi$, and define $\rho_k = \mathrm{Cov}(Y_0, Y_k)$.
+The TAVC $\varsigma^2$ can be expressed in terms of the autocovariances of the stationary sequence.
+Let $Y_j = f(X_j)$ when $X_0 \sim \pi$ (so the chain is in stationarity), and define the \emph{lag-$k$ autocovariance}:
+\[
+  \rho_k = \mathrm{Cov}(Y_0, Y_k) = \EE[(Y_0 - I)(Y_k - I)], \quad k = 0, 1, 2, \ldots
+\]
 
-\begin{block}{Lemma 6.7.9}
+\begin{block}{Lemma 6.7.9 (Variance Formula)}
 If $\bfP$ is regular, then
 \[
   \mathrm{Var}(\hat{Y}_R) = \frac{1}{R}\left(1 + 2\sum_{j=1}^{R-1}\left(1 - \frac{j}{R}\right)\rho_j\right)\mathrm{Var}(Y_0),
 \]
-so that
+so that the TAVC satisfies
 \[
   \varsigma^2 = \lim_{R \to \infty} R\,\mathrm{Var}(\hat{Y}_R) = \mathrm{Var}(Y_0) + 2\sum_{k=1}^{\infty} \rho_k = \rho_0 + 2\sum_{k=1}^{\infty} \rho_k.
 \]
 \end{block}
 
-The sum $\varsigma^2 = \rho_0 + 2\sum_{k\ge 1}\rho_k$ is called the \emph{spectral density at zero frequency}.
-When $\rho_k < 0$ for large $k$ (negative autocorrelation), $\varsigma^2 < \mathrm{Var}(Y_0)$ and MCMC is \emph{better} than i.i.d.\ sampling.
+\begin{block}{Notation}
+$\rho_k$ (rho, ``ro'', sub k) is the covariance between $Y_0$ and $Y_k$ (how correlated are the values $k$ steps apart?).
+$\rho_0 = \mathrm{Var}(Y_0)$ is the variance of a single observation.
+The sum $\varsigma^2 = \rho_0 + 2\sum_{k=1}^\infty \rho_k$ is called the \emph{spectral density at frequency zero}.
+\end{block}
+
+\begin{alertblock}{How to Read $\varsigma^2 = \rho_0 + 2\sum_{k \ge 1} \rho_k$}
+If the chain is fast-mixing, the autocovariances $\rho_k$ decay quickly to zero, and $\varsigma^2 \approx \rho_0$ (close to the i.i.d.\ variance).
+If the chain is slow-mixing, $\rho_k$ stays positive for many lags, and $\varsigma^2 \gg \rho_0$: MCMC samples are much less informative than i.i.d.\ samples.
+When $\rho_k < 0$ for large $k$ (negative autocorrelation, possible with some specialised samplers), $\varsigma^2 < \rho_0$ and MCMC can actually be \emph{more} efficient than i.i.d.\ sampling.
+\end{alertblock}
 
 \includegraphics[width=0.85\linewidth]{fig_ergodic_convergence}
 
@@ -1240,14 +1532,17 @@ When $\rho_k < 0$ for large $k$ (negative autocorrelation), $\varsigma^2 < \math
 
 \begin{frame}[allowframebreaks]{6.7 Regenerative Structure and Asymptotic Variance}
 
-A key tool for understanding the TAVC is the \emph{regenerative structure} of ergodic Markov chains.
+A key tool for analysing the TAVC is the \emph{regenerative structure} of ergodic Markov chains.
 
 \textbf{Regeneration times.}
-Fix a reference state $s_0 \in \mathcal{S}$ and let $\gamma_0 < \gamma_1 < \gamma_2 < \ldots$ be the successive times at which the chain visits $s_0$.
-The chain \emph{regenerates} at each return to $s_0$.
-The \emph{cycle lengths} $\eta_l = \gamma_l - \gamma_{l-1}$ and \emph{cycle sums} $W_l = \sum_{j=\gamma_{l-1}}^{\gamma_l - 1} f(X_j)$ are i.i.d.
+Fix a reference state $s_0 \in \mathcal{S}$ (any state will do, though choosing a frequently-visited state is efficient) and let $\gamma_0 < \gamma_1 < \gamma_2 < \ldots$ be the successive times at which the chain visits $s_0$: $\gamma_l = \min\{n > \gamma_{l-1} : X_n = s_0\}$.
+At each return to $s_0$, the chain \emph{regenerates}: its future evolution is independent of its past.
+The intervals $[\gamma_{l-1}, \gamma_l)$ are called \emph{cycles}.
+
+The \emph{cycle lengths} $\eta_l = \gamma_l - \gamma_{l-1}$ (eta, ``ay-ta'') and the \emph{cycle sums} $W_l = \sum_{j=\gamma_{l-1}}^{\gamma_l - 1} f(X_j)$ (total of $f$ over cycle $l$) are i.i.d.\ sequences (by the strong Markov property at regeneration times).
 
 \begin{block}{Representation as a Ratio of i.i.d.\ Means}
+The ergodic theorem and the CLT for ratios of i.i.d.\ sums give:
 \[
   I = \lim_{R \to \infty} \hat{Y}_R = \frac{\EE[W_1]}{\EE[\eta_1]},
 \]
@@ -1255,31 +1550,37 @@ and the TAVC satisfies
 \[
   \varsigma^2 = \frac{\mathrm{Var}(W_1 - I\,\eta_1)}{\EE[\eta_1]}.
 \]
-This follows from the CLT for ratios of i.i.d.\ sums (Anscombe's theorem).
+This is the \emph{regenerative ratio estimator} formula.
+\end{block}
+
+\begin{block}{Notation}
+$\EE[W_1]$ is the expected sum of $f(X_j)$ over one regenerative cycle.
+$\EE[\eta_1]$ is the expected length of one cycle; this equals $1/\pi_{s_0}$ (the reciprocal of the stationary probability of the reference state).
+$\mathrm{Var}(W_1 - I\,\eta_1)$ is the variance of the ``centred cycle sum'': the cycle sum minus $I$ times the cycle length (a bias correction).
 \end{block}
 
 \framebreak
 
 \begin{block}{Example 6.7.12: Two-State Chain}
-Consider $\mathcal{S} = \{0,1\}$ with $\bfP = \begin{pmatrix}1-\alpha & \alpha \\ \beta & 1-\beta\end{pmatrix}$, $f(x) = x$, and reference state $s_0 = 0$.
+Consider $\mathcal{S} = \{0,1\}$ with $\bfP = \begin{pmatrix}1-\alpha & \alpha \\ \beta & 1-\beta\end{pmatrix}$ (where $\alpha$ and $\beta$ are as defined earlier), $f(x) = x$ (so $I = \EE_\pi[X] = \pi_1 = \alpha/(\alpha+\beta)$), and reference state $s_0 = 0$.
 
-The true value is $I = \alpha/(\alpha+\beta)$.
+The true expected value is $I = \alpha/(\alpha+\beta)$.
 
-Cycle length: $\EE[\eta_1] = 1/\pi_0 = (\alpha+\beta)/\beta$.
+The expected cycle length is $\EE[\eta_1] = 1/\pi_0 = (\alpha+\beta)/\beta$ (the expected return time to state 0).
 
-Cycle sum: $W_1 = \sum_{j: X_j = 1, j < \text{return to }0} 1$.
-We can show $\EE[W_1] = \alpha/\beta$ and $\mathrm{Var}(W_1 - I\eta_1) = \alpha\beta(2-\alpha-\beta)/(\alpha+\beta)^2$.
+A standard calculation gives $\EE[W_1] = \alpha/\beta$ and $\mathrm{Var}(W_1 - I\eta_1) = \alpha\beta(2-\alpha-\beta)/(\alpha+\beta)^2$.
 
-Therefore:
+Plugging into the regenerative formula:
 \[
-  \varsigma^2 = \frac{\alpha\beta(2-\alpha-\beta)/(\alpha+\beta)^2}{(\alpha+\beta)/\beta} = \frac{\alpha\beta(2-\alpha-\beta)}{(\alpha+\beta)^3}.
+  \varsigma^2 = \frac{\mathrm{Var}(W_1 - I\,\eta_1)}{\EE[\eta_1]} = \frac{\alpha\beta(2-\alpha-\beta)/(\alpha+\beta)^2}{(\alpha+\beta)/\beta} = \frac{\alpha\beta(2-\alpha-\beta)}{(\alpha+\beta)^3}.
 \]
 
-Comparison with i.i.d.\ sampling: $\mathrm{Var}(Y^{\mathrm{ind}}) = \alpha\beta/(\alpha+\beta)^2$, so
+Comparison with i.i.d.\ sampling: if the $Y_j$ were independent, $\mathrm{Var}(Y^{\mathrm{ind}}) = \pi_0\pi_1 = \alpha\beta/(\alpha+\beta)^2$, so:
 \[
   \frac{\varsigma^2}{\mathrm{Var}(Y^{\mathrm{ind}})} = \frac{2-\alpha-\beta}{\alpha+\beta}.
 \]
-MCMC is more efficient than i.i.d.\ when $\alpha + \beta > 1$ (fast-mixing chain).
+This ratio is less than 1 (MCMC is more efficient than i.i.d.) when $\alpha + \beta > 1$ (the chain mixes very fast --- both transition probabilities are large, so the chain moves freely between states).
+It is greater than 1 (MCMC is less efficient) when $\alpha + \beta < 1$ (slow mixing --- the chain tends to stay in its current state for many steps).
 \end{block}
 
 \includegraphics[width=0.75\linewidth]{fig_asymptotic_variance}
@@ -1288,39 +1589,53 @@ MCMC is more efficient than i.i.d.\ when $\alpha + \beta > 1$ (fast-mixing chain
 
 \begin{frame}[allowframebreaks]{6.7 Variance Estimation and Confidence Intervals}
 
-In practice, $\varsigma^2$ is unknown and must be estimated from the chain.
-There are two main methods.
+In practice, $\varsigma^2$ (the TAVC) is unknown and must be estimated from the observed chain $(Y_0, Y_1, \ldots, Y_{R-1})$ (after discarding burn-in).
+There are two main estimation methods.
 
 \begin{block}{Method 1: Lag Covariance Estimation}
-With the chain values $Y_0, \ldots, Y_{R-1}$ (after burn-in), estimate:
+Given post-burn-in values $Y_0, \ldots, Y_{R-1}$, estimate the lag-$k$ autocovariance by:
 \[
   \hat\rho_k = \frac{1}{R-k}\sum_{j=0}^{R-k-1}(Y_j - \hat{Y}_R)(Y_{j+k} - \hat{Y}_R), \quad k = 0, 1, \ldots, N,
 \]
-and
+then estimate the TAVC by summing:
 \[
-  \hat\varsigma^2_N = \sum_{k=-N}^{N} \hat\rho_k = \hat\rho_0 + 2\sum_{k=1}^{N} \hat\rho_k
+  \hat\varsigma^2_N = \hat\rho_0 + 2\sum_{k=1}^{N} \hat\rho_k
 \]
-for a truncation lag $N$ (typically $N \approx \sqrt{R}$ or chosen by an automatic rule).
+for a chosen truncation lag $N$ (typically $N \approx \sqrt{R}$ or chosen by an automatic rule such as stopping when $\hat\rho_k$ drops below a threshold).
+\end{block}
+
+\begin{block}{Notation}
+$\hat\rho_k$ (``rho-hat sub k'') is the estimated lag-$k$ autocovariance: it measures how correlated $Y_j$ and $Y_{j+k}$ are on average.
+$(Y_j - \hat{Y}_R)(Y_{j+k} - \hat{Y}_R)$ is the product of centred values at lags $j$ and $j+k$.
+The truncation at lag $N$ avoids estimating very small and noisy autocovariances at large lags.
+A good rule: include enough lags that the estimated $\hat\rho_k$ has decayed to near zero.
 \end{block}
 
 \framebreak
 
 \begin{block}{Method 2: Batch Means}
-Divide $Y_0, \ldots, Y_{R-1}$ into $m$ non-overlapping batches of size $n$ (so $R = mn$).
+Divide the $R$ post-burn-in values $Y_0, \ldots, Y_{R-1}$ into $m$ non-overlapping batches of size $n = R/m$.
 The $k$-th batch mean is
 \[
   \hat{Y}_k(n) = \frac{1}{n}\sum_{i=(k-1)n}^{kn-1} Y_i, \quad k = 1, \ldots, m.
 \]
-For $n$ large enough, $\hat{Y}_1(n), \ldots, \hat{Y}_m(n)$ are approximately i.i.d.\ $\mathcal{N}(I, \varsigma^2/n)$.
+For batch size $n$ large enough (much larger than the mixing time), the batch means $\hat{Y}_1(n), \ldots, \hat{Y}_m(n)$ are approximately independent and approximately normally distributed with mean $I$ and variance $\varsigma^2/n$.
 The sample variance of the batch means estimates $\varsigma^2/n$:
 \[
   V_m^2(n) = \frac{1}{m-1}\sum_{k=1}^m (\hat{Y}_k(n) - \hat{Y}_R)^2.
 \]
-A \textbf{95\% confidence interval} for $I$ at level $1-\alpha$ is
+A \textbf{95\% confidence interval} for $I$ is then:
 \[
-  \hat{Y}_R \pm t_{m-1,\, 1-\alpha/2} \sqrt{\frac{V_m^2(n)}{m}},
+  \hat{Y}_R \pm t_{m-1,\, 0.975} \cdot \sqrt{\frac{V_m^2(n)}{m}},
 \]
-where $t_{m-1,q}$ is the $q$-quantile of the $t$-distribution with $m-1$ degrees of freedom.
+where $t_{m-1,0.975}$ is the 97.5th percentile of Student's $t$-distribution with $m-1$ degrees of freedom.
+\end{block}
+
+\begin{block}{Notation}
+$\hat{Y}_k(n)$ (``Y-hat sub k of n'') is the sample mean of the $k$-th batch of $n$ observations.
+$V_m^2(n)$ is the sample variance of the $m$ batch means (with divisor $m-1$ for unbiasedness).
+$t_{m-1,0.975}$ is the $t$-critical value: for $m = 20$ batches, $t_{19,0.975} \approx 2.09$; for large $m$, it approaches the normal critical value 1.96.
+The factor $\sqrt{V_m^2(n)/m}$ is the standard error of $\hat{Y}_R$ (the estimated standard deviation of the estimator).
 \end{block}
 
 \includegraphics[width=0.75\linewidth]{fig_batch_means}
@@ -1351,7 +1666,7 @@ def mcmc_estimate_with_CI(chain_values, burn_in=500, n_batches=20):
     t_crit = stats.t.ppf(0.975, df=n_batches - 1)
     margin = t_crit * batch_std / np.sqrt(n_batches)
 
-    # --- Lag covariance estimate of zeta^2 ---
+    # --- Lag covariance estimate of varsigma^2 ---
     N_lag = min(250, R // 4)  # truncation lag
     Y_c = Y - I_hat
     rho_hat = np.array([np.mean(Y_c[:R-k] * Y_c[k:])
@@ -1366,7 +1681,7 @@ def mcmc_estimate_with_CI(chain_values, burn_in=500, n_batches=20):
         'eff_sample': R * rho_hat[0] / zeta2_hat if zeta2_hat > 0 else R,
     }
 
-# Two-state chain example: alpha=0.3, beta=0.1
+# Two-state chain: alpha=0.3, beta=0.1
 # True I = alpha/(alpha+beta) = 0.75
 alpha, beta = 0.3, 0.1
 chain = [0]
@@ -1379,33 +1694,37 @@ f_vals = np.array(chain, dtype=float)  # f(x) = x
 res = mcmc_estimate_with_CI(f_vals)
 print(f"I_hat = {res['estimate']:.4f} (true = 0.75)")
 print(f"95% CI = ({res['CI_lower']:.4f}, {res['CI_upper']:.4f})")
-print(f"TAVC estimate zeta^2 = {res['zeta2_hat']:.4f}")
+print(f"TAVC estimate varsigma^2 = {res['zeta2_hat']:.4f}")
 print(f"Effective sample size = {res['eff_sample']:.1f}")
 \end{lstlisting}
 \end{frame}
 
 \begin{frame}[allowframebreaks]{6.7 Hard-core Model: Worked Numerical Example}
 
-We illustrate the full estimation pipeline on the hard-core model from Example 6.7.13 in the book.
+We illustrate the full MCMC estimation pipeline on the hard-core model to show all steps concretely.
 
-\textbf{Setup.} Grid graph $G = (\{1,\ldots,8\}^2, E)$ with $M = 64$ vertices and $\lambda = 2$.
-Quantity of interest: $I = \EE_\pi m(\xi) = \EE_\pi[\text{number of occupied vertices}]$.
+\textbf{Setup.}
+Grid graph $G = (\{1,\ldots,8\}^2, E)$ (an $8 \times 8$ grid) with $M = 64$ vertices, where each pair of horizontally or vertically adjacent vertices is connected by an edge.
+Activity parameter $\lambda = 2$ (particles are favoured; $\lambda > 1$).
+Quantity of interest: $I = \EE_\pi m(\xi) = \EE_\pi[\text{number of occupied vertices}]$, the expected number of particles at stationarity.
 
-\textbf{Chain.} Gibbs sampler (Algorithm 47) run for $R = 10{,}000$ steps after a burn-in of $k_0 = 500$ steps.
-The TAVC is estimated by lag-$k$ covariances with truncation lag $N = 250$.
+\textbf{Chain.}
+Gibbs sampler (Algorithm 47) with $R = 10{,}000$ steps after a burn-in of $k_0 = 500$ steps.
+The TAVC $\varsigma^2$ is estimated by the lag-covariance method with truncation lag $N = 250$.
 
-\textbf{Results (from the book, Table 6.2).}
+\textbf{Results (from Table 6.2 in the book).}
 \begin{itemize}
-  \item $\hat{Y}_R \approx 24.37$ (estimated mean number of particles).
-  \item Lag-covariance estimate: $\hat\varsigma^2 \approx 8.42$.
+  \item Point estimate: $\hat{Y}_R \approx 24.37$ occupied vertices on average.
+  \item Lag-covariance TAVC estimate: $\hat\varsigma^2 \approx 8.42$.
   \item 95\% confidence interval: $(23.15,\, 25.59)$.
 \end{itemize}
 
 \includegraphics[width=0.85\linewidth]{fig_regenerative}
 
-\begin{alertblock}{Key Takeaway}
-The asymptotic variance $\varsigma^2 \approx 8.42$ is much larger than $\mathrm{Var}(Y_0) = \rho_0$ for i.i.d.\ samples, reflecting the positive autocorrelation in the Gibbs chain.
-The effective sample size is $R \cdot \rho_0 / \varsigma^2 \ll R$; MCMC samples are ``worth less'' than i.i.d.\ samples in this example because the chain mixes slowly near the phase transition.
+\begin{alertblock}{Key Takeaway: Effective Sample Size}
+The TAVC estimate $\hat\varsigma^2 \approx 8.42$ is larger than $\rho_0 = \mathrm{Var}(Y_0)$ (the single-sample variance), reflecting positive autocorrelation in the Gibbs chain.
+The \emph{effective sample size} (ESS) is $\mathrm{ESS} = R \cdot \rho_0 / \varsigma^2 \ll R$: the $R = 10{,}000$ MCMC samples are collectively ``worth'' only a fraction of that many i.i.d.\ samples.
+This happens because the Gibbs chain mixes slowly near the phase transition ($\lambda \approx \lambda_c$ for the hard-core model on a grid), and consecutive samples are highly correlated.
 \end{alertblock}
 
 \end{frame}
@@ -1416,56 +1735,78 @@ The effective sample size is $R \cdot \rho_0 / \varsigma^2 \ll R$; MCMC samples 
 
 \begin{frame}[allowframebreaks]{6.8 Stable Simulation: Estimating $\pi(A)$ Exactly}
 
-In some applications we want to estimate the stationary probability $\pi(A) = \sum_{s \in A} \pi_s$ for a specific set $A$, with \emph{exact} (not approximate) samples from $\pi$.
-The naive approach --- generate MCMC samples and estimate $\pi(A) \approx \frac{1}{R}\sum_{j=1}^R \mathbf{1}(X_j \in A)$ --- requires dealing with burn-in.
-The \emph{stable simulation scheme} avoids this using \emph{Siegmund duality}.
+In some applications we want to estimate the stationary probability $\pi(A) = \sum_{s \in A} \pi_s$ for a specific set $A \subseteq \mathcal{S}$, using \emph{exact} (not approximate) samples from $\pi$.
+The naive approach --- use MCMC samples and estimate $\hat\pi(A) = \frac{1}{R}\sum_{j=1}^R \mathbf{1}(X_j \in A)$ --- suffers from burn-in bias.
+The \emph{stable simulation scheme} avoids this problem entirely by using a duality relationship called \emph{Siegmund duality}.
 
-\textbf{Setting.} $\mathcal{S} = \{s_1, \ldots, s_m\}$ is partially ordered by $\preceq$.
-For a state $s_j$, we want to estimate
+\textbf{Setting.}
+The state space $\mathcal{S} = \{s_1, \ldots, s_m\}$ is partially ordered by $\preceq$ (``precedes or equals'').
+We want to estimate the \emph{down-set probability}:
 \[
-  \pi(\{s_j\}^\downarrow) = \pi\bigl(\{s' : s' \preceq s_j\}\bigr).
+  \pi(\{s_j\}^\downarrow) = \pi\bigl(\{s' \in \mathcal{S} : s' \preceq s_j\}\bigr),
 \]
+the probability under $\pi$ of being in any state that is $\preceq s_j$.
+The symbol $\{s_j\}^\downarrow$ (``s-j down'') denotes the \emph{down-set} of $s_j$: all states that come below $s_j$ in the partial order.
 
 \begin{block}{Definition 6.8.1 (Siegmund Dual)}
-The Markov chain $(Z_n)$ with transition matrix $\bfP_Z$ on $\mathcal{S}^* = \{s_0\} \cup \mathcal{S}$ is the \textbf{Siegmund dual} of $(X_n)$ with t.m.\ $\bfP_X$ if
+The Markov chain $(Z_n)$ with transition matrix $\bfP_Z$ on the extended state space $\mathcal{S}^* = \{s_0\} \cup \mathcal{S}$ (adding an extra absorbing boundary state $s_0$) is the \textbf{Siegmund dual} of $(X_n)$ with transition matrix $\bfP_X$ if
 \[
   \bfP_X^n(s_i, \{s_j\}^\downarrow) = \bfP_Z^n(s_j, \{s_i\}^\uparrow) \quad \forall\, s_i, s_j \in \mathcal{S},\; n \ge 0.
 \]
+Here $\{s_i\}^\uparrow = \{s' \in \mathcal{S}^* : s_i \preceq s'\}$ (``s-i up'') is the \emph{up-set} of $s_i$.
+\end{block}
+
+\begin{block}{Notation}
+$\bfP_X^n(s_i, \{s_j\}^\downarrow)$ is the probability that chain $X$, starting from $s_i$, is in the down-set of $s_j$ after $n$ steps.
+$\bfP_Z^n(s_j, \{s_i\}^\uparrow)$ is the probability that the dual chain $Z$, starting from $s_j$, is in the up-set of $s_i$ after $n$ steps.
+The duality says these two probabilities are always equal for all $n$.
 \end{block}
 
 \framebreak
 
-Taking $n \to \infty$: since $(X_n)$ is ergodic, $\bfP_X^n(s_i, \{s_j\}^\downarrow) \to \pi(\{s_j\}^\downarrow)$ for any starting state $s_i$.
-Also, $\bfP_Z^n(s_j, \{s_i\}^\uparrow) \to \PP(Z \text{ absorbed in } s_m \mid Z_0 = s_j)$ as the state $s_0$ acts as an absorbing boundary.
+Taking $n \to \infty$ in the duality relation:
+On the left: $\bfP_X^n(s_i, \{s_j\}^\downarrow) \to \pi(\{s_j\}^\downarrow)$ for any fixed $s_i$ (by the ergodic theorem for chain $X$).
+On the right: the extended state space $\mathcal{S}^*$ has the state $s_0$ acting as an absorbing boundary at the ``bottom'' and $s_m$ at the ``top''.
+As $n \to \infty$, the dual chain $Z$ is absorbed at one of these boundaries.
 Therefore:
 \[
   \pi(\{s_j\}^\downarrow) = \PP(Z \text{ absorbed at } s_m \mid Z_0 = s_j).
 \]
-This is the key formula: the stationary probability of a down-set equals the absorption probability of the dual chain.
+This is the key duality formula: the stationary probability of a down-set equals the \emph{absorption probability} of the dual chain at the top boundary $s_m$.
 
 \begin{block}{Algorithm 59 (Stable Simulation Scheme)}
-\textbf{Require:} Chain $(X_n)$ on $\mathcal{S}$; its Siegmund dual $(Z_n)$ on $\mathcal{S}^*$; desired set $\{s_j\}^\downarrow$; replications $R$.
+\textbf{Require:} Chain $(X_n)$ on $\mathcal{S}$; its Siegmund dual $(Z_n)$ on $\mathcal{S}^* = \{s_0\} \cup \mathcal{S}$; target down-set $\{s_j\}^\downarrow$; number of replications $R$.
 \begin{enumerate}
-  \item Compute the Siegmund dual $\bfP_Z$ of $\bfP_X$ on $\mathcal{S}^* = \{s_0\} \cup \mathcal{S}$.
-  \item For $l = 1, \ldots, R$: simulate $(Z_n^{(l)})$ starting from $s_j$ until absorption at $s_0$ or $s_m$.
+  \item Compute the Siegmund dual transition matrix $\bfP_Z$ from $\bfP_X$.
+  \item For $l = 1, \ldots, R$: simulate the dual chain $(Z_n^{(l)})$ starting from $s_j$ until it is absorbed at either $s_0$ or $s_m$ (two absorbing barriers).
   \item Estimate: $\hat\pi(\{s_j\}^\downarrow) = \frac{1}{R}\sum_{l=1}^R \mathbf{1}(Z^{(l)} \text{ absorbed at } s_m)$.
 \end{enumerate}
-The $R$ simulations are i.i.d., so the estimator is unbiased, and $R \approx (1.96/b)^2$ gives a 95\% CI of half-width $b$.
+The $R$ replications are i.i.d., so the estimator is exactly unbiased.
+Setting $R \approx (1.96/b)^2$ gives a 95\% confidence interval of half-width $b$.
 \end{block}
+
+\begin{alertblock}{Key Advantage over Standard MCMC}
+Each replication of the dual chain is an \emph{independent} simulation that terminates when absorbed.
+There is no burn-in, no mixing time to estimate, and no autocorrelation between replications.
+The estimator is exactly unbiased (not just asymptotically), and standard Binomial confidence intervals apply directly.
+\end{alertblock}
 
 \includegraphics[width=0.75\linewidth]{fig_siegmund_duality}
 
 \framebreak
 
 \begin{block}{Definition (Möbius Monotonicity) and Lemma 6.8.2}
-A chain $(X_n)$ with t.m.\ $\bfP_X$ is \textbf{Möbius monotone} w.r.t.\ $\preceq$ if the matrix $\mathbf{C}^{-1} \bfP_X \mathbf{C} \ge 0$, where $\mathbf{C}(s_i, s_j) = \mathbf{1}(s_i \preceq s_j)$ is the ordering matrix and $\mathbf{C}^{-1}$ is its inverse (the Möbius function).
+A chain $(X_n)$ with transition matrix $\bfP_X$ is \textbf{Möbius monotone} (Möbius, pronounced ``mo-bius'', named after German mathematician August Möbius) with respect to $\preceq$ if the matrix $\mathbf{C}^{-1} \bfP_X \mathbf{C} \ge 0$ entry-wise, where $\mathbf{C}(s_i, s_j) = \mathbf{1}(s_i \preceq s_j)$ is the \emph{ordering matrix} (the ``$\preceq$-incidence matrix'') and $\mathbf{C}^{-1}$ is its inverse, known as the \emph{Möbius function} of the partial order.
 
-A Siegmund dual on $\mathcal{S}^*$ exists if and only if $(X_n)$ is Möbius monotone w.r.t.\ $\preceq$.
+A Siegmund dual on $\mathcal{S}^*$ exists if and only if $(X_n)$ is Möbius monotone with respect to $\preceq$.
 \end{block}
 
 \begin{block}{Example 6.8.4: Two-Node Tandem Queue}
-Two-node closed tandem queue with state space $\mathcal{S} = \{0,\ldots,N\}^2$, parameters $\lambda_1, \lambda_2$ (arrival rates) and $\mu_1, \mu_2$ (service rates).
-For $N = 5$, $\lambda_1 = 3/16$, $\lambda_2 = 1/16$, $\mu_1 = \mu_2 = 6/16$, and $R = 4 \times 10^4$ replications:
+A two-node tandem queue has $N+1$ customers that cycle between two servers.
+The state $(x,y)$ records the number of customers at each server.
+State space: $\mathcal{S} = \{0,\ldots,N\}^2$, partially ordered coordinate-wise.
+Parameters: $\lambda_1 = 3/16$, $\lambda_2 = 1/16$ (service rates at nodes 1 and 2), $\mu_1 = \mu_2 = 6/16$ (arrival rates), $N = 5$.
+With $R = 4 \times 10^4$ replications of the dual chain, the down-set probabilities $\hat\pi(\{(x,y)\}^\downarrow)$ for all $(x,y) \in \{0,\ldots,5\}^2$ are:
 
 \medskip
 \begin{center}
@@ -1483,7 +1824,8 @@ For $N = 5$, $\lambda_1 = 3/16$, $\lambda_2 = 1/16$, $\mu_1 = \mu_2 = 6/16$, and
   \bottomrule
 \end{tabular}
 \end{center}
-Estimates of $\hat\pi(\{(x,y)\}^\downarrow)$ for all $(x,y) \in \{0,\ldots,5\}^2$. Each entry is unbiased.
+Each entry is an exactly unbiased estimate of $\pi(\{(x,y)\}^\downarrow)$, the probability of being in the down-set of state $(x,y)$.
+The entry at $(5,5) = 1.000$ is correct: every state is $\preceq (5,5)$ so the probability is exactly 1.
 \end{block}
 
 \end{frame}
@@ -1494,29 +1836,29 @@ Estimates of $\hat\pi(\{(x,y)\}^\downarrow)$ for all $(x,y) \in \{0,\ldots,5\}^2
 
 \begin{frame}[allowframebreaks]{6.9 Bibliographical Notes}
 
-The field of MCMC has a rich history spanning physics, statistics, and computer science.
+The field of MCMC has a rich history spanning over seven decades, with foundational contributions from physics, statistics, and theoretical computer science.
 
 \begin{block}{Foundational References}
 \begin{itemize}
-  \item \textbf{Markov chain theory:} Norris [165] is a clear introductory textbook; Meyn \& Tweedie [147] provide a comprehensive treatment including general state spaces.
-  \item \textbf{Metropolis algorithm:} Introduced by Metropolis, Rosenbluth, Rosenbluth, Teller \& Teller [145] (1953) for molecular dynamics simulations. Generalised to asymmetric proposals by Hastings [78] (1970).
-  \item \textbf{Gibbs sampler:} Introduced by Geman \& Geman [62] (1984) for image restoration via simulated annealing. Popularised in Bayesian statistics by Gelfand \& Smith [61] (1990).
-  \item \textbf{Coupling from the Past:} Propp \& Wilson [170] (1996) introduced the CFTP algorithm. The monotone version using only min/max chains is due to Huber [85].
+  \item \textbf{Markov chain theory:} Norris [165] is a clear and accessible introductory textbook on Markov chains; Meyn \& Tweedie [147] provide a comprehensive treatment including general (uncountable) state spaces.
+  \item \textbf{Metropolis algorithm:} Introduced by Metropolis, Rosenbluth, Rosenbluth, Teller \& Teller [145] (1953) for molecular dynamics simulations in physics. Generalised to asymmetric proposals by Hastings [78] (1970).
+  \item \textbf{Gibbs sampler:} Introduced by Geman \& Geman [62] (1984) for image restoration using simulated annealing on Markov random fields. Popularised in Bayesian statistics by Gelfand \& Smith [61] (1990), who recognised its broad applicability for posterior simulation.
+  \item \textbf{Coupling from the Past:} Propp \& Wilson [170] (1996) introduced the CFTP algorithm and proved its correctness. The efficient monotone version using only min/max chains is due to their work and subsequent development by Huber [85].
 \end{itemize}
 \end{block}
 
 \begin{block}{FPRAS and Approximate Counting}
 \begin{itemize}
-  \item The general FPRAS framework via self-reducibility: Jerrum, Valiant \& Vazirani [100].
-  \item Rapid mixing of the Gibbs sampler for graph colourings with $r \ge 2\Delta+1$: Jerrum [99] (1995).
-  \item Rapid mixing for 0-1 knapsack: Dyer, Frieze \& Kannan [43].
-  \item Rapid mixing via the Metropolis algorithm for $r \ge 2\Delta+1$ colours: Hayes [85].
+  \item The general FPRAS framework via self-reducibility (telescoping): Jerrum, Valiant \& Vazirani [100].
+  \item Rapid mixing of the Gibbs sampler for graph colourings with $r \ge 2\Delta+1$ colours: Jerrum [99] (1995).
+  \item Rapid mixing for 0-1 knapsack problems: Dyer, Frieze \& Kannan [43].
+  \item Rapid mixing via the Metropolis algorithm for colourings with $r \ge 2\Delta+1$: Hayes [85].
 \end{itemize}
 \end{block}
 
 \begin{block}{Ergodic Theory and Variance Estimation}
 \begin{itemize}
-  \item CLT for Markov chains: Meyn \& Tweedie [147]; Glynn \& Iglehart [64].
+  \item Central Limit Theorem for Markov chains: Meyn \& Tweedie [147]; Glynn \& Iglehart [64].
   \item Batch means for variance estimation: Damerdji [30]; Alexopoulos \& Seila [4].
   \item Regenerative simulation: Crane \& Iglehart; see also Glynn \& Iglehart [64].
 \end{itemize}
@@ -1526,7 +1868,7 @@ The field of MCMC has a rich history spanning physics, statistics, and computer 
 \begin{itemize}
   \item Motif finding via Gibbs sampling: Lawrence \emph{et al.}\ [119]; Liu, Neuwald \& Lawrence [128].
   \item Siegmund duality and stable simulation: Siegmund [191]; Lorek \& Szekli [130].
-  \item Ising model and critical phenomena: see textbooks by Grimmett [68] or Georgii [63].
+  \item Ising model, phase transitions, and critical phenomena: see textbooks by Grimmett [68] or Georgii [63].
 \end{itemize}
 \end{block}
 
@@ -1539,12 +1881,13 @@ The field of MCMC has a rich history spanning physics, statistics, and computer 
 \begin{frame}[allowframebreaks]{6.10 Selected Exercises}
 
 \begin{block}{Exercise 6.T.7 (Riffle Shuffle)}
-Let $(X_k)$ be a Markov chain on $\mathcal{S} = S_n$ (permutations of $n$ elements) corresponding to the Riffle Shuffle, and let $(\hat{X}_k)$ be its time-reversal.
-Show that
+Let $(X_k)$ be a Markov chain on $\mathcal{S} = S_n$ (the set of all permutations of $n$ elements) corresponding to the Riffle Shuffle, and let $(\hat{X}_k)$ be its time-reversal.
+Show that for all initial distributions $\mu$ (mu) and all $k \ge 0$:
 \[
-  \forall\, \mu,\; \forall\, k \ge 0: \quad \dTV(\mu \bfP_X^k, \pi) = \dTV(\mu \bfP_{\hat X}^k, \pi),
+  \dTV(\mu \bfP_X^k, \pi) = \dTV(\mu \bfP_{\hat X}^k, \pi),
 \]
 where $\pi$ is the uniform distribution on $S_n$.
+This means the riffle shuffle and its time-reversal converge to uniformity at exactly the same rate, in total variation distance.
 \end{block}
 
 \begin{block}{Exercise 6.T.8 (Total Variation Distance)}
@@ -1552,7 +1895,8 @@ Show that for two probability vectors $\bfmu$ and $\bfv$ on $\mathcal{S}$:
 \[
   \dTV(\bfmu, \bfv) = \max_{A \subseteq \mathcal{S}}|\mu(A) - \nu(A)|.
 \]
-\textit{Hint:} Take $A = \{s : \mu_s > \nu_s\}$ to show $\ge$; use the triangle inequality for $\le$.
+\textit{Hint:} Take $A = \{s : \mu_s > \nu_s\}$ (the set of states where $\mu$ puts more weight than $\nu$) to show the ``$\ge$'' direction.
+For the ``$\le$'' direction, use the fact that $|\mu(A) - \nu(A)| \le \frac{1}{2}\sum_s |\mu_s - \nu_s|$ for any $A$.
 \end{block}
 
 \begin{block}{Exercise 6.T.12 (Los Angeles Weather Chain)}
@@ -1561,30 +1905,38 @@ Consider $\mathcal{S} = \{\text{rainy}, \text{sunny}\}$ with $\bfP = \begin{pmat
   \item Find the stationary distribution.
   \item Starting from the ``rainy'' state, compute $\dTV(\bfmu \bfP^n, \pi)$ for $n = 1, 2, 3$.
 \end{enumerate}
-\textit{Solution for (a):} Solve $\pi_r/2 + \pi_s/10 = \pi_r$. With $\pi_r + \pi_s = 1$: $\pi_r = 1/6$, $\pi_s = 5/6$.
+\textit{Solution for (a):} The stationary equations are $\pi_r = \pi_r/2 + \pi_s/10$ and $\pi_r + \pi_s = 1$.
+Solving: $\pi_r/2 = \pi_s/10$, so $\pi_s = 5\pi_r$.
+With $\pi_r + \pi_s = 1$: $\pi_r + 5\pi_r = 1$, giving $\pi_r = 1/6$, $\pi_s = 5/6$.
+Interpretation: even though it is sunny most of the time (9/10 chance of staying sunny), the overall stationary probability of a sunny day is 5/6.
 \end{block}
 
 \framebreak
 
 \begin{block}{Exercise 6.T.20 (Gibbs as Special Case of MH)}
-Show that the Gibbs sampler (Algorithm 44) is a special case of the Metropolis-Hastings algorithm (Algorithm 43) with acceptance ratio always equal to 1.
+Show that the Gibbs sampler (Algorithm 44) is a special case of the Metropolis-Hastings algorithm (Algorithm 43) with acceptance ratio always equal to 1 (every proposed move is accepted).
 
-\textit{Hint:} For the Gibbs proposal, what is $q_{\xi\xi'}/q_{\xi'\xi}$ when $\xi$ and $\xi'$ differ at exactly one vertex $v$?
+\textit{Hint:} For the Gibbs proposal, the proposal probability of moving from $\xi$ to $\xi'$ (where $\xi$ and $\xi'$ differ only at vertex $v$) is $q_{\xi\xi'} = p_{\xi,v}(\xi'(v))/|V|$.
+Compute the MH acceptance ratio $\pi_{\xi'} q_{\xi'\xi} / (\pi_\xi q_{\xi\xi'})$ and show it equals 1 by using the definition of the full conditional $p_{\xi,v}$.
 \end{block}
 
-\begin{block}{Exercise 6.T.24 (Coupling Not Sufficient for Stationarity)}
-Consider a two-state chain $\mathcal{S} = \{1,2\}$ that with probability 1 stops in state 1 (state 1 is absorbing, state 2 transitions to 1).
-The forward coupling time $\tau_f = \min\{n : X_n = X'_n\}$ is finite with probability 1.
-Show that $X_{\tau_f}^0$ is NOT distributed as $\pi$ (where $\pi$ would be the uniform distribution if the chain were ergodic).
-\textit{This illustrates why CFTP must run \emph{backward} from the past, not forward from the present.}
+\begin{block}{Exercise 6.T.24 (Forward Coupling is Not Sufficient)}
+Consider a two-state chain $\mathcal{S} = \{1,2\}$ where state 1 is absorbing ($p_{11} = 1$) and state 2 transitions to 1 ($p_{21} = 1$).
+The forward coupling time $\tau_f = \min\{n : X_n = X'_n\}$ (the first time two chains started from different states agree) is finite with probability 1 (since both chains reach state 1 in at most 1 step).
+However, show that $X_{\tau_f}^0$ (the value of the chain at the forward coupling time) is NOT distributed as $\pi$ (the stationary distribution, which would be uniform if the chain were ergodic).
+
+\textit{This illustrates why CFTP must run backward from the past, not forward from the present: forward coupling does not guarantee the chain has reached stationarity.}
 \end{block}
 
 \begin{block}{Exercise 6.T.35 (Median Trick for Boosting)}
-If $p > 1/2$ and $Y_1, \ldots, Y_R \overset{i.i.d.}{\sim} \mathrm{Bernoulli}(p)$, show that
+If $p > 1/2$ and $Y_1, \ldots, Y_R \overset{\text{i.i.d.}}{\sim} \mathrm{Bernoulli}(p)$, show that
 \[
   \PP\!\left(\sum_{i=1}^R Y_i > R/2\right) \ge 1 - \delta \quad \text{when } R \ge \frac{\ln(1/\delta)}{2(p-1/2)^2}.
 \]
-\textit{This result (via Chebyshev or Hoeffding) underlies the FPRAS boosting argument.}
+\textit{Hint:} Apply Hoeffding's inequality to the sum $\sum_{i=1}^R Y_i$.
+Hoeffding's inequality states: $\PP(\bar{Y} - \EE[\bar{Y}] \le -t) \le e^{-2R t^2}$ for bounded random variables.
+Set $t = p - 1/2 > 0$ and solve for $R$.
+This result underlies the FPRAS boosting argument: if each estimate is correct with probability $p > 1/2$, the majority vote of $R$ independent estimates is correct with probability $\ge 1 - \delta$ for appropriate $R$.
 \end{block}
 
 \end{frame}
@@ -1595,7 +1947,7 @@ If $p > 1/2$ and $Y_1, \ldots, Y_R \overset{i.i.d.}{\sim} \mathrm{Bernoulli}(p)$
 
 \begin{frame}[allowframebreaks]{Chapter 6 Summary}
 
-Chapter 6 developed the theory and practice of Markov Chain Monte Carlo (MCMC) from the ground up.
+Chapter 6 developed the complete theory and practice of Markov Chain Monte Carlo (MCMC), from basic Markov chain definitions through state-of-the-art algorithms for exact sampling and approximate counting.
 
 \begin{block}{Core Algorithms and Their Applications}
 \begin{tabular}{lll}
@@ -1605,11 +1957,11 @@ Algorithm & Section & Application \\
 Metropolis (Alg.~42) & 6.3.1 & Symmetric proposal, any $\pi$ \\
 Metropolis-Hastings (Alg.~43) & 6.3.1 & Asymmetric proposal, any $\pi$ \\
 Gibbs Sampler (Alg.~44--48) & 6.3.2 & Product space, full conditionals \\
-CFTP -- general (Alg.~49) & 6.4.1 & Exact sampling \\
-CFTP -- monotone (Alg.~50) & 6.4.3 & Efficient exact sampling \\
+CFTP -- general (Alg.~49) & 6.4.1 & Exact sampling from $\pi$ \\
+CFTP -- monotone (Alg.~50) & 6.4.3 & Efficient exact sampling (2 chains) \\
 FPRAS (Alg.~54--55) & 6.5.1 & Approximate counting \\
 Motif Gibbs (Alg.~58) & 6.6 & Bioinformatics motif finding \\
-Stable Simulation (Alg.~59) & 6.8 & Exact $\pi(A)$ via duality \\
+Stable Simulation (Alg.~59) & 6.8 & Exact $\pi(A)$ via Siegmund duality \\
 \bottomrule
 \end{tabular}
 \end{block}
@@ -1618,17 +1970,26 @@ Stable Simulation (Alg.~59) & 6.8 & Exact $\pi(A)$ via duality \\
 
 \begin{block}{Key Theoretical Results}
 \begin{enumerate}
-  \item \textbf{DBC implies stationarity:} If $w_s p_{ss'} = w_{s'} p_{s's}$ for all $s,s'$, then $\pi_s \propto w_s$ is stationary.
-  \item \textbf{Ergodic theorem (Prop.~6.7.1):} $\hat{Y}_R \to I$ a.s.\ for any ergodic chain.
-  \item \textbf{CLT (Prop.~6.7.5):} $\sqrt{R}(\hat{Y}_R - I) \xrightarrow{d} \mathcal{N}(0,\varsigma^2)$ with $\varsigma^2 = \rho_0 + 2\sum_{k \ge 1}\rho_k$.
-  \item \textbf{CFTP correctness (Thm.~6.4.2):} Backward coupling from all initial states yields exact sample from $\pi$.
-  \item \textbf{FPRAS (Prop.~6.5.4):} Telescoping ratios $z_i/z_{i-1} \ge 1/2$ + rapid mixing $\Rightarrow$ polynomial-time approximate counter.
-  \item \textbf{Siegmund duality (Eq.~6.8.2):} $\pi(\{s_j\}^\downarrow) = P(Z \text{ absorbed at } s_m \mid Z_0 = s_j)$.
+  \item \textbf{Detailed Balance Condition (Prop.~6.2.5):} If $w_s p_{ss'} = w_{s'} p_{s's}$ for all $s,s'$, then $\pi_s \propto w_s$ is stationary.
+  This is the master tool for proving correctness of Metropolis, MH, and Gibbs algorithms.
+
+  \item \textbf{Ergodic Theorem (Prop.~6.7.1):} $\hat{Y}_R \to I$ almost surely for any ergodic chain and any bounded $f$.
+  This justifies using MCMC for estimation.
+
+  \item \textbf{Markov CLT (Prop.~6.7.5):} $\sqrt{R}(\hat{Y}_R - I) \xrightarrow{d} \mathcal{N}(0,\varsigma^2)$ with $\varsigma^2 = \rho_0 + 2\sum_{k \ge 1}\rho_k$.
+  This gives confidence intervals for MCMC estimates.
+
+  \item \textbf{CFTP Correctness (Thm.~6.4.2):} Backward coupling from all initial states --- using the same random numbers --- yields a sample with distribution \emph{exactly} $\pi$, with no burn-in bias.
+
+  \item \textbf{FPRAS (Prop.~6.5.4):} Telescoping ratios $z_i/z_{i-1} \ge 1/2$ combined with rapid mixing gives a polynomial-time randomised counter for intractable combinatorial quantities.
+
+  \item \textbf{Siegmund Duality (Sec.~6.8):} $\pi(\{s_j\}^\downarrow) = \PP(Z \text{ absorbed at } s_m \mid Z_0 = s_j)$.
+  This converts a stationary probability estimation problem into an absorption probability problem, enabling exact unbiased estimation via independent dual-chain simulations.
 \end{enumerate}
 \end{block}
 
 \begin{alertblock}{The MCMC Paradigm in One Sentence}
-Build a Markov chain with stationary distribution $\pi$ that only requires computing ratios $\pi_{s'}/\pi_s$; run it; average the output; the normalising constant never appears.
+Build a Markov chain with stationary distribution $\pi$ that only requires computing \emph{ratios} $\pi_{s'}/\pi_s$ (so the unknown normalising constant always cancels); run it long enough; average the output --- and the ergodic theorem guarantees convergence to the true expectation $I = \EE_\pi[f]$.
 \end{alertblock}
 
 \end{frame}

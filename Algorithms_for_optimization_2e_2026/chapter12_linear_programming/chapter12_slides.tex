@@ -3,6 +3,7 @@
 %  Beamer slides — Chapter 12: Linear Programming
 %  Algorithms for Optimization, 2nd ed. (2026)
 %  Kochenderfer & Wheeler
+%  Style: reader-friendly self-contained lecture notes
 % ============================================================
 \documentclass[aspectratio=169,10pt]{beamer}
 
@@ -40,12 +41,12 @@
   basicstyle=\ttfamily\scriptsize,
   keywordstyle=\color{kwcolor}\bfseries,
   stringstyle=\color{strcolor},
-  commentstyle=\color{cmtcolor}\itshape,
+  commentstyle=\color{green!50!black}\itshape,
   numbers=left,
   numberstyle=\tiny\color{gray},
   stepnumber=1,
   frame=single,
-  backgroundcolor=\color{codebg},
+  backgroundcolor=\color{gray!7},
   breaklines=true,
   showstringspaces=false,
   tabsize=4,
@@ -96,260 +97,445 @@
   \tableofcontents
 \end{frame}
 
-% -----------------------------------------------------------------------------
+% =============================================================================
 \section{Introduction}
-% -----------------------------------------------------------------------------
+% =============================================================================
 
-\begin{frame}{What is Linear Programming?}
-  \begin{columns}
-    \begin{column}{0.58\textwidth}
-      \begin{block}{Definition}
-        A \textbf{linear program (LP)} consists of a \emph{linear objective function}
-        and a set of \emph{linear constraints}:
-        \[
-          \minimize_{\xv}\; \cv^\top\xv \quad
-          \text{subject to linear equalities/inequalities in }\xv
-        \]
-      \end{block}
-      \vspace{4pt}
-      \textbf{Applications:}
+\begin{frame}[allowframebreaks]{What is Linear Programming?}
+
+Linear programming is one of the most widely used and practically successful branches
+of mathematical optimisation.  A \textbf{linear program (LP)} is an optimisation problem
+in which \emph{both} the objective function and every constraint are linear functions
+of the decision variables.  Because everything is linear, the feasible region forms a
+geometric shape called a \emph{convex polytope} --- a multi-dimensional generalisation
+of a polygon --- and the optimum is always attained at one of its vertices (corners).
+
+\begin{block}{Formal Definition}
+A linear program seeks to minimise a linear objective $\cv^\top\xv$ over a set of
+decision variables $\xv \in \mathbb{R}^n$, subject only to linear equality and
+inequality constraints:
+\[
+  \minimize_{\xv}\; \cv^\top\xv
+  \qquad
+  \text{subject to linear equalities and/or inequalities in }\xv.
+\]
+\end{block}
+
+\begin{block}{Notation}
+\begin{itemize}
+  \item $\xv$ (bold x) is the vector of $n$ decision variables --- the quantities we
+        are choosing to optimise, e.g.\ amounts to produce or routes to take.
+  \item $\cv$ (bold c) is the \emph{cost vector} of the same length $n$; its $i$-th
+        entry $c_i$ says how much the objective increases when $x_i$ increases by one unit.
+  \item $\cv^\top\xv$ (c transpose x) denotes the inner product
+        $c_1 x_1 + c_2 x_2 + \cdots + c_n x_n$, a single scalar value.
+\end{itemize}
+\end{block}
+
+\begin{alertblock}{Key Insight: Why Linear is Special}
+Because the objective surface is flat (a tilted plane), there are no local minima that
+are not also global minima.  Any algorithm that reliably moves to a better point will
+eventually find the best point.  This is the central reason LP problems can be solved
+efficiently even at very large scales.
+\end{alertblock}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.55\textwidth}
+    \textbf{Applications of linear programming} span an enormous range of practical fields.
+    In \emph{transportation and logistics}, LPs find minimum-cost shipping routes across
+    a network.  In \emph{manufacturing and economics}, they allocate limited resources ---
+    labour hours, raw materials, machine time --- to maximise profit or minimise waste.
+    In \emph{communication networks}, they route data flows to avoid congestion.
+    In \emph{statistics}, they arise when fitting models using the $L_1$ norm
+    (sum of absolute residuals) or the $L_\infty$ norm (minimax regression), both of
+    which can be reformulated exactly as LPs, as we will see shortly.
+
+    \begin{block}{Structural Properties}
       \begin{itemize}
-        \item Transportation \& logistics
-        \item Communication networks
-        \item Manufacturing, economics
-        \item Operations research
-        \item $L_1$ / $L_\infty$ regression (converted to LP)
+        \item The level sets (contours) of $\cv^\top\xv$ are parallel hyperplanes.
+        \item The feasible set is a \emph{convex polytope}: an intersection of
+              half-spaces defined by the constraints.
+        \item Any local minimum is automatically a global minimum.
+        \item Modern solvers (e.g.\ HiGHS, CPLEX, Gurobi) routinely handle
+              problems with millions of variables and constraints in seconds.
       \end{itemize}
-    \end{column}
-    \begin{column}{0.40\textwidth}
-      \begin{block}{Key Properties}
-        \begin{itemize}
-          \item Linear objective $\Rightarrow$ flat ``ramp''
-          \item Feasible set is a \emph{convex polytope}
-          \item Any local minimum is a \emph{global} minimum
-          \item Modern solvers: millions of variables \& constraints
-        \end{itemize}
-      \end{block}
-      \vspace{4pt}
-      \centering
-      \includegraphics[width=0.85\textwidth]{linear_contours.pdf}
-      \vspace{-4pt}
-      {\tiny Contours of $\cv^\top\xv$; increase in direction $\cv$}
-    \end{column}
-  \end{columns}
+    \end{block}
+  \end{column}
+  \begin{column}{0.43\textwidth}
+    \centering
+    \includegraphics[width=0.90\textwidth]{linear_contours.pdf}
+    \vspace{4pt}
+
+    {\small \textit{Contours of $\cv^\top\xv$ are equally-spaced parallel lines.
+    The cost vector $\cv$ points in the direction of steepest increase;
+    the optimum lies at the vertex where a contour line first touches the feasible
+    polytope as we slide the contours in the $-\cv$ direction.}}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
-% -----------------------------------------------------------------------------
+% =============================================================================
 \section{Problem Formulation}
-% -----------------------------------------------------------------------------
+% =============================================================================
 
-\begin{frame}{12.1 Problem Formulation --- General Form}
-  \begin{block}{General Form (Eq.\ 12.2)}
-    \[
-      \minimize_{\xv}\;\cv^\top\xv
-      \quad\text{subject to}\quad
-      \Av_{\mathrm{LE}}\,\xv \le \bv_{\mathrm{LE}},\quad
-      \Av_{\mathrm{EQ}}\,\xv = \bv_{\mathrm{EQ}}
-    \]
-    \begin{itemize}
-      \item $\cv, \xv \in \mathbb{R}^n$ --- cost vector and design variables
-      \item $\Av_{\mathrm{LE}} \in \mathbb{R}^{p\times n}$, $\bv_{\mathrm{LE}} \in \mathbb{R}^p$ --- inequality rows
-      \item $\Av_{\mathrm{EQ}} \in \mathbb{R}^{q\times n}$, $\bv_{\mathrm{EQ}} \in \mathbb{R}^q$ --- equality rows
-    \end{itemize}
-  \end{block}
+\begin{frame}[allowframebreaks]{12.1 General Form of a Linear Program}
 
-  \vspace{6pt}
-  \begin{columns}
-    \begin{column}{0.48\textwidth}
-      \begin{exampleblock}{Example 12.1 --- Concrete LP}
-        \small
-        \[
-          \minimize_{x_1,x_2,x_3}\;2x_1-3x_2+7x_3
-        \]
-        \[
-          \text{s.t.}\quad
-          \begin{aligned}
-            2x_1+3x_2-8x_3 &\le 5\\
-            4x_1+\phantom{0}x_2+3x_3 &\le 9\\
-            x_1-5x_2-3x_3 &\ge -4\\
-            x_1+\phantom{0}x_2+2x_3 &= 1
-          \end{aligned}
-        \]
-      \end{exampleblock}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{exampleblock}{Example 12.2 --- Norm Minimization as LP}
-        \small
-        $\minimize\|\Av\xv-\bv\|_1$ is equivalent to:
-        \[
-          \minimize_{\xv,\sv}\;\mathbf{1}^\top\sv
-          \quad\text{s.t.}\quad
-          \Av\xv-\bv \le \sv,\;
-          \Av\xv-\bv \ge -\sv
-        \]
-        $\minimize\|\Av\xv-\bv\|_\infty$ $\Leftrightarrow$ minimize scalar $t$\,:
-        \[
-          \Av\xv-\bv\le t\mathbf{1},\quad \Av\xv-\bv\ge -t\mathbf{1}
-        \]
-      \end{exampleblock}
-    \end{column}
-  \end{columns}
-\end{frame}
+Any LP can be written in the following \emph{general form}, which allows a mixture of
+inequality and equality constraints.
 
-% -----------------------------------------------------------------------------
-\begin{frame}{Standard Form}
-  \begin{block}{Standard Form (Eq.\ 12.3)}
-    \[
-      \minimize_{\xv}\;\cv^\top\xv
-      \quad\text{subject to}\quad
-      \Av\xv \le \bv,\quad \xv \ge \mathbf{0}
-    \]
-    All constraints are \emph{less-than inequalities}; all variables are \emph{nonnegative}.
-  \end{block}
+\begin{block}{General Form}
+\[
+  \minimize_{\xv}\;\cv^\top\xv
+  \quad\text{subject to}\quad
+  \Av_{\mathrm{LE}}\,\xv \le \bv_{\mathrm{LE}},\quad
+  \Av_{\mathrm{EQ}}\,\xv = \bv_{\mathrm{EQ}}
+\]
+\end{block}
 
-  \vspace{6pt}
-  \textbf{Conversion rules:}
-  \begin{enumerate}
-    \item \textbf{Equality $\to$ two inequalities} (Eq.\ 12.4):
+\begin{block}{Notation Explained}
+\begin{itemize}
+  \item $\cv \in \mathbb{R}^n$ and $\xv \in \mathbb{R}^n$ are the cost vector and the
+        variable vector, both of length $n$ (the number of decision variables).
+  \item $\Av_{\mathrm{LE}} \in \mathbb{R}^{p \times n}$ is the matrix of $p$
+        inequality-constraint coefficients; $\bv_{\mathrm{LE}} \in \mathbb{R}^p$ is the
+        corresponding right-hand-side vector.  The subscript ``LE'' stands for
+        ``less-than or equal to.''
+  \item $\Av_{\mathrm{EQ}} \in \mathbb{R}^{q \times n}$ is the matrix of $q$
+        equality-constraint coefficients; $\bv_{\mathrm{EQ}} \in \mathbb{R}^q$ is the
+        corresponding right-hand-side vector.
+  \item The notation $\Av\xv \le \bv$ means that \emph{every row} of $\Av\xv$ is
+        at most the corresponding entry of $\bv$; that is, $(\Av\xv)_i \le b_i$ for
+        all rows $i$.
+\end{itemize}
+\end{block}
+
+\begin{alertblock}{How to Read This}
+Think of each inequality row $\Av_{\mathrm{LE}, i}\,\xv \le b_{\mathrm{LE}, i}$ as a
+\emph{budget constraint}: the weighted combination of the variables must not exceed the
+budget $b_i$.  Every equality row $\Av_{\mathrm{EQ}, i}\,\xv = b_{\mathrm{EQ}, i}$
+is a \emph{balance equation}: the variables must sum (with given weights) to exactly $b_i$.
+\end{alertblock}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.50\textwidth}
+    \begin{exampleblock}{Example 12.1 --- A Concrete LP}
+      Consider the following LP with three variables $x_1, x_2, x_3$:
       \[
-        \Av_{\mathrm{EQ}}\xv = \bv_{\mathrm{EQ}}
-        \;\longrightarrow\;
-        \Av_{\mathrm{EQ}}\xv \le \bv_{\mathrm{EQ}},\quad
-        -\Av_{\mathrm{EQ}}\xv \le -\bv_{\mathrm{EQ}}
+        \minimize_{x_1,x_2,x_3}\;2x_1 - 3x_2 + 7x_3
       \]
-    \item \textbf{Free variable $\to$ positive/negative split} (Eq.\ 12.6):
-      Replace $\xv$ with $\xv^+ - \xv^-$, constrain $\xv^+,\xv^- \ge \mathbf{0}$:
+      subject to:
       \[
-        \minimize_{\xv^+,\xv^-}
-        \begin{bmatrix}\cv^\top & -\cv^\top\end{bmatrix}
-        \begin{bmatrix}\xv^+\\\xv^-\end{bmatrix}
-        \;\text{s.t.}\;
-        \begin{bmatrix}\Av & -\Av\end{bmatrix}
-        \begin{bmatrix}\xv^+\\\xv^-\end{bmatrix}
-        \le \bv,\;
-        \begin{bmatrix}\xv^+\\\xv^-\end{bmatrix}\ge\mathbf{0}
+        \begin{aligned}
+          2x_1 + 3x_2 - 8x_3 &\le 5\\
+          4x_1 + \phantom{0}x_2 + 3x_3 &\le 9\\
+          x_1 - 5x_2 - 3x_3 &\ge -4\\
+          x_1 + \phantom{0}x_2 + 2x_3 &= 1
+        \end{aligned}
       \]
-  \end{enumerate}
+      The third constraint uses a ``$\ge$'' sign; to write it in standard form we
+      multiply both sides by $-1$: $-x_1 + 5x_2 + 3x_3 \le 4$.
+    \end{exampleblock}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \begin{exampleblock}{Example 12.2 --- Norm Minimisation as an LP}
+      \small
+      The problem $\minimize_\xv \|\Av\xv - \bv\|_1$ (minimise the sum of absolute
+      residuals) is \emph{not} in LP form directly because the absolute value function
+      is not linear.  However, we can introduce an auxiliary vector
+      $\sv \in \mathbb{R}^m$, $\sv \ge \mathbf{0}$, that ``bounds'' each residual from
+      above.  The equivalent LP is:
+      \[
+        \minimize_{\xv,\sv}\;\mathbf{1}^\top\sv
+        \quad\text{s.t.}\quad
+        \Av\xv - \bv \le \sv,\quad
+        \Av\xv - \bv \ge -\sv
+      \]
+      Here $\mathbf{1}$ is the all-ones vector, so $\mathbf{1}^\top\sv$ is the sum of
+      all entries of $\sv$.  Similarly, for the $L_\infty$ norm
+      $\minimize_\xv \|\Av\xv - \bv\|_\infty$ (minimise the maximum absolute residual),
+      we introduce a single scalar $t \ge 0$ and minimise it subject to:
+      \[
+        \Av\xv - \bv \le t\mathbf{1},\qquad \Av\xv - \bv \ge -t\mathbf{1}.
+      \]
+    \end{exampleblock}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Equality Form and Slack Variables}
-  \begin{columns}
-    \begin{column}{0.54\textwidth}
-      \begin{block}{Equality Form (Eq.\ 12.7)}
-        \[
-          \minimize_{\xv}\;\cv^\top\xv
-          \quad\text{s.t.}\quad
-          \Av\xv = \bv,\quad \xv \ge \mathbf{0}
-        \]
-        \begin{itemize}
-          \item $\xv\in\mathbb{R}^n$, $\Av\in\mathbb{R}^{m\times n}$, $\bv\in\mathbb{R}^m$
-          \item $m$ equality constraints, $n$ nonneg.\ variables
-          \item Preferred form for the simplex algorithm
-        \end{itemize}
-      \end{block}
+\begin{frame}[allowframebreaks]{Standard Form and Converting Constraints}
 
-      \begin{block}{Standard $\to$ Equality via Slack Variables (Eq.\ 12.8)}
-        \[
-          \Av\xv \le \bv
-          \;\xrightarrow{\text{add }\sv\ge\mathbf{0}}\;
-          \Av\xv + \sv = \bv,\quad \sv\ge\mathbf{0}
-        \]
-        \[
-          \minimize_{\xv,\sv}
-          \begin{bmatrix}\cv^\top & \mathbf{0}^\top\end{bmatrix}
-          \begin{bmatrix}\xv\\\sv\end{bmatrix}
-          \;\text{s.t.}\;
-          \begin{bmatrix}\Av & \mathbf{I}\end{bmatrix}
-          \begin{bmatrix}\xv\\\sv\end{bmatrix}
-          =\bv,\;
-          \begin{bmatrix}\xv\\\sv\end{bmatrix}\ge\mathbf{0}
-        \]
-      \end{block}
-    \end{column}
-    \begin{column}{0.44\textwidth}
-      \begin{exampleblock}{Example 12.3 --- Slack Variable Illustration}
-        \small
-        Standard form: $\minimize_x\; x$ s.t.\ $x\ge 1$
+Not every LP is written with only ``$\le$'' constraints and non-negative variables.
+The \emph{standard form} is a convenient intermediate representation that uses only
+``$\le$'' inequalities and enforces $\xv \ge \mathbf{0}$.
 
-        Equality form (add slack $s\ge0$):
-        \[
-          \minimize_{x,s}\; x
-          \quad\text{s.t.}\quad
-          x - s = 1,\;x,s\ge0
-        \]
-        The equality constraint restricts feasible points to the line $x-s=1$.
-      \end{exampleblock}
-      \centering
-      \includegraphics[width=0.85\textwidth]{feasible_polytope.pdf}
-      {\tiny Feasible polytope: intersection of linear constraints}
-    \end{column}
-  \end{columns}
+\begin{block}{Standard Form}
+\[
+  \minimize_{\xv}\;\cv^\top\xv
+  \quad\text{subject to}\quad
+  \Av\xv \le \bv,\quad \xv \ge \mathbf{0}
+\]
+All constraints are \emph{less-than-or-equal} inequalities, and all variables are
+constrained to be \emph{non-negative}.
+\end{block}
+
+Any LP in general form can be reduced to standard form using two elementary
+algebraic transformations.
+
+\textbf{Transformation 1: Equality to Two Inequalities.}
+An equality constraint $\Av_{\mathrm{EQ}}\xv = \bv_{\mathrm{EQ}}$ can be replaced by
+a pair of inequalities that together enforce the same condition: the constraint holds
+if and only if \emph{both} $\Av_{\mathrm{EQ}}\xv \le \bv_{\mathrm{EQ}}$ and
+$-\Av_{\mathrm{EQ}}\xv \le -\bv_{\mathrm{EQ}}$ hold simultaneously.
+\[
+  \Av_{\mathrm{EQ}}\xv = \bv_{\mathrm{EQ}}
+  \;\longrightarrow\;
+  \Av_{\mathrm{EQ}}\xv \le \bv_{\mathrm{EQ}},\qquad
+  -\Av_{\mathrm{EQ}}\xv \le -\bv_{\mathrm{EQ}}.
+\]
+
+\textbf{Transformation 2: Free Variables to Non-Negative Variables.}
+If a variable $x_i$ is \emph{free} (can be positive or negative), we replace it with
+the difference of two non-negative variables: $x_i = x_i^+ - x_i^-$, where both
+$x_i^+ \ge 0$ and $x_i^- \ge 0$.  Intuitively, $x_i^+$ captures the positive part
+of $x_i$ and $x_i^-$ captures the magnitude of the negative part.  Doing this for
+every free variable $x_j$ in $\xv$ yields:
+\[
+  \minimize_{\xv^+,\xv^-}
+  \begin{bmatrix}\cv^\top & -\cv^\top\end{bmatrix}
+  \begin{bmatrix}\xv^+\\\xv^-\end{bmatrix}
+  \;\text{s.t.}\;
+  \begin{bmatrix}\Av & -\Av\end{bmatrix}
+  \begin{bmatrix}\xv^+\\\xv^-\end{bmatrix}
+  \le \bv,\quad
+  \begin{bmatrix}\xv^+\\\xv^-\end{bmatrix}\ge\mathbf{0}.
+\]
+The cost of the negative part is $-\cv^\top\xv^-$ because increasing $x_i^-$ by one
+unit \emph{decreases} $x_i = x_i^+ - x_i^-$, which changes the objective by $-c_i$.
+
+\begin{alertblock}{Key Insight}
+Every LP in any form can be converted to standard form, and standard form can then be
+converted to equality form (described next).  This means the simplex algorithm, which
+requires equality form, is universally applicable.
+\end{alertblock}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Geometric Interpretation}
-  \begin{columns}
-    \begin{column}{0.46\textwidth}
-      \textbf{Half-space:}
+\begin{frame}[allowframebreaks]{Equality Form and Slack Variables}
+
+The \emph{equality form} is the representation required by the simplex algorithm.
+It has only equality constraints and non-negative variables.
+
+\begin{block}{Equality Form}
+\[
+  \minimize_{\xv}\;\cv^\top\xv
+  \quad\text{subject to}\quad
+  \Av\xv = \bv,\quad \xv \ge \mathbf{0}
+\]
+where $\xv \in \mathbb{R}^n$, $\Av \in \mathbb{R}^{m \times n}$,
+$\bv \in \mathbb{R}^m$.  There are $m$ equality constraints and $n$ non-negative
+variables, with $m \le n$.
+\end{block}
+
+\begin{block}{Converting Standard Form to Equality Form via Slack Variables}
+To convert the standard-form constraint $\Av\xv \le \bv$ to an equality, we introduce
+a \emph{slack variable} vector $\sv \in \mathbb{R}^m$, $\sv \ge \mathbf{0}$.
+The slack $s_i \ge 0$ absorbs the gap between the left-hand side and the bound:
+\[
+  \Av\xv \le \bv
+  \;\xrightarrow{\text{add }\sv\ge\mathbf{0}}\;
+  \Av\xv + \sv = \bv,\quad \sv \ge \mathbf{0}.
+\]
+The combined equality-form LP over the augmented variable vector
+$[\xv^\top, \sv^\top]^\top$ is:
+\[
+  \minimize_{\xv,\sv}
+  \begin{bmatrix}\cv^\top & \mathbf{0}^\top\end{bmatrix}
+  \begin{bmatrix}\xv\\\sv\end{bmatrix}
+  \;\text{s.t.}\;
+  \begin{bmatrix}\Av & \mathbf{I}\end{bmatrix}
+  \begin{bmatrix}\xv\\\sv\end{bmatrix}
+  = \bv,\quad
+  \begin{bmatrix}\xv\\\sv\end{bmatrix} \ge \mathbf{0}.
+\]
+Here $\mathbf{I}$ is the $m \times m$ identity matrix and $\mathbf{0}$ is a zero
+vector of length $m$.  The slacks appear in the objective with zero cost, so they do
+not change what we are optimising.
+\end{block}
+
+\begin{block}{Notation}
+\begin{itemize}
+  \item $\sv$ (bold s) is the \emph{slack vector}; its $i$-th entry $s_i$ measures
+        how far constraint $i$ is from being tight.  When $s_i = 0$, constraint $i$
+        is \emph{active} (holding with equality); when $s_i > 0$, there is slack.
+  \item $\mathbf{I}$ is the identity matrix; multiplying $\sv$ by $\mathbf{I}$ simply
+        writes each slack variable into its own row.
+\end{itemize}
+\end{block}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.55\textwidth}
+    \begin{exampleblock}{Example 12.3 --- Slack Variable in One Dimension}
+      Consider the simple problem: $\minimize_x\; x$ subject to $x \ge 1$.
+      Multiplying the constraint by $-1$ gives $-x \le -1$, so in standard form:
+      $\minimize_x\; x$ s.t.\ $-x \le -1$, $x \ge 0$.
+
+      Adding slack $s \ge 0$: $-x + s = -1$, which rearranges to $x - s = 1$.
+      So the equality form is:
+      \[
+        \minimize_{x,s}\; x
+        \quad\text{s.t.}\quad
+        x - s = 1,\quad x, s \ge 0.
+      \]
+      The constraint $x - s = 1$ restricts the feasible set to the line $x = 1 + s$
+      in the $(x, s)$ plane.  Since $x \ge 0$ and $s \ge 0$, the feasible set is
+      the ray starting at $(x, s) = (1, 0)$ and extending upward.  The minimum of
+      $x$ on this ray is at $x = 1$, $s = 0$.
+    \end{exampleblock}
+  \end{column}
+  \begin{column}{0.43\textwidth}
+    \centering
+    \includegraphics[width=0.90\textwidth]{feasible_polytope.pdf}
+    \vspace{4pt}
+
+    {\small \textit{The feasible polytope is the intersection of the half-spaces
+    defined by all the constraints.  Each constraint ``cuts away'' part of the
+    space, and the remaining region is the set of valid solutions.}}
+  \end{column}
+\end{columns}
+
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}[allowframebreaks]{Geometric Interpretation of Linear Constraints}
+
+Understanding the geometry of LP is essential for understanding why the simplex
+algorithm works.  Every linear constraint defines a \emph{half-space}, and the
+feasible region is the intersection of finitely many such half-spaces.
+
+\begin{columns}
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Half-Spaces and Hyperplanes}
+      A single inequality constraint $\wv^\top\xv \le b$ (where $\wv$ is the
+      constraint normal vector and $b$ is a scalar bound) defines a
+      \emph{half-space}: the set of all points on one side of the
+      hyperplane $\wv^\top\xv = b$.
+
       \begin{itemize}
-        \item Constraint $\wv^\top\xv \le b$ defines a \emph{half-space}
-        \item Hyperplane $\wv^\top\xv=b$ is perpendicular to $\wv$
-        \item Region $\wv^\top\xv>b$ is on the $+\wv$ side
-        \item Region $\wv^\top\xv<b$ is on the $-\wv$ side
+        \item The hyperplane $\wv^\top\xv = b$ is perpendicular (orthogonal)
+              to the normal vector $\wv$.
+        \item Points with $\wv^\top\xv < b$ lie on the \emph{negative} side
+              of the hyperplane --- the side that satisfies the constraint.
+        \item Points with $\wv^\top\xv > b$ lie on the \emph{positive} side
+              --- the side that violates the constraint.
       \end{itemize}
-      \vspace{4pt}
-      \includegraphics[width=\textwidth]{halfspace.pdf}
-    \end{column}
-    \begin{column}{0.52\textwidth}
-      \textbf{Four outcome types (Figure 12.4):}
-      \vspace{4pt}
-      \includegraphics[width=\textwidth]{lp_cases.pdf}
-      \vspace{4pt}
-      \begin{itemize}
-        \item \textbf{One solution}: optimal at a vertex
-        \item \textbf{Unbounded}: feasible set extends to $-\infty$
-        \item \textbf{Infinite solutions}: optimal face $\perp\cv$
-        \item \textbf{No solution}: over-constrained, infeasible
-      \end{itemize}
-    \end{column}
-  \end{columns}
+    \end{block}
+    \vspace{6pt}
+    \includegraphics[width=\textwidth]{halfspace.pdf}
+  \end{column}
+  \begin{column}{0.50\textwidth}
+    \begin{block}{Four Possible Outcomes (Figure 12.4)}
+      When solving an LP, exactly one of four outcomes must occur.
+      \begin{enumerate}
+        \item \textbf{Unique optimal solution.}  The objective contour
+              touches the feasible polytope at a single vertex.  This is
+              the most common case.
+        \item \textbf{Unbounded problem.}  The feasible set extends
+              to infinity in the direction of decreasing cost.  This
+              usually indicates a missing constraint.
+        \item \textbf{Infinitely many optimal solutions.}  The objective
+              contour is parallel to an entire face of the polytope, so
+              all points on that face are equally optimal.
+        \item \textbf{Infeasible problem.}  The constraints are
+              contradictory --- no point satisfies all of them
+              simultaneously.
+      \end{enumerate}
+    \end{block}
+    \includegraphics[width=\textwidth]{lp_cases.pdf}
+  \end{column}
+\end{columns}
+
+\begin{alertblock}{Key Insight: Optima Live at Vertices}
+Because the objective $\cv^\top\xv$ is linear and the feasible set is a polytope,
+the minimum is always attained at a \emph{vertex} of the polytope (unless the problem
+is unbounded or infeasible).  This is why simplex --- which visits vertices --- is a
+complete method for LPs.
+\end{alertblock}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Example 12.4 --- Standard to Equality Form}
-  \begin{exampleblock}{Conversion: maximize $5x_1+4x_2$ subject to $2x_1+3x_2\le5$, $4x_1+x_2\le11$}
-    \textbf{Step 1}: Convert to minimization (negate objective):
-    \[
-      \minimize_{x_1,x_2}\;-5x_1-4x_2
-    \]
-    \textbf{Step 2}: Introduce slack variables $s_1,s_2\ge0$:
-    \[
-      \begin{aligned}
-        2x_1+3x_2+s_1 &= 5\\
-        4x_1+\phantom{3}x_2+s_2 &= 11
-      \end{aligned}
-    \]
-    \textbf{Step 3}: Split free variables $x_1,x_2$ into $x_i^+,x_i^-\ge0$:
-    \[
-      \minimize_{x_1^+,x_1^-,x_2^+,x_2^-,s_1,s_2}
-      -5(x_1^+-x_1^-)-4(x_2^+-x_2^-)
-    \]
-    \[
-      \text{s.t.}\quad
-      2(x_1^+-x_1^-)+3(x_2^+-x_2^-)+s_1=5,\quad
-      4(x_1^+-x_1^-)+(x_2^+-x_2^-)+s_2=11
-    \]
-    \[
-      x_1^+,x_1^-,x_2^+,x_2^-,s_1,s_2\ge0
-    \]
-  \end{exampleblock}
-  \centering
-  \includegraphics[width=0.35\textwidth]{example124.pdf}
+\begin{frame}[allowframebreaks]{Example 12.4 --- Converting to Equality Form Step by Step}
+
+This example demonstrates how to convert a maximisation LP with free variables and
+inequality constraints into equality form, ready for the simplex algorithm.
+
+\begin{block}{Original Problem}
+Maximise $5x_1 + 4x_2$ subject to $2x_1 + 3x_2 \le 5$, $4x_1 + x_2 \le 11$,
+with $x_1, x_2$ free (can be any real number).
+\end{block}
+
+\begin{exampleblock}{Step-by-Step Conversion}
+\textbf{Step 1: Convert maximisation to minimisation.}
+We want the minimum of the negated objective:
+\[
+  \minimize_{x_1,x_2}\;-5x_1 - 4x_2.
+\]
+Negating flips the sign of every coefficient: maximising $f$ is the same as
+minimising $-f$.
+
+\textbf{Step 2: Introduce slack variables $s_1, s_2 \ge 0$.}
+Add one slack variable per inequality constraint to convert ``$\le$'' to ``$=$'':
+\[
+  \begin{aligned}
+    2x_1 + 3x_2 + s_1 &= 5, \\
+    4x_1 + \phantom{3}x_2 + s_2 &= 11.
+  \end{aligned}
+\]
+The slack $s_1$ measures how far we are from using all of the first budget; $s_2$
+measures the same for the second budget.
+
+\framebreak
+
+\textbf{Step 3: Split free variables into positive and negative parts.}
+Since $x_1$ and $x_2$ are free, we write $x_i = x_i^+ - x_i^-$ with
+$x_i^+, x_i^- \ge 0$.  Substituting into the objective:
+\[
+  \minimize\;-5(x_1^+ - x_1^-) - 4(x_2^+ - x_2^-)
+  = -5x_1^+ + 5x_1^- - 4x_2^+ + 4x_2^-.
+\]
+Substituting into the constraints:
+\[
+  2(x_1^+ - x_1^-) + 3(x_2^+ - x_2^-) + s_1 = 5,\quad
+  4(x_1^+ - x_1^-) + (x_2^+ - x_2^-) + s_2 = 11.
+\]
+The final equality-form LP has 6 non-negative variables
+$x_1^+, x_1^-, x_2^+, x_2^-, s_1, s_2 \ge 0$.
+\end{exampleblock}
+
+\centering
+\includegraphics[width=0.32\textwidth]{example124.pdf}
+{\small \textit{The original feasible region (shaded) and the optimal vertex.}}
+
+\begin{alertblock}{Key Insight}
+Every LP, regardless of its original form, can always be converted to equality form
+with non-negative variables.  This means the simplex algorithm, which requires this
+form, can be applied universally.
+\end{alertblock}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}[fragile]{Python: Building LP Standard/Equality Form}
+\begin{frame}[fragile]{Python: Setting Up and Solving an LP with SciPy}
 \begin{lstlisting}
 import numpy as np
 from scipy.optimize import linprog
@@ -359,7 +545,7 @@ from scipy.optimize import linprog
 # s.t.      2x1 + 3x2 - 8x3 <=  5
 #           4x1 +  x2 + 3x3 <=  9
 #          -x1 + 5x2 + 3x3  <=  4    (flipped from x1-5x2-3x3 >= -4)
-#           x1 +  x2 + 2x3  ==  1    (equality)
+#           x1 +  x2 + 2x3  ==  1    (equality constraint)
 
 c      = np.array([ 2.0, -3.0,  7.0])
 A_ub   = np.array([[ 2,  3, -8],
@@ -390,179 +576,384 @@ def l1_min_lp(A, b):
 \end{lstlisting}
 \end{frame}
 
-% -----------------------------------------------------------------------------
+% =============================================================================
 \section{Simplex Algorithm}
-% -----------------------------------------------------------------------------
+% =============================================================================
 
-\begin{frame}{12.2 Simplex Algorithm --- Overview}
-  \begin{columns}
-    \begin{column}{0.50\textwidth}
-      \begin{block}{Core Idea}
-        Move from \textbf{vertex to vertex} of the feasible polytope,
-        decreasing the objective at each step, until optimality is confirmed.
-      \end{block}
-      \vspace{6pt}
-      \textbf{Two phases:}
+\begin{frame}[allowframebreaks]{12.2 The Simplex Algorithm --- Core Idea}
+
+The simplex algorithm, developed by George Dantzig in 1947, is the classic method
+for solving linear programs.  Its core idea is geometrically elegant: \emph{walk
+along the edges of the feasible polytope from vertex to vertex, always moving to
+a neighbouring vertex with a lower objective value, until no such improvement is
+possible.}
+
+\begin{block}{The Big Picture}
+Given an LP in equality form $\Av\xv = \bv$, $\xv \ge \mathbf{0}$, the simplex
+algorithm proceeds in two phases:
+\begin{enumerate}
+  \item \textbf{Initialisation phase.}  Find any feasible vertex of the polytope
+        to start from.  This is done by solving a small auxiliary LP.
+  \item \textbf{Optimisation phase.}  From the current vertex, check whether
+        any neighbouring vertex has a lower objective.  If yes, move there.
+        If no, the current vertex is optimal --- stop.
+\end{enumerate}
+\end{block}
+
+\begin{block}{Requirements}
+The simplex algorithm requires:
+\begin{itemize}
+  \item The LP must be in \textbf{equality form}: $\Av\xv = \bv$,
+        $\xv \ge \mathbf{0}$.
+  \item The rows of $\Av$ must be \textbf{linearly independent}.  If not,
+        redundant rows should be removed.
+  \item The number of constraints $m$ must satisfy $m \le n$ (we need at least
+        as many variables as constraints).
+\end{itemize}
+\end{block}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.50\textwidth}
+    \textbf{Why does the optimum always lie at a vertex?}
+    The objective $\cv^\top\xv$ is linear, so it has no curvature.
+    Along any edge of the polytope, the objective either increases, decreases, or
+    stays flat.  If it decreases along an edge, we can walk to the other endpoint
+    (the adjacent vertex) and have a better solution.  We keep walking until no
+    edge leads downhill --- at that point we are at a vertex where all adjacent
+    vertices are at least as expensive, which (for a convex polytope with a linear
+    objective) means we have found the global minimum.
+
+    \begin{alertblock}{Convergence Guarantee}
+      If the LP is feasible (has at least one valid point) and bounded (the
+      objective does not go to $-\infty$), then the simplex algorithm is
+      guaranteed to terminate at the global optimum.  With an anti-cycling rule
+      such as Bland's rule (see later), it terminates in a finite number of steps.
+    \end{alertblock}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{simplex_traversal.pdf}
+    {\small \textit{The simplex path on the feasible polytope for Example 12.7.
+    The algorithm starts at the vertex corresponding to partition
+    $\calB = \{3,4\}$ and moves to the optimal vertex $\calB = \{2,3\}$
+    in a single step.}}
+  \end{column}
+\end{columns}
+
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}[allowframebreaks]{12.2.1 Vertices and the Basis Partition}
+
+Every vertex of the feasible polytope corresponds to a particular way of setting
+some variables to zero.  Understanding this correspondence is the foundation of the
+simplex algorithm.
+
+\begin{block}{Vertex Characterisation}
+A \emph{vertex} of the feasible polytope $\{\xv : \Av\xv = \bv,\;\xv \ge \mathbf{0}\}$
+is a point where exactly $n - m$ of the $n$ variables are forced to zero.  The
+remaining $m$ variables may be positive (or zero, if the vertex is ``degenerate'').
+
+We capture this by partitioning the index set $\{1, 2, \ldots, n\}$ into two disjoint
+sets:
+\[
+  \calB \;\cup\; \calV = \{1, 2, \ldots, n\},\qquad |\calB| = m,\quad |\calV| = n - m.
+\]
+\begin{itemize}
+  \item $\calB$ (pronounced ``cee-B'', the \emph{basic} or ``busy'' set): indices
+        $i \in \calB$ correspond to variables $x_i$ that are \emph{allowed} to be
+        non-zero (``active'').  There are exactly $m$ basic indices, one per
+        equality constraint.
+  \item $\calV$ (the \emph{non-basic} or ``vacant'' set): indices $i \in \calV$
+        correspond to variables forced to $x_i = 0$.  There are $n - m$ such
+        variables.
+\end{itemize}
+\end{block}
+
+\begin{block}{Extracting the Vertex Value}
+Because $x_i = 0$ for all $i \in \calV$, the equality $\Av\xv = \bv$ reduces to:
+\[
+  \Av_\calB\,\xv_\calB = \bv,
+  \qquad\Rightarrow\qquad
+  \xv_\calB = \Av_\calB^{-1}\bv.
+\]
+Here $\Av_\calB$ is the $m \times m$ submatrix of $\Av$ formed by selecting only
+the columns indexed by $\calB$.  For this to yield a unique vertex, $\Av_\calB$
+must be \emph{invertible} (non-singular).
+
+The notation $\Av_\calB^{-1}$ means the matrix inverse of $\Av_\calB$.  The solution
+$\xv_\calB = \Av_\calB^{-1}\bv$ gives the values of the basic variables at this
+vertex; the non-basic variables are all zero.
+\end{block}
+
+\begin{alertblock}{How to Read This}
+This formula says: at a vertex, the $m$ basic variables are determined by solving the
+$m$ equality constraints simultaneously, treating the $n-m$ non-basic variables as
+zero.  There are $\binom{n}{m}$ ways to choose $\calB$, so there are at most
+$\binom{n}{m}$ vertices to examine --- but the simplex algorithm navigates between
+them intelligently rather than checking all of them.
+\end{alertblock}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.55\textwidth}
+    \begin{exampleblock}{Example 12.6 --- Verifying That a Point is a Vertex}
+      Suppose we have the constraint matrix and candidate point:
+      \[
+        \Av = \begin{bmatrix}1&1&1&1\\0&-1&2&3\\2&1&2&-1\end{bmatrix},\quad
+        \xv = [1,1,0,0]^\top.
+      \]
+      Here $n = 4$ variables and $m = 3$ constraints, so a vertex requires
+      $n - m = 1$ variable to be zero.  Indeed $x_3 = x_4 = 0$, so two variables
+      are zero --- this means the point is a vertex (possibly degenerate).
+
+      To confirm, try basis $\calB = \{1,2,3\}$ (columns 1, 2, 3):
+      $\Av_{\{1,2,3\}}$ is invertible. $\checkmark$
+
+      Also try $\calB = \{1,2,4\}$ (columns 1, 2, 4):
+      $\Av_{\{1,2,4\}}$ is invertible. $\checkmark$
+
+      Both bases reproduce $\xv_\calB = [1,1,0]^\top$ and $[1,1,0]^\top$
+      respectively, confirming that $\xv = [1,1,0,0]^\top$ is a vertex.
+    \end{exampleblock}
+  \end{column}
+  \begin{column}{0.43\textwidth}
+    \begin{block}{Algorithm 12.1: Extract a Vertex}
+      Given a partition $\calB$:
       \begin{enumerate}
-        \item \textbf{Initialization phase}: Find an initial feasible vertex
-          (by solving an auxiliary LP)
-        \item \textbf{Optimization phase}: Traverse adjacent vertices
-          following the steepest descent direction
+        \item Form the basis matrix $\Av_\calB$ (columns of $\Av$ at indices $\calB$).
+        \item Check that $\Av_\calB$ is invertible; if not, $\calB$ does not define a
+              valid vertex.
+        \item Solve $\xv_\calB = \Av_\calB^{-1}\bv$ for the basic variable values.
+        \item Set $x_i = 0$ for all $i \in \calV$.
+        \item The resulting $\xv$ is the vertex.
       \end{enumerate}
-      \vspace{6pt}
-      \begin{alertblock}{Requirements for the Simplex Method}
-        \begin{itemize}
-          \item LP must be in \textbf{equality form}: $\Av\xv=\bv$, $\xv\ge\mathbf{0}$
-          \item Rows of $\Av$ must be \textbf{linearly independent}
-          \item Number of constraints $m \le n$ (not over-constrained)
-        \end{itemize}
-      \end{alertblock}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \centering
-      \includegraphics[width=\textwidth]{simplex_traversal.pdf}
-      {\small Simplex path on feasible polytope (Example 12.7):\\
-       $\calB=\{3,4\} \to \calB=\{2,3\}$ (optimal)}
-    \end{column}
-  \end{columns}
+    \end{block}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{12.2.1 Vertices and Partitions}
-  \begin{block}{Vertex Characterization}
-    Every vertex of the feasible polytope $\{\xv : \Av\xv=\bv,\,\xv\ge\mathbf{0}\}$
-    is uniquely defined by setting exactly $n-m$ components of $\xv$ to zero.
+\begin{frame}[allowframebreaks]{12.2.2 KKT Optimality Conditions at a Vertex}
 
-    The remaining $n$ indices are partitioned into:
-    \[
-      \calB \;\cup\; \calV = \{1,\ldots,n\},\quad |\calB|=m,\;|\calV|=n-m
-    \]
+To know whether the current vertex is optimal, we apply the
+\emph{Karush--Kuhn--Tucker (KKT)} conditions.  For linear programs, these first-order
+necessary conditions are also \emph{sufficient} for global optimality.
+
+\begin{block}{The Lagrangian of the Equality-Form LP}
+We form the Lagrangian by attaching multipliers to the constraints.
+The Lagrangian $\mathcal{L}$ is:
+\[
+  \mathcal{L}(\xv,\muv,\lav)
+  = \cv^\top\xv - \muv^\top\xv - \lav^\top(\Av\xv - \bv)
+\]
+\end{block}
+
+\begin{block}{Notation}
+\begin{itemize}
+  \item $\muv$ (bold mu, ``mew'') is a vector of $n$ \emph{non-negativity multipliers},
+        one per variable.  Its $i$-th entry $\mu_i \ge 0$ penalises the constraint
+        $x_i \ge 0$.
+  \item $\lav$ (bold lambda, ``lam-da'') is a vector of $m$ \emph{Lagrange multipliers}
+        for the equality constraints $\Av\xv = \bv$.  These are unrestricted in sign.
+  \item The term $-\muv^\top\xv$ penalises variables that go below zero.
+  \item The term $-\lav^\top(\Av\xv - \bv)$ penalises violations of the equality
+        constraints.
+\end{itemize}
+\end{block}
+
+\begin{block}{Four KKT Conditions (Necessary and Sufficient for LP)}
+At an optimal point, all four conditions must hold simultaneously:
+\begin{enumerate}
+  \item \textbf{Primal feasibility}: $\Av\xv = \bv$, $\xv \ge \mathbf{0}$ --- the
+        point is in the feasible set.
+  \item \textbf{Dual feasibility}: $\muv \ge \mathbf{0}$ --- non-negativity
+        multipliers are non-negative.
+  \item \textbf{Complementary slackness}: $\muv \odot \xv = \mathbf{0}$ --- for
+        every variable $i$, either $\mu_i = 0$ (the variable is active and free to
+        vary) or $x_i = 0$ (the variable is at its lower bound).  The symbol $\odot$
+        (``odot'') denotes element-wise multiplication.
+  \item \textbf{Stationarity}: $\Av^\top\lav + \muv = \cv$ --- the gradient of
+        the Lagrangian with respect to $\xv$ is zero.
+\end{enumerate}
+\end{block}
+
+\framebreak
+
+\textbf{Computing the Optimality Certificate at a Vertex.}
+At a vertex defined by partition $(\calB, \calV)$, the basic variables satisfy
+$\xv_\calB \ge \mathbf{0}$ and the non-basic variables are $\xv_\calV = \mathbf{0}$.
+Complementary slackness (Condition 3) therefore forces $\muv_\calB = \mathbf{0}$
+(the basic variables are at positive values, so their multipliers must be zero).
+
+Substituting $\muv_\calB = \mathbf{0}$ into the stationarity condition
+$\Av^\top\lav + \muv = \cv$ and looking at only the basic rows:
+\[
+  \Av_\calB^\top\lav = \cv_\calB
+  \qquad\Rightarrow\qquad
+  \lav = \Av_\calB^{-\top}\cv_\calB
+\]
+where $\Av_\calB^{-\top}$ means ``the inverse of $\Av_\calB$, then transposed.''
+This gives us the Lagrange multipliers $\lav$ at the current vertex.
+
+Next, applying the stationarity condition to the non-basic rows gives us the
+non-basic multipliers (also called \emph{reduced costs}):
+\[
+  \muv_\calV = \cv_\calV - \bigl(\Av_\calB^{-1}\Av_\calV\bigr)^\top\cv_\calB.
+\]
+
+\begin{columns}
+  \begin{column}{0.52\textwidth}
+    \begin{block}{Notation for the Reduced Cost Formula}
     \begin{itemize}
-      \item $\calB$ (``busy'' / basic): \quad $i\in\calB \Rightarrow x_i \ge 0$ (Eq.\ 12.12)
-      \item $\calV$ (``vacant'' / non-basic): $i\in\calV \Rightarrow x_i = 0$ (Eq.\ 12.11)
+      \item $\cv_\calV$ is the sub-vector of cost coefficients at non-basic indices.
+      \item $\Av_\calV$ is the submatrix of $\Av$ at non-basic columns.
+      \item $\Av_\calB^{-1}\Av_\calV$ maps each non-basic column into basis
+            coordinates.
+      \item The reduced cost $(\muv_\calV)_q$ tells us how much the objective
+            changes when we increase non-basic variable $x_q$ by one unit.
     \end{itemize}
-  \end{block}
+    \end{block}
+  \end{column}
+  \begin{column}{0.46\textwidth}
+    \begin{alertblock}{Optimality Test}
+      \begin{itemize}
+        \item If $\muv_\calV \ge \mathbf{0}$ (all reduced costs are non-negative):
+              the current vertex is \textbf{optimal}.  Increasing any non-basic
+              variable from zero can only increase the objective.
+        \item If any $(\muv_\calV)_q < 0$: the vertex is \textbf{suboptimal}.
+              Increasing $x_q$ from zero will decrease the objective.
+              We should enter $q$ into the basis --- this is the \emph{pivot} step.
+      \end{itemize}
+    \end{alertblock}
+  \end{column}
+\end{columns}
 
-  \begin{columns}
-    \begin{column}{0.56\textwidth}
-      \begin{block}{Extracting a Vertex (Eq.\ 12.13) --- Algorithm 12.1}
-        The $m\times m$ submatrix $\Av_\calB$ formed by the $m$ columns of $\Av$
-        indexed by $\calB$ must be \emph{invertible}:
-        \[
-          \Av\xv = \Av_\calB\,\xv_\calB = \bv
-          \quad\Rightarrow\quad
-          \xv_\calB = \Av_\calB^{-1}\bv
-        \]
-        If $\Av_\calB$ is invertible, $(\calB,\calV)$ defines a vertex; otherwise not.
-      \end{block}
-    \end{column}
-    \begin{column}{0.42\textwidth}
-      \begin{exampleblock}{Example 12.6 --- Verify a Vertex}
-        \footnotesize
-        $\Av = \begin{bmatrix}1&1&1&1\\0&-1&2&3\\2&1&2&-1\end{bmatrix}$,
-        $\xv=[1,1,0,0]$
-
-        Try $\calB=\{1,2,3\}$:
-        $\Av_{\{1,2,3\}}$ is invertible $\checkmark$
-
-        Try $\calB=\{1,2,4\}$:
-        $\Av_{\{1,2,4\}}$ is invertible $\checkmark$
-
-        $\Rightarrow$ $\xv=[1,1,0,0]$ is a vertex.
-      \end{exampleblock}
-    \end{column}
-  \end{columns}
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{12.2.2 First-Order Necessary Conditions (KKT)}
-  \begin{block}{Lagrangian for Equality-Form LP (Eq.\ 12.14)}
-    \[
-      \mathcal{L}(\xv,\muv,\lav)
-      = \cv^\top\xv - \muv^\top\xv - \lav^\top(\Av\xv-\bv)
-    \]
-    Four necessary (and sufficient for LPs) KKT conditions:
-    \begin{enumerate}
-      \item \textbf{Feasibility}: $\Av\xv=\bv$, $\xv\ge\mathbf{0}$
-      \item \textbf{Dual feasibility}: $\muv\ge\mathbf{0}$
-      \item \textbf{Complementary slackness}: $\muv\odot\xv=\mathbf{0}$
-      \item \textbf{Stationarity}: $\Av^\top\lav + \muv = \cv$
-    \end{enumerate}
-  \end{block}
+\begin{frame}[allowframebreaks]{12.2.3 The Pivot: Moving from Vertex to Vertex}
 
-  \begin{columns}
-    \begin{column}{0.52\textwidth}
-      \textbf{Computing $\lav$ and $\muv_\calV$ at a vertex:}
+When the optimality test fails (some reduced cost is negative), we perform a
+\emph{pivot}: we move along an edge of the polytope to an adjacent vertex with a
+lower objective value.
 
-      Set $\muv_\calB=\mathbf{0}$ (complementary slackness with $\xv_\calB\ge\mathbf{0}$):
-      \[
-        \Av_\calB^\top\lav = \cv_\calB
-        \quad\Rightarrow\quad
-        \lav = \Av_\calB^{-\top}\cv_\calB \tag{12.17}
-      \]
-      Then (Eq.\ 12.20):
-      \[
-        \muv_\calV = \cv_\calV - \bigl(\Av_\calB^{-1}\Av_\calV\bigr)^\top\cv_\calB
-      \]
-    \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{alertblock}{Optimality Test}
-        \begin{itemize}
-          \item If $\muv_\calV \ge \mathbf{0}$: \textbf{current vertex is optimal}
-          \item If any $(\muv_\calV)_q < 0$: vertex is suboptimal;\\
-                pivot on index $q$
-        \end{itemize}
-      \end{alertblock}
-    \end{column}
-  \end{columns}
+\begin{block}{Choosing the Entering Variable (Index $q$)}
+We choose a non-basic index $q \in \calV$ with $(\muv_\calV)_q < 0$.  Increasing
+$x_q$ from zero will decrease the objective.  Two common heuristics exist:
+\begin{itemize}
+  \item \textbf{Dantzig's rule}: choose the index $q$ with the \emph{most negative}
+        reduced cost.  Intuition: this is the direction of steepest descent among
+        all non-basic directions.  Easy to compute but sensitive to variable scaling.
+  \item \textbf{Bland's rule}: choose the \emph{smallest index} $q$ (by number)
+        with a negative reduced cost.  This is slower in practice but
+        \emph{guarantees termination} by preventing cycling (repeatedly visiting
+        the same vertex without progress).
+\end{itemize}
+\end{block}
+
+\begin{block}{Edge Transition: Computing Where to Go}
+Once we choose $q$, we increase $x_q$ from $0$ to some positive value $x_q'$.
+For the equality $\Av\xv = \bv$ to remain satisfied, the basic variables must adjust.
+Specifically, define the \emph{direction vector}:
+\[
+  \mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}}
+\]
+where $\Av_{\{q\}}$ is the $q$-th column of $\Av$.  Then the new basic variable
+values are:
+\[
+  \xv_\calB' = \xv_\calB - \mathbf{d}\,x_q'.
+\]
+\end{block}
+
+\begin{block}{Notation}
+\begin{itemize}
+  \item $\mathbf{d}$ (the direction vector) has $m$ entries.  Its $i$-th entry
+        $d_i$ says how much the $i$-th basic variable decreases when $x_q$
+        increases by one unit.
+  \item We need $\xv_\calB' \ge \mathbf{0}$ (all variables remain non-negative).
+        As we increase $x_q'$, each basic variable with $d_i > 0$ decreases,
+        eventually hitting zero.
+\end{itemize}
+\end{block}
+
+\framebreak
+
+\begin{block}{The Minimum Ratio Test: Choosing the Leaving Variable (Index $p$)}
+To keep all basic variables non-negative, we must choose $x_q'$ so that no basic
+variable goes below zero.  The largest safe value of $x_q'$ is:
+\[
+  x_q' = \min_{\substack{i \,:\, d_i > 0}}\;\frac{(\xv_\calB)_i}{d_i}
+\]
+where the minimum is taken only over indices $i$ with $d_i > 0$ (only those
+basic variables that decrease as $x_q$ increases).  The index $p \in \calB$
+achieving this minimum is the \emph{leaving variable}: it is the first basic
+variable to hit zero as we walk along the edge.
+\end{block}
+
+\begin{block}{Notation for the Minimum Ratio Test}
+\begin{itemize}
+  \item $(\xv_\calB)_i$ is the current value of the $i$-th basic variable.
+  \item $d_i$ is the $i$-th entry of the direction vector --- how fast the $i$-th
+        basic variable decreases per unit increase in $x_q$.
+  \item The ratio $(\xv_\calB)_i / d_i$ is the ``time'' until variable $i$ would
+        reach zero if we keep increasing $x_q$.  We take the minimum over all
+        variables that are moving downward ($d_i > 0$).
+  \item If all $d_i \le 0$: no basic variable decreases as $x_q$ increases, so we
+        can increase $x_q$ without bound --- the LP is \textbf{unbounded}.
+\end{itemize}
+\end{block}
+
+\begin{block}{Updating the Partition}
+After determining $p$ and $x_q'$, we swap $p$ out of the basis and put $q$ in:
+\[
+  \calB' \leftarrow (\calB \setminus \{p\}) \cup \{q\}.
+\]
+The new partition $(\calB', \calV')$ defines the adjacent vertex we have moved to.
+\end{block}
+
+\begin{block}{Objective Change per Pivot}
+The change in objective from the pivot is:
+\[
+  \cv^\top\xv' - \cv^\top\xv = \mu_q \cdot x_q'
+\]
+Since $\mu_q < 0$ (we chose $q$ because its reduced cost is negative) and
+$x_q' > 0$ (we move a positive distance), the objective \emph{decreases} at every
+non-degenerate pivot.
+\end{block}
+
+\begin{columns}
+  \begin{column}{0.52\textwidth}
+    \begin{alertblock}{Cycling and Bland's Rule}
+      A degenerate pivot occurs when $x_q' = 0$ (the leaving variable was already
+      at zero), so the objective does not change.  If such degenerate pivots repeat
+      cyclically, the algorithm could run forever without progress.  Bland's rule
+      --- always choosing the smallest eligible index --- is proven to prevent
+      cycling and guarantee finite termination.
+    \end{alertblock}
+  \end{column}
+  \begin{column}{0.46\textwidth}
+    \begin{block}{Entering Index Heuristics --- Summary}
+      \begin{itemize}
+        \item \textbf{Greedy}: choose $q$ to maximally reduce
+              $\cv^\top\xv$ (requires computing all improvements).
+        \item \textbf{Dantzig}: choose $q$ with the most negative
+              $\mu_q$ (easiest to compute, scaling-sensitive).
+        \item \textbf{Bland}: choose the smallest $q$ with $\mu_q < 0$
+              (prevents cycling, slower in practice).
+      \end{itemize}
+    \end{block}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{12.2.3 Optimization Phase --- Pivoting}
-  \begin{columns}
-    \begin{column}{0.54\textwidth}
-      \begin{block}{Edge Transition (Eq.\ 12.21--12.24)}
-        Choose \textbf{entering index} $q\in\calV$ (with $(\muv_\calV)_q<0$).
-        New vertex must satisfy $\Av\xv'=\bv$:
-        \[
-          \xv'_\calB = \xv_\calB - \Av_\calB^{-1}\Av_{\{q\}}\,x'_q
-        \]
-        \textbf{Minimum ratio test} --- choose \textbf{leaving index} $p\in\calB$:
-        \[
-          x'_q = \min_{p\in\calB,\,d_p>0}\;\frac{(\xv_\calB)_p}{d_p},\quad
-          \text{where }\mathbf{d}=\Av_\calB^{-1}\Av_{\{q\}}
-        \]
-        Swap $p$ out of $\calB$, put $q$ in: $\calB'\leftarrow(\calB\setminus\{p\})\cup\{q\}$.
-      \end{block}
-      \vspace{4pt}
-      \begin{block}{Objective Change (Eq.\ 12.32)}
-        \[
-          \cv^\top\xv' - \cv^\top\xv = \mu_q\,x'_q
-        \]
-        Decreases only if $\mu_q<0$ \emph{and} $x'_q>0$.
-      \end{block}
-    \end{column}
-    \begin{column}{0.44\textwidth}
-      \begin{block}{Entering Index Heuristics}
-        \begin{itemize}
-          \item \textbf{Greedy}: choose $q$ that \emph{maximally} reduces $\cv^\top\xv$
-          \item \textbf{Dantzig's rule}: choose $q$ with most negative $\mu_q$\\
-            (\emph{easy to compute, scaling-sensitive})
-          \item \textbf{Bland's rule}: choose the \emph{first} $q$ with $\mu_q<0$\\
-            (\emph{prevents cycling, slower in practice})
-        \end{itemize}
-      \end{block}
-      \vspace{4pt}
-      \begin{alertblock}{Cycling}
-        If no improvement is made over several iterations, Bland's rule
-        breaks cycles and guarantees convergence.
-      \end{alertblock}
-    \end{column}
-  \end{columns}
-\end{frame}
-
-% -----------------------------------------------------------------------------
-\begin{frame}[fragile]{Algorithm 12.3 \& 12.4 (Python) --- Simplex Step}
+\begin{frame}[fragile]{Algorithm 12.3 and 12.4 (Python) --- Simplex Step}
 \begin{lstlisting}
 import numpy as np
 
@@ -582,7 +973,6 @@ def edge_transition(A, B, q):
     n_inds = sorted(set(range(n)) - set(b_inds))
     AB = A[:, b_inds]
     xB = np.linalg.solve(AB, A[:, n_inds[q]])  # d = A_B^{-1} A_{q}
-    # xB_current needed: pass separately in full implementation
     return xB   # direction d
 
 def step_lp(B, A, b, c):
@@ -592,16 +982,16 @@ def step_lp(B, A, b, c):
     n_inds = sorted(set(range(n)) - set(b_inds))
     AB, AV = A[:, b_inds], A[:, n_inds]
     xB   = np.linalg.solve(AB, b)
-    lam  = np.linalg.solve(AB.T, c[b_inds])            # lambda
-    muV  = c[n_inds] - AV.T @ lam                       # mu_V
+    lam  = np.linalg.solve(AB.T, c[b_inds])            # lambda (Lagrange multipliers)
+    muV  = c[n_inds] - AV.T @ lam                       # mu_V (reduced costs)
     if np.all(muV >= 0):
-        return B, True                                   # optimal
+        return B, True                                   # all reduced costs >= 0: optimal
 
     # Greedy: find q (non-basic index) with best improvement
     q_loc = int(np.argmin(muV))
     q = n_inds[q_loc]
-    d = np.linalg.solve(AB, A[:, q])                    # direction
-    # Minimum ratio test
+    d = np.linalg.solve(AB, A[:, q])                    # direction vector
+    # Minimum ratio test: find the first basic variable to hit zero
     ratios = [(xB[i]/d[i], b_inds[i]) for i in range(len(d)) if d[i] > 0]
     if not ratios:
         raise ValueError("LP is unbounded")
@@ -612,143 +1002,256 @@ def step_lp(B, A, b, c):
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Example 12.7 --- Simplex in Action}
-  \begin{columns}
-    \begin{column}{0.52\textwidth}
-      \begin{exampleblock}{Setup}
-        \[
-          \Av=\begin{bmatrix}1&1&1&0\\-4&2&0&1\end{bmatrix},\;
-          \bv=\begin{bmatrix}9\\2\end{bmatrix},\;
-          \cv=\begin{bmatrix}3\\-1\\0\\0\end{bmatrix}
-        \]
-        Initial partition: $\calB=\{3,4\}$ (slacks)
-      \end{exampleblock}
+\begin{frame}[allowframebreaks]{Example 12.7 --- The Simplex Algorithm in Action}
 
-      \begin{exampleblock}{Iteration 1}
-        \[
-          \xv_\calB = \Av_\calB^{-1}\bv
-          = \begin{bmatrix}1&0\\0&1\end{bmatrix}^{-1}\begin{bmatrix}9\\2\end{bmatrix}
-          = \begin{bmatrix}9\\2\end{bmatrix}
-        \]
-        \[
-          \lav = \Av_\calB^{-\top}\cv_\calB = \mathbf{0},\quad
-          \muv_\calV = \begin{bmatrix}3\\-1\end{bmatrix}
-        \]
-        $\muv_\calV$ has negative entry: $q=2$ enters.\\
-        Min ratio $\Rightarrow$ $p=4$ leaves.\\
-        Update: $\calB \leftarrow \{2,3\}$.
-      \end{exampleblock}
-    \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{exampleblock}{Iteration 2 (optimal)}
-        \[
-          \xv_\calB = \begin{bmatrix}1\\8\end{bmatrix},\quad
-          \lav = \begin{bmatrix}0\\-1/2\end{bmatrix}
-        \]
-        \[
-          \muv_\calV = \begin{bmatrix}1\\1/2\end{bmatrix} \ge \mathbf{0}\;\checkmark
-        \]
-        \textbf{Optimal}: $\calB=\{2,3\}$, $\xv^*=[0,1,8,0]^\top$
-        \[
-          \cv^\top\xv^* = 3\cdot0 + (-1)\cdot1 = -1
-        \]
-      \end{exampleblock}
-      \vspace{4pt}
-      \includegraphics[width=\textwidth]{simplex_convergence.pdf}
-      {\tiny Objective decrease and $\muv_\calV$ at initial vertex}
-    \end{column}
-  \end{columns}
+We now trace through a complete execution of the simplex algorithm on a small LP
+to see exactly how it works.
+
+\begin{exampleblock}{Setup}
+The LP in equality form has the following data:
+\[
+  \Av = \begin{bmatrix}1&1&1&0\\-4&2&0&1\end{bmatrix},\quad
+  \bv = \begin{bmatrix}9\\2\end{bmatrix},\quad
+  \cv = \begin{bmatrix}3\\-1\\0\\0\end{bmatrix}.
+\]
+We have $n = 4$ variables and $m = 2$ constraints, so the basis has $m = 2$ elements
+and there are $n - m = 2$ non-basic (zero) variables at each vertex.
+The initial partition uses the slack variables as the basis:
+$\calB = \{3, 4\}$ (0-indexed: $\calB = \{2, 3\}$ in 0-indexed Python).
+\end{exampleblock}
+
+\begin{exampleblock}{Iteration 1 --- Starting at $\calB = \{3,4\}$}
+\textbf{Step 1.} Compute the basic variable values:
+\[
+  \Av_\calB = \begin{bmatrix}1&0\\0&1\end{bmatrix},\quad
+  \xv_\calB = \Av_\calB^{-1}\bv = \mathbf{I}\,\bv = \begin{bmatrix}9\\2\end{bmatrix}.
+\]
+So at this vertex: $x_1 = 0$, $x_2 = 0$ (non-basic, set to zero),
+$x_3 = 9$, $x_4 = 2$ (basic).
+
+\textbf{Step 2.} Compute the Lagrange multipliers $\lav$ (lambda):
+\[
+  \lav = \Av_\calB^{-\top}\cv_\calB = \mathbf{I}\begin{bmatrix}0\\0\end{bmatrix} = \mathbf{0}.
+\]
+
+\textbf{Step 3.} Compute the reduced costs $\muv_\calV$ for the non-basic variables
+$\calV = \{1, 2\}$:
+\[
+  \muv_\calV = \cv_\calV - \Av_\calV^\top\lav
+  = \begin{bmatrix}3\\-1\end{bmatrix} - \mathbf{0}
+  = \begin{bmatrix}3\\-1\end{bmatrix}.
+\]
+
+\textbf{Step 4.} The reduced cost $\mu_2 = -1 < 0$, so the vertex is \emph{not optimal}.
+We choose $q = 2$ (variable $x_2$) as the entering variable (it has negative reduced cost).
+
+\textbf{Step 5.} Compute the direction vector:
+\[
+  \mathbf{d} = \Av_\calB^{-1}\Av_{\{2\}} = \mathbf{I}\begin{bmatrix}1\\2\end{bmatrix}
+  = \begin{bmatrix}1\\2\end{bmatrix}.
+\]
+
+\textbf{Step 6.} Minimum ratio test ($d_1 = 1 > 0$, $d_2 = 2 > 0$):
+\[
+  x_2' = \min\left\{\frac{9}{1},\;\frac{2}{2}\right\} = \min\{9, 1\} = 1.
+\]
+The minimum is achieved at the second basic variable, so $p = 4$ (variable $x_4$)
+leaves the basis.
+
+\textbf{Step 7.} Update: $\calB \leftarrow (\{3,4\} \setminus \{4\}) \cup \{2\} = \{2,3\}$.
+\end{exampleblock}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.52\textwidth}
+    \begin{exampleblock}{Iteration 2 --- At $\calB = \{2,3\}$ (Checking Optimality)}
+      \textbf{Step 1.} Compute:
+      \[
+        \Av_\calB = \begin{bmatrix}1&1\\2&0\end{bmatrix},\quad
+        \xv_\calB = \Av_\calB^{-1}\bv = \begin{bmatrix}1\\8\end{bmatrix}.
+      \]
+      So $x_2 = 1$, $x_3 = 8$ (basic); $x_1 = 0$, $x_4 = 0$ (non-basic).
+
+      \textbf{Step 2.} Compute $\lav$ (lambda):
+      \[
+        \lav = \Av_\calB^{-\top}\cv_\calB
+        = \begin{bmatrix}0\\-\tfrac{1}{2}\end{bmatrix}.
+      \]
+
+      \textbf{Step 3.} Reduced costs $\muv_\calV$ for $\calV = \{1,4\}$:
+      \[
+        \muv_\calV = \begin{bmatrix}1\\\tfrac{1}{2}\end{bmatrix} \ge \mathbf{0}\;\checkmark
+      \]
+      All reduced costs are non-negative: \textbf{optimal}.
+
+      The optimal solution is:
+      $\xv^* = [0, 1, 8, 0]^\top$,
+      with objective value $\cv^\top\xv^* = 3(0) + (-1)(1) + 0(8) + 0(0) = -1$.
+    \end{exampleblock}
+  \end{column}
+  \begin{column}{0.46\textwidth}
+    \includegraphics[width=\textwidth]{simplex_convergence.pdf}
+    {\small \textit{The objective value at the initial vertex and the optimal vertex.
+    The reduced costs $\muv_\calV$ at the initial vertex are $[3, -1]$; after one
+    pivot they become $[1, \tfrac{1}{2}]$, certifying optimality.}}
+
+    \begin{alertblock}{Key Insight}
+      In just one pivot, the simplex algorithm found the global minimum.  The
+      reduced costs at the final vertex are all non-negative, which is the
+      certificate that no further improvement is possible.
+    \end{alertblock}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{The Simplex Tableau}
-  \begin{columns}
-    \begin{column}{0.52\textwidth}
-      \begin{block}{Tableau Representation}
-        At any vertex with partition $(\calB,\calV)$, the \textbf{simplex tableau}
-        compactly encodes all quantities needed for pivoting:
+\begin{frame}[allowframebreaks]{The Simplex Tableau}
 
-        \[
-          \begin{array}{c|c|c}
-              & \xv_\calB & \xv_\calV \\\hline
-            \Av_\calB^{-1}\Av & \mathbf{I} & \Av_\calB^{-1}\Av_\calV \\\hline
-            \cv^\top - \cv_\calB^\top\Av_\calB^{-1}\Av & 0 & \muv_\calV^\top
-          \end{array}
-        \]
-        \begin{itemize}
-          \item \textbf{Right-hand side}: $\xv_\calB = \Av_\calB^{-1}\bv$
-          \item \textbf{Reduced costs}: $\muv_\calV$ (bottom row)
-          \item Pivot = row operations to swap columns
-        \end{itemize}
-      \end{block}
-    \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{block}{Minimum Ratio Test Illustrated}
-        To introduce $q$ into $\calB$, the direction of travel in $\xv_\calB$-space is
-        $\mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}}$.
+The \emph{simplex tableau} is a compact matrix representation of all the quantities
+needed for a simplex pivot.  Rather than recomputing $\Av_\calB^{-1}$ from scratch
+at each step, we maintain the tableau and update it incrementally via row operations.
 
-        We increase $x_q$ until the first basic variable hits zero:
-        \[
-          x'_q = \min_{i:\,d_i>0}\;\frac{(\xv_\calB)_i}{d_i}
-        \]
-        \begin{itemize}
-          \item If all $d_i\le0$: LP is \textbf{unbounded}
-          \item Ties (degeneracy): Bland's rule prevents infinite cycling
-        \end{itemize}
-      \end{block}
-    \end{column}
-  \end{columns}
+\begin{block}{Tableau Structure}
+At a vertex with partition $(\calB, \calV)$, the simplex tableau contains three types
+of information:
+
+\begin{center}
+\begin{tabular}{c|c|c|c}
+ & $\xv_\calB$ & $\xv_\calV$ & RHS \\\hline
+Constraint rows & $\mathbf{I}$ & $\Av_\calB^{-1}\Av_\calV$ & $\xv_\calB = \Av_\calB^{-1}\bv$ \\\hline
+Objective row & $0$ & $\muv_\calV^\top$ & $-\cv^\top\xv$ (negated objective)
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+  \item The \textbf{constraint rows} show the identity in the basic-variable columns
+        (because we have ``solved out'' the basic variables) and the transformed
+        non-basic columns $\Av_\calB^{-1}\Av_\calV$.
+  \item The \textbf{right-hand side (RHS)} column gives the current basic variable
+        values $\xv_\calB$.
+  \item The \textbf{objective row} (also called the ``reduced cost row'') contains
+        the reduced costs $\muv_\calV$ in the non-basic columns.  When all entries
+        are non-negative, we are optimal.
+\end{itemize}
+\end{block}
+
+\begin{block}{Pivoting in the Tableau}
+A pivot (swapping $p$ out of $\calB$ and $q$ into $\calB$) corresponds to a
+\emph{column substitution} in the tableau: we perform standard row operations
+(Gaussian elimination) to make the $q$-column into a unit vector (with a $1$
+in the row of $p$ and $0$s elsewhere).  This transforms the tableau into the
+representation at the new vertex without recomputing $\Av_\calB^{-1}$ from scratch.
+\end{block}
+
+\begin{block}{Minimum Ratio Test in the Tableau}
+To introduce non-basic variable $x_q$ into the basis, the direction of travel in
+$\xv_\calB$-space is the column $\mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}}$, which
+appears directly in the tableau.  The minimum ratio test selects the leaving
+variable:
+\[
+  x_q' = \min_{\substack{i:\,d_i > 0}}\;\frac{(\xv_\calB)_i}{d_i}.
+\]
+\begin{itemize}
+  \item If all entries $d_i \le 0$ in the pivot column: the LP is \textbf{unbounded}
+        (we can increase $x_q$ indefinitely without any basic variable going negative).
+  \item When there are ties ($d_i / (\xv_\calB)_i$ equal for two or more $i$): the
+        vertex is \emph{degenerate} and the next step may not improve the objective.
+        Bland's rule resolves ties by choosing the smallest index, preventing cycles.
+\end{itemize}
+\end{block}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{12.2.4 Initialization Phase --- Auxiliary LP}
-  \begin{block}{Problem: How to Find an Initial Feasible Vertex?}
-    Introduce auxiliary variables $\zv\in\mathbb{R}^m$ (Eq.\ 12.33):
-    \[
-      \minimize_{\xv,\zv}
-      \begin{bmatrix}\mathbf{0}^\top&\mathbf{1}^\top\end{bmatrix}
-      \begin{bmatrix}\xv\\\zv\end{bmatrix}
-      \quad\text{s.t.}\quad
-      \begin{bmatrix}\Av&\mathbf{Z}\end{bmatrix}
-      \begin{bmatrix}\xv\\\zv\end{bmatrix}=\bv,\quad
-      \begin{bmatrix}\xv\\\zv\end{bmatrix}\ge\mathbf{0}
-    \]
-    where $Z_{ii} = +1$ if $b_i\ge0$, $-1$ otherwise.
-  \end{block}
+\begin{frame}[allowframebreaks]{12.2.4 Initialisation Phase --- Finding a Feasible Vertex}
 
-  \begin{columns}
-    \begin{column}{0.52\textwidth}
-      \textbf{Procedure:}
+Before the simplex optimisation phase can run, we need a feasible starting vertex.
+Finding one is non-trivial: we cannot just set $\xv = \mathbf{0}$ unless
+$\bv = \mathbf{0}$, which is rarely the case.  The standard approach is to solve an
+\emph{auxiliary LP} whose feasible set is easy to start from and whose solution
+provides a feasible vertex for the original LP.
+
+\begin{block}{Auxiliary LP Construction}
+Introduce $m$ \emph{auxiliary variables} $\zv = [z_1, \ldots, z_m]^\top \ge \mathbf{0}$,
+one per equality constraint.  The $i$-th auxiliary variable has coefficient $Z_{ii}$,
+where $Z_{ii} = +1$ if $b_i \ge 0$ and $Z_{ii} = -1$ if $b_i < 0$.  The auxiliary LP is:
+\[
+  \minimize_{\xv,\zv}
+  \begin{bmatrix}\mathbf{0}^\top & \mathbf{1}^\top\end{bmatrix}
+  \begin{bmatrix}\xv\\\zv\end{bmatrix}
+  \quad\text{s.t.}\quad
+  \begin{bmatrix}\Av & \mathbf{Z}\end{bmatrix}
+  \begin{bmatrix}\xv\\\zv\end{bmatrix}
+  = \bv,\quad
+  \begin{bmatrix}\xv\\\zv\end{bmatrix} \ge \mathbf{0}
+\]
+where $\mathbf{Z} = \text{diag}(Z_{11}, \ldots, Z_{mm})$ is the diagonal matrix of
+signs.  The objective $\mathbf{1}^\top\zv$ minimises the sum of all auxiliary
+variables, driving them toward zero.
+\end{block}
+
+\begin{block}{Notation}
+\begin{itemize}
+  \item $\mathbf{1}$ (ones vector) has all entries equal to 1, so
+        $\mathbf{1}^\top\zv = z_1 + z_2 + \cdots + z_m$.
+  \item $\mathbf{Z}$ (diagonal matrix of signs) ensures that the initial point
+        $\xv = \mathbf{0}$, $z_i = |b_i|$ is feasible for the auxiliary LP.
+        This gives us an immediate starting vertex.
+  \item The auxiliary LP has $n + m$ variables: the original $n$ plus $m$ auxiliary.
+\end{itemize}
+\end{block}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.53\textwidth}
+    \begin{block}{Four-Step Procedure}
       \begin{enumerate}
-        \item Start with $\xv=\mathbf{0}$, $z_j=|b_j|$ (initial basic partition = $\zv$-columns)
-        \item Solve auxiliary LP via optimization phase
-        \item If optimal $\zv^*=\mathbf{0}$: feasible vertex found
-        \item If $\zv^*\ne\mathbf{0}$: original LP is \textbf{infeasible}
-        \item Replace $\zv$-entries in $\calB$ with $\xv$-entries as needed
+        \item Start with $\xv = \mathbf{0}$ and $z_i = |b_i|$ for all $i$.
+              The initial basis is $\calB = \{n+1, n+2, \ldots, n+m\}$
+              (all auxiliary variables in the basis).
+        \item Run the simplex \emph{optimisation phase} on the auxiliary LP.
+        \item If the optimal auxiliary objective is $\mathbf{1}^\top\zv^* = 0$:
+              then $\zv^* = \mathbf{0}$ and the current $\xv^*$ is a feasible
+              vertex for the original LP.
+        \item If $\mathbf{1}^\top\zv^* > 0$: it is \emph{impossible} to satisfy
+              all original constraints simultaneously.  The original LP is
+              \textbf{infeasible}.
       \end{enumerate}
-    \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{exampleblock}{Example 12.8 --- Finding Feasible Vertex}
-        \footnotesize
-        LP: $2x_1-x_2+2x_3=1$,\; $5x_1+x_2-3x_3=-2$
+    \end{block}
 
-        Auxiliary: add $z_1,z_2\ge0$:
-        \[
-          2x_1-x_2+2x_3+z_1=1,\quad
-          5x_1+x_2-3x_3-z_2=-2
-        \]
-        Init: $\calB=\{4,5\}$,\; $\xv^{(1)}=[0,0,0,1,2]$
+    After Step 3, any remaining auxiliary variables still in the basis (which
+    must have value 0 at optimality) are swapped out for original $\xv$-variables
+    to give a proper basis for the original LP.
+  \end{column}
+  \begin{column}{0.45\textwidth}
+    \begin{exampleblock}{Example 12.8 --- Finding a Feasible Vertex}
+      \footnotesize
+      Consider the LP with two equality constraints:
+      $2x_1 - x_2 + 2x_3 = 1$, $5x_1 + x_2 - 3x_3 = -2$.
+      The right-hand sides are $b_1 = 1 \ge 0$ (so $Z_{11} = +1$) and
+      $b_2 = -2 < 0$ (so $Z_{22} = -1$).
 
-        After solving: $\xv^*\approx[0,1,1,0,0]$, $\calB=\{2,3\}$
+      Auxiliary LP: add $z_1, z_2 \ge 0$:
+      $2x_1 - x_2 + 2x_3 + z_1 = 1$,\quad $5x_1 + x_2 - 3x_3 - z_2 = -2$.
 
-        Feasible vertex: $[0,1,1]$ $\checkmark$
-      \end{exampleblock}
-    \end{column}
-  \end{columns}
+      Initial point: $\xv = \mathbf{0}$, $z_1 = 1$, $z_2 = 2$.
+      Initial basis: $\calB = \{4, 5\}$ (the two auxiliary variables).
+
+      After running simplex on the auxiliary LP, we find:
+      $\xv^* \approx [0, 1, 1]^\top$ with $z_1 = z_2 = 0$.
+      The new basis is $\calB = \{2, 3\}$, and
+      $[0, 1, 1]^\top$ is a feasible vertex of the original LP. $\checkmark$
+    \end{exampleblock}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}[fragile]{Algorithm 12.5 (Python) --- Complete Simplex}
+\begin{frame}[fragile]{Algorithm 12.5 (Python) --- Complete Simplex Solver}
 \begin{lstlisting}
 import numpy as np
 
@@ -796,7 +1299,7 @@ print("x* =", x_opt, " B =", sorted(B_opt), " obj =", round(c @ x_opt, 4))
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}[fragile]{Python: Solving an LP with SciPy (Practical Usage)}
+\begin{frame}[fragile]{Python: Practical LP Solving with SciPy}
 \begin{lstlisting}
 from scipy.optimize import linprog
 import numpy as np
@@ -836,166 +1339,288 @@ def linf_regression(A, b):
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Simplex Complexity \& Summary}
-  \begin{columns}
-    \begin{column}{0.50\textwidth}
-      \begin{block}{Complexity}
-        \begin{itemize}
-          \item Each iteration: $O(m^2 n)$ for basis update
-          \item Worst case: exponential (Klee-Minty examples)
-          \item \textbf{Average case}: polynomial in practice
-          \item Modern implementations (HiGHS, CPLEX, Gurobi)\\
-                solve millions of variables \& constraints
-        \end{itemize}
-      \end{block}
-      \vspace{6pt}
-      \begin{block}{Variants}
-        \begin{itemize}
-          \item \textbf{Revised simplex}: updates $\Av_\calB^{-1}$ incrementally
-          \item \textbf{Interior-point methods}: polynomial worst case
-          \item \textbf{Self-dual simplex}: avoids two-phase
-        \end{itemize}
-      \end{block}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{block}{Step Summary: One Simplex Iteration}
-        \begin{enumerate}
-          \item Compute $\xv_\calB = \Av_\calB^{-1}\bv$
-          \item Compute $\lav = \Av_\calB^{-\top}\cv_\calB$
-          \item Compute $\muv_\calV = \cv_\calV - \Av_\calV^\top\lav$
-          \item \textbf{If} $\muv_\calV\ge\mathbf{0}$: \textbf{STOP} (optimal)
-          \item Choose entering $q$: $(\muv_\calV)_q < 0$ (e.g.\ Dantzig's)
-          \item Compute $\mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}}$
-          \item Choose leaving $p$ via minimum ratio test
-          \item Swap: $\calB\leftarrow(\calB\setminus\{p\})\cup\{q\}$
-        \end{enumerate}
-      \end{block}
-    \end{column}
-  \end{columns}
+\begin{frame}[allowframebreaks]{Simplex Complexity and Practical Considerations}
+
+The simplex algorithm has been the workhorse of LP solving for over 75 years.
+Understanding its theoretical properties and practical behaviour helps us use it
+wisely.
+
+\begin{block}{Computational Cost per Iteration}
+Each simplex step requires:
+\begin{enumerate}
+  \item Solving $\Av_\calB^\top\lav = \cv_\calB$ for $\lav$ (lambda):
+        costs $O(m^2)$ with LU factorisation.
+  \item Computing the reduced costs $\muv_\calV = \cv_\calV - \Av_\calV^\top\lav$:
+        costs $O(mn)$.
+  \item Computing the direction $\mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}}$:
+        costs $O(m^2)$ using the stored LU factors.
+  \item The minimum ratio test: costs $O(m)$.
+\end{enumerate}
+Total per iteration: $O(m^2 n)$ in the dense case.  In practice, $\Av$ is often
+\emph{sparse} (most entries are zero), which reduces the cost substantially.
+\end{block}
+
+\begin{block}{Worst-Case vs.\ Average-Case Behaviour}
+The simplex algorithm has a \emph{worst-case exponential} number of steps:
+Klee and Minty (1972) constructed a family of LPs with $n$ variables where
+simplex visits all $2^n$ vertices before finding the optimum.  However,
+in the vast majority of practical problems, simplex terminates in $O(m)$ to $O(mn)$
+steps, which is polynomial.  This average-case polynomial behaviour is why simplex
+remains the method of choice for many applications.
+\end{block}
+
+\begin{columns}
+  \begin{column}{0.50\textwidth}
+    \begin{block}{Interior-Point Methods: An Alternative}
+      Interior-point methods (also called \emph{barrier methods}) approach the
+      optimum from the \emph{interior} of the feasible polytope rather than walking
+      along its edges.  Their worst-case complexity is polynomial: $O(n^{3.5})$
+      for the classical algorithms.  For very large LPs (millions of variables),
+      interior-point methods can outperform simplex.
+    \end{block}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Simplex Variants}
+      \begin{itemize}
+        \item \textbf{Revised simplex}: maintains and updates only the basis
+              inverse $\Av_\calB^{-1}$ incrementally, using LU factorisation
+              with periodic refactorisation for numerical stability.
+        \item \textbf{Dual simplex}: operates on the dual LP; useful for
+              warm-starting after small changes to the problem.
+        \item \textbf{Self-dual simplex}: avoids the two-phase structure by
+              combining primal and dual steps.
+      \end{itemize}
+    \end{block}
+  \end{column}
+\end{columns}
+
+\begin{block}{Step Summary: One Complete Simplex Iteration}
+  \begin{enumerate}
+    \item Compute basic variable values: $\xv_\calB = \Av_\calB^{-1}\bv$.
+    \item Compute Lagrange multipliers: $\lav = \Av_\calB^{-\top}\cv_\calB$.
+    \item Compute reduced costs: $\muv_\calV = \cv_\calV - \Av_\calV^\top\lav$.
+    \item \textbf{If} $\muv_\calV \ge \mathbf{0}$: \textbf{STOP} --- current vertex is optimal.
+    \item Choose entering index $q$: pick any $(\muv_\calV)_q < 0$
+          (e.g., Dantzig's rule: the most negative; Bland's rule: the smallest index).
+    \item Compute direction: $\mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}}$.
+    \item Choose leaving index $p$ via minimum ratio test:
+          $p = \arg\min_{i: d_i > 0}\, (\xv_\calB)_i / d_i$.
+    \item Swap: $\calB \leftarrow (\calB \setminus \{p\}) \cup \{q\}$.
+  \end{enumerate}
+\end{block}
+
 \end{frame}
 
-% -----------------------------------------------------------------------------
+% =============================================================================
 \section{Dual Certificates}
-% -----------------------------------------------------------------------------
+% =============================================================================
 
-\begin{frame}{12.3 Dual Certificates}
-  \begin{columns}
-    \begin{column}{0.52\textwidth}
-      \begin{block}{Primal--Dual Pair (Strong Duality, Eq.\ 12.35--12.36)}
-        \begin{center}
-          \begin{tabular}{p{3.8cm}|p{3.8cm}}
-            \textbf{Primal (P)} & \textbf{Dual (D)} \\
-            \hline
-            $\minimize\;\cv^\top\xv$ &
-            $\maximize\;\bv^\top\lav$ \\
-            $\text{s.t.}\;\Av\xv=\bv$ &
-            $\text{s.t.}\;\Av^\top\lav\le\cv$ \\
-            $\xv\ge\mathbf{0}$ & $\lav\;\text{free}$ \\
-          \end{tabular}
-        \end{center}
-        \vspace{4pt}
-        LPs have \textbf{zero duality gap}: $p^*=d^*$.
+\begin{frame}[allowframebreaks]{12.3 Dual Linear Programs and Strong Duality}
 
-        The dual problem has $n$ variables, $m$ constraints ---
-        if primal has $n$ vars and $m$ constraints, dual swaps them.
-      \end{block}
-    \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{block}{Dual Certificate --- Algorithm 12.6}
-        To verify $\xv^*$ is optimal for the primal, provide $\lav^*$ such that:
-        \begin{enumerate}
-          \item $\xv^*$ is \textbf{primal feasible}: $\Av\xv^*=\bv$, $\xv^*\ge\mathbf{0}$
-          \item $\lav^*$ is \textbf{dual feasible}: $\Av^\top\lav^*\le\cv$
-          \item \textbf{Equal objectives}: $p^*=\cv^\top\xv^*=\bv^\top\lav^*=d^*$
-        \end{enumerate}
-        If all three hold, $(\xv^*,\lav^*)$ are \textbf{optimal}.
-      \end{block}
-      \vspace{4pt}
-      \includegraphics[width=\textwidth]{primal_dual.pdf}
-      {\tiny Primal and dual objectives converge to $p^*=d^*$}
-    \end{column}
-  \end{columns}
+Every linear program has a companion problem called the \emph{dual LP}.  The dual
+provides an independent lower bound on the primal objective: for any dual-feasible
+$\lav$ (lambda), the dual objective $\bv^\top\lav$ is a lower bound on the optimal
+primal objective $\cv^\top\xv^*$.  Remarkably, for linear programs, this lower bound
+is tight: at optimality, primal and dual objectives are exactly equal.
+
+\begin{block}{The Primal--Dual Pair (Strong Duality)}
+\begin{center}
+  \begin{tabular}{p{4.2cm}|p{4.2cm}}
+    \textbf{Primal (P)} & \textbf{Dual (D)} \\
+    \hline\noalign{\vspace{2pt}}
+    $\displaystyle\minimize_\xv\;\cv^\top\xv$ &
+    $\displaystyle\maximize_\lav\;\bv^\top\lav$ \\[6pt]
+    $\text{s.t.}\;\Av\xv = \bv$ &
+    $\text{s.t.}\;\Av^\top\lav \le \cv$ \\[4pt]
+    $\xv \ge \mathbf{0}$ & $\lav\;\text{free (any real value)}$ \\
+  \end{tabular}
+\end{center}
+\vspace{6pt}
+For any LP in equality form, the primal and dual have exactly the same optimal
+objective value: $p^* = d^*$.  This is called \textbf{strong duality}.
+\end{block}
+
+\begin{block}{Notation for the Dual}
+\begin{itemize}
+  \item $\lav$ (bold lambda, ``lam-da'') is the vector of $m$ dual variables,
+        one per equality constraint of the primal.  In economics, $\lambda_i$ is
+        called the \emph{shadow price} of constraint $i$: it measures how much the
+        optimal objective changes if we relax constraint $i$ by one unit.
+  \item $\Av^\top\lav \le \cv$ means: for each $j = 1, \ldots, n$, the $j$-th
+        column of $\Av$ dotted with $\lav$ must not exceed $c_j$.  These are the
+        dual feasibility constraints.
+  \item The dual has $m$ variables (one per primal constraint) and $n$ inequality
+        constraints (one per primal variable).  Primal and dual ``swap'' variables
+        and constraints.
+\end{itemize}
+\end{block}
+
+\begin{alertblock}{How to Read This: What Does Strong Duality Mean?}
+Strong duality says that the minimum cost of the primal problem equals the maximum
+lower bound provided by any dual solution.  In other words: there is no duality
+gap --- no room between the best lower bound and the actual optimal value.
+This means we can verify a primal solution is optimal by finding a dual solution
+that achieves the same objective value.
+\end{alertblock}
+
+\framebreak
+
+\begin{block}{Deriving the Dual via the Lagrangian}
+Starting from the equality-form primal, the Lagrangian is:
+\[
+  \mathcal{L}(\xv,\muv,\lav)
+  = \cv^\top\xv - \muv^\top\xv - \lav^\top(\Av\xv - \bv)
+  = (\cv - \muv - \Av^\top\lav)^\top\xv + \lav^\top\bv.
+\]
+The \emph{dual function} is the infimum of the Lagrangian over $\xv$:
+\[
+  g(\muv,\lav) = \inf_\xv\;\mathcal{L}(\xv,\muv,\lav)
+  = \begin{cases}\lav^\top\bv & \text{if }\cv - \muv - \Av^\top\lav = \mathbf{0}\\
+  -\infty & \text{otherwise.}\end{cases}
+\]
+For $g$ to be finite, we need $\cv - \muv - \Av^\top\lav = \mathbf{0}$.
+Combined with $\muv \ge \mathbf{0}$, this gives $\Av^\top\lav = \cv - \muv \le \cv$.
+Maximising $g = \bv^\top\lav$ subject to $\Av^\top\lav \le \cv$ is the dual problem.
+\end{block}
+
+\begin{columns}
+  \begin{column}{0.50\textwidth}
+    \begin{block}{Weak Duality (Always Holds)}
+      For \emph{any} primal-feasible $\xv$ and \emph{any} dual-feasible $\lav$:
+      \[
+        \bv^\top\lav \le \cv^\top\xv.
+      \]
+      The dual objective is always a lower bound on the primal objective.
+      This holds regardless of whether we are at the optimum.
+    \end{block}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Strong Duality (LP-Specific)}
+      At optimality: $p^* = d^*$.  The Lagrange multipliers $\lav^*$
+      computed by the simplex algorithm (via $\lav = \Av_\calB^{-\top}\cv_\calB$)
+      are automatically the optimal dual variables, providing a dual certificate
+      ``for free'' at the end of the simplex run.
+    \end{block}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Dual Derivation}
-  \begin{block}{Deriving the Dual via the Lagrangian}
-    Starting from equality-form primal with Lagrangian:
-    \[
-      \mathcal{L}(\xv,\muv,\lav)
-      = \cv^\top\xv - \muv^\top\xv - \lav^\top(\Av\xv-\bv)
-      = (\cv - \muv - \Av^\top\lav)^\top\xv + \lav^\top\bv
-    \]
-    \textbf{Dual function}:
-    $\displaystyle\min_{\xv}\,\mathcal{L} =
-    \begin{cases}\lav^\top\bv & \text{if }\cv-\muv-\Av^\top\lav=\mathbf{0}\\
-    -\infty & \text{otherwise}\end{cases}$
+\begin{frame}[allowframebreaks]{Dual Certificates: Verifying Optimality}
 
-    From $\cv - \muv - \Av^\top\lav = \mathbf{0}$ and $\muv\ge\mathbf{0}$:
-    \[
-      \Av^\top\lav = \cv - \muv \le \cv
-    \]
-  \end{block}
-  \begin{columns}
-    \begin{column}{0.50\textwidth}
-      \begin{block}{Weak Duality (always holds)}
-        For any feasible $\xv$ and dual-feasible $\lav$:
-        \[
-          \bv^\top\lav \le \cv^\top\xv
-          \quad\text{(lower bound on primal)}
-        \]
-      \end{block}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{block}{Strong Duality (LP specific)}
-        At optimality: $p^* = d^*$.
-        Lagrange multipliers $\lav^*$ from the simplex solution
-        provide the dual certificate \emph{automatically}.
-      \end{block}
-    \end{column}
-  \end{columns}
+A \emph{dual certificate} is a pair $(\xv^*, \lav^*)$ that proves the optimality
+of $\xv^*$ without re-solving the LP from scratch.  This is extremely useful for
+\emph{verification}: a third party can check the certificate cheaply even if they
+did not solve the LP themselves.
+
+\begin{block}{Algorithm 12.6: Three-Condition Optimality Check}
+A pair $(\xv^*, \lav^*)$ is an optimal primal--dual pair if and only if all three
+conditions hold simultaneously:
+\begin{enumerate}
+  \item \textbf{Primal feasibility}: $\Av\xv^* = \bv$ and $\xv^* \ge \mathbf{0}$.
+        The candidate solution $\xv^*$ lies in the feasible set.
+  \item \textbf{Dual feasibility}: $\Av^\top\lav^* \le \cv$.
+        The dual candidate $\lav^*$ satisfies the dual constraints.
+  \item \textbf{Zero duality gap}: $\cv^\top\xv^* = \bv^\top\lav^*$.
+        The primal and dual objectives match at the candidate pair.
+\end{enumerate}
+\end{block}
+
+\begin{alertblock}{Key Insight: Why Three Conditions Suffice}
+By weak duality, we always have $\bv^\top\lav^* \le \cv^\top\xv^*$ for any
+dual-feasible $\lav^*$ and primal-feasible $\xv^*$.  If additionally the objectives
+are equal (condition 3), then there can be no better primal solution: any feasible
+$\xv$ satisfies $\cv^\top\xv \ge \bv^\top\lav^* = \cv^\top\xv^*$, so $\xv^*$ is
+already at the minimum.
+\end{alertblock}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.50\textwidth}
+    \includegraphics[width=\textwidth]{primal_dual.pdf}
+    {\small \textit{As the simplex algorithm iterates, the primal objective decreases
+    and the dual objective increases, converging to the common optimal value
+    $p^* = d^*$.  Strong duality guarantees they meet exactly.}}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Practical Significance}
+      Dual certificates are important in several contexts:
+      \begin{itemize}
+        \item \textbf{Verification}: check a claimed solution without re-solving.
+        \item \textbf{Sensitivity analysis}: the dual variables $\lav^*$ are
+              \emph{shadow prices} that tell us how the optimal cost changes when
+              each constraint is relaxed by a small amount.
+        \item \textbf{Warm starting}: if the problem data changes slightly, the
+              dual solution from the previous run often provides a good starting
+              point for the next run.
+        \item \textbf{Infeasibility detection}: if the dual problem is unbounded,
+              the primal is infeasible.
+      \end{itemize}
+    \end{block}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Example 12.9 --- Verifying a Solution with Dual Certificate}
-  \begin{exampleblock}{Given LP (equality form)}
-    \[
-      \Av = \begin{bmatrix}1&1&-1\\-1&2&0\\1&2&3\end{bmatrix},\quad
-      \bv = \begin{bmatrix}1\\-2\\5\end{bmatrix},\quad
-      \cv = \begin{bmatrix}1\\1\\-1\end{bmatrix}
-    \]
-    Candidate: $\xv^* = [2,0,1]^\top$, $\lav^* = [1,0,0]^\top$.
-  \end{exampleblock}
-  \begin{columns}
-    \begin{column}{0.48\textwidth}
-      \textbf{Check 1 --- Primal feasibility:}
-      \[
-        \Av\xv^* = \begin{bmatrix}1-1\\-2+0\\2+3\end{bmatrix}
-        = \begin{bmatrix}0\text{...}\end{bmatrix}
-      \]
-      Actually: $\Av\xv^* = [1,-2,5]^\top = \bv$ \checkmark
+\begin{frame}[allowframebreaks]{Example 12.9 --- Verifying a Solution with a Dual Certificate}
 
-      and $\xv^*=[2,0,1]^\top\ge\mathbf{0}$ \checkmark
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{Check 2 --- Dual feasibility:}
-      \[
-        \Av^\top\lav^* = [1,-1,1]^\top = [1,1,-1]^\top\text{?}
-      \]
-      $\Av^\top\lav^* = [1,-1,1]^\top \le \cv=[1,1,-1]^\top$:
-      components: $1\le1$ \checkmark, $-1\le1$ \checkmark, $1\le-1$ $\times$
+We now work through the three-condition check on a concrete numerical example,
+computing each step explicitly.
 
-      \textbf{Check 3 --- Equal objectives:}
-      $p^* = \cv^\top\xv^* = 2+0-1=1$
+\begin{exampleblock}{Given LP (Equality Form)}
+\[
+  \Av = \begin{bmatrix}1&1&-1\\-1&2&0\\1&2&3\end{bmatrix},\quad
+  \bv = \begin{bmatrix}1\\-2\\5\end{bmatrix},\quad
+  \cv = \begin{bmatrix}1\\1\\-1\end{bmatrix}.
+\]
+Candidate primal solution: $\xv^* = [2,0,1]^\top$.
+Candidate dual multipliers: $\lav^* = [1,0,0]^\top$.
+\end{exampleblock}
 
-      $d^* = \bv^\top\lav^* = 1\cdot1+(-2)\cdot0+5\cdot0=1$ \checkmark
-    \end{column}
-  \end{columns}
-  \vspace{4pt}
-  \begin{alertblock}{Note}
-    The exact dual certificate from the book passes all three checks ---
-    the example above shows the verification procedure.
-  \end{alertblock}
+\textbf{Condition 1: Primal Feasibility.}
+Check $\Av\xv^* = \bv$ and $\xv^* \ge \mathbf{0}$.
+
+Computing $\Av\xv^*$:
+\[
+  \Av\xv^* = \begin{bmatrix}1\cdot2 + 1\cdot0 + (-1)\cdot1\\
+  (-1)\cdot2 + 2\cdot0 + 0\cdot1\\
+  1\cdot2 + 2\cdot0 + 3\cdot1\end{bmatrix}
+  = \begin{bmatrix}2 + 0 - 1\\-2 + 0 + 0\\2 + 0 + 3\end{bmatrix}
+  = \begin{bmatrix}1\\-2\\5\end{bmatrix} = \bv. \;\checkmark
+\]
+Also, $\xv^* = [2, 0, 1]^\top \ge \mathbf{0}$. $\checkmark$
+Primal feasibility is confirmed.
+
+\textbf{Condition 2: Dual Feasibility.}
+Check $\Av^\top\lav^* \le \cv$.
+
+Computing $\Av^\top\lav^*$:
+\[
+  \Av^\top\lav^* = \begin{bmatrix}1&-1&1\\1&2&2\\-1&0&3\end{bmatrix}
+  \begin{bmatrix}1\\0\\0\end{bmatrix}
+  = \begin{bmatrix}1\\1\\-1\end{bmatrix}.
+\]
+We need $\Av^\top\lav^* \le \cv = [1, 1, -1]^\top$.
+Checking entry by entry: $1 \le 1$ $\checkmark$, $1 \le 1$ $\checkmark$,
+$-1 \le -1$ $\checkmark$.  Dual feasibility is confirmed.
+
+\textbf{Condition 3: Zero Duality Gap.}
+\[
+  p^* = \cv^\top\xv^* = 1\cdot2 + 1\cdot0 + (-1)\cdot1 = 2 + 0 - 1 = 1.
+\]
+\[
+  d^* = \bv^\top\lav^* = 1\cdot1 + (-2)\cdot0 + 5\cdot0 = 1.
+\]
+$p^* = d^* = 1$. $\checkmark$  Equal objectives are confirmed.
+
+\begin{alertblock}{Conclusion}
+All three conditions hold, so $\xv^* = [2,0,1]^\top$ is the optimal solution of this LP,
+and $\lav^* = [1,0,0]^\top$ is the optimal dual solution.  The optimal value is $1$.
+\end{alertblock}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
@@ -1046,128 +1671,165 @@ print("Optimal pair:", is_opt)
 \end{lstlisting}
 \end{frame}
 
-% -----------------------------------------------------------------------------
-\section{Summary \& Exercises}
-% -----------------------------------------------------------------------------
+% =============================================================================
+\section{Summary and Exercises}
+% =============================================================================
 
-\begin{frame}{12.4 Summary}
-  \begin{columns}
-    \begin{column}{0.50\textwidth}
-      \begin{block}{Key Concepts}
-        \begin{itemize}
-          \item \textbf{Linear program}: minimize $\cv^\top\xv$ with linear constraints
-          \item \textbf{Forms}: general $\to$ standard $\to$ equality form
-          \item \textbf{Slack variables} convert inequalities to equalities
-          \item \textbf{Feasible set}: convex polytope; optimum at a \emph{vertex}
-        \end{itemize}
-      \end{block}
-      \vspace{6pt}
-      \begin{block}{Simplex Algorithm}
-        \begin{itemize}
-          \item Maintains a \textbf{vertex partition} $(\calB,\calV)$
-          \item \textbf{KKT conditions} identify optimality via $\muv_\calV\ge\mathbf{0}$
-          \item \textbf{Pivot}: entering index (Dantzig/Bland) + leaving index (min ratio)
-          \item \textbf{Two phases}: initialization (auxiliary LP) + optimization
-          \item Guaranteed convergence if feasible and bounded
-        \end{itemize}
-      \end{block}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{block}{Duality}
-        \begin{itemize}
-          \item Every LP has a \textbf{dual LP}
-          \item \textbf{Strong duality}: $p^*=d^*$ (zero duality gap)
-          \item \textbf{Dual certificate}: verify optimality without solving from scratch
-          \item Dual multipliers = Lagrange multipliers at the simplex solution
-        \end{itemize}
-      \end{block}
-      \vspace{4pt}
-      \begin{block}{Practical Tools (Python)}
-        \begin{itemize}
-          \item \texttt{scipy.optimize.linprog} (HiGHS backend)
-          \item \texttt{cvxpy} with LP/QP/SOCP support
-          \item \texttt{PuLP}, \texttt{OR-Tools}, \texttt{gurobipy}
-        \end{itemize}
-      \end{block}
-    \end{column}
-  \end{columns}
+\begin{frame}[allowframebreaks]{12.4 Chapter Summary}
+
+This chapter has covered the theory and algorithms for solving linear programs,
+from problem formulation through the simplex algorithm to duality theory.
+
+\begin{block}{Key Concept 1: Problem Formulation}
+A linear program (LP) minimises a linear objective $\cv^\top\xv$ subject to linear
+constraints.  Any LP can be converted to \emph{equality form}
+$\Av\xv = \bv$, $\xv \ge \mathbf{0}$ using slack variables and variable splitting.
+The feasible set is a convex polytope, and the global minimum is always attained at
+one of its vertices.
+\end{block}
+
+\begin{block}{Key Concept 2: The Simplex Algorithm}
+The simplex algorithm traverses vertices of the feasible polytope, performing
+\emph{pivots} to move to adjacent vertices with lower objective values.
+Each vertex is represented by a basis partition $(\calB, \calV)$; optimality is
+confirmed when all reduced costs $\muv_\calV \ge \mathbf{0}$.
+The algorithm runs in two phases: an \emph{initialisation phase} (finds a feasible
+vertex using an auxiliary LP) and an \emph{optimisation phase} (pivots until optimal).
+With Bland's rule, convergence is guaranteed in a finite number of steps.
+\end{block}
+
+\begin{block}{Key Concept 3: Duality and Certificates}
+Every LP has a dual LP.  \emph{Strong duality} guarantees $p^* = d^*$ --- the
+primal minimum equals the dual maximum with no duality gap.  A pair
+$(\xv^*, \lav^*)$ is optimal if and only if it is primal feasible, dual feasible,
+and the objectives match.  The simplex algorithm automatically computes the optimal
+dual variables $\lav^* = \Av_\calB^{-\top}\cv_\calB$.
+\end{block}
+
+\framebreak
+
+\begin{columns}
+  \begin{column}{0.50\textwidth}
+    \begin{block}{Simplex Algorithm --- Quick Reference}
+      \textbf{At each vertex} $(\calB, \calV)$:
+      \begin{enumerate}
+        \item $\xv_\calB = \Av_\calB^{-1}\bv$ (basic values)
+        \item $\lav = \Av_\calB^{-\top}\cv_\calB$ (Lagrange multipliers)
+        \item $\muv_\calV = \cv_\calV - \Av_\calV^\top\lav$ (reduced costs)
+        \item If $\muv_\calV \ge 0$: \textbf{optimal}
+        \item Else choose $q$ with $\mu_q < 0$ (entering variable)
+        \item $\mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}}$ (direction)
+        \item $p = \arg\min_{d_i>0}\,(\xv_\calB)_i/d_i$ (leaving variable)
+        \item $\calB \leftarrow (\calB\setminus\{p\})\cup\{q\}$
+      \end{enumerate}
+    \end{block}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Practical Tools (Python)}
+      For real-world LP problems, use industrial-grade solvers:
+      \begin{itemize}
+        \item \texttt{scipy.optimize.linprog} with the HiGHS backend ---
+              a state-of-the-art open-source LP/MIP solver.
+        \item \texttt{cvxpy} --- a modelling language for convex optimisation
+              that supports LP, QP, and SOCP.
+        \item \texttt{PuLP}, \texttt{OR-Tools} --- higher-level
+              modelling frameworks.
+        \item \texttt{gurobipy} --- commercial solver with a free academic licence.
+      \end{itemize}
+      Dual variables (shadow prices) are available via
+      \texttt{result.eqlin.marginals} (for equality constraints) and
+      \texttt{result.ineqlin.marginals} (for inequality constraints).
+    \end{block}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Selected Exercises}
-  \begin{block}{Exercise 12.3 --- Convert to Equality Form}
-    Minimize $6x_1+5x_2$ subject to $3x_1-2x_2\ge5$.
-    \vspace{4pt}
+\begin{frame}[allowframebreaks]{Selected Exercises}
 
-    \textbf{Solution:}
-    \begin{enumerate}
-      \item Flip inequality: $-3x_1+2x_2\le-5$
-      \item Split variables (free $x_1,x_2$): $x_i=x_i^+-x_i^-$, $x_i^\pm\ge0$
-      \item Add slack $x_3\ge0$: $-3x_1^++3x_1^-+2x_2^+-2x_2^-+x_3=-5$
-      \item Equality-form objective: $6x_1^+-6x_1^-+5x_2^+-5x_2^-$
-    \end{enumerate}
-  \end{block}
-  \vspace{8pt}
-  \begin{block}{Exercise 12.4 --- Verify a Vertex \& One Simplex Step}
-    $\Av\in\mathbb{R}^{4\times6}$, $\calB=\{1,2,3,4\}$: verify $\Av_\calB$ is invertible,
-    compute $\xv_\calB$, $\muv_\calV$, then execute one pivot.
+\begin{block}{Exercise 12.3 --- Converting to Equality Form}
+  \textbf{Problem.} Convert the LP: $\minimize\; 6x_1 + 5x_2$
+  subject to $3x_1 - 2x_2 \ge 5$, with $x_1, x_2$ free (unrestricted in sign),
+  into equality form.
 
-    \textbf{Solution sketch:}
-    $\xv_\calB = [2,3,4,5]^\top$;\quad
-    $\muv_\calV = [-4/3,\,-5/3]^\top$ (both negative).
-    Choose $q=6$ (most negative $\mu_{q}=-5/3$), minimum ratio test gives
-    $x'_q=3$ with $p=4$. Update: $\calB'=\{1,2,3,6\}$.
-  \end{block}
-\end{frame}
+  \textbf{Solution.}
+  \begin{enumerate}
+    \item \textbf{Flip the inequality}: multiply both sides by $-1$ to get
+          $-3x_1 + 2x_2 \le -5$.
+    \item \textbf{Split free variables}: write $x_i = x_i^+ - x_i^-$ with
+          $x_i^+, x_i^- \ge 0$ for $i = 1, 2$.
+    \item \textbf{Add slack variable} $x_3 \ge 0$:
+          $-3x_1^+ + 3x_1^- + 2x_2^+ - 2x_2^- + x_3 = -5$.
+    \item \textbf{Equality-form objective}:
+          $6x_1^+ - 6x_1^- + 5x_2^+ - 5x_2^-$ (minimise, same value as before).
+  \end{enumerate}
+  The equality-form LP has 5 non-negative variables
+  $x_1^+, x_1^-, x_2^+, x_2^-, x_3 \ge 0$ and one equality constraint.
+  Note that $x_3 = -3x_1^+ + 3x_1^- + 2x_2^+ - 2x_2^- + 5$; for this to
+  be non-negative we need the original constraint $3x_1 - 2x_2 \ge 5$ to hold,
+  which is exactly the feasibility condition.
+\end{block}
 
-% -----------------------------------------------------------------------------
-\begin{frame}{Exercise 12.6 --- Minimum Ratio Test Violation}
-  \begin{block}{Problem}
-    LP with $\Av = \begin{bmatrix}1&0&0&1\\0&1&0&1\\0&0&1&1\end{bmatrix}$,
-    $\bv=[1,2,3]^\top$.
-    Initial $\calB=\{1,2,3\}$; perform edge transition introducing $q=4$.
-    What happens if we choose $p=2$ instead of $p=1$ (the correct leaving index)?
-  \end{block}
-  \begin{columns}
-    \begin{column}{0.50\textwidth}
-      \textbf{Minimum ratio test:}
-      \[
-        \mathbf{d} = \Av_\calB^{-1}\Av_{\{4\}} = [1,1,1]^\top
-      \]
-      \[
-        x'_q = \min\;\{1/1,\,2/1,\,3/1\} = 1\quad(p=1)
-      \]
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{If we choose $p=2$ instead:}
-      \[
-        \xv_\calB = \Av_{\{1,3,4\}}^{-1}\bv
-        = \begin{bmatrix}-1\\1\\2\end{bmatrix}
-      \]
-      $x_1^*=-1 < 0$: \textbf{infeasible}! The minimum ratio test exists precisely to prevent this.
-    \end{column}
-  \end{columns}
-\end{frame}
+\begin{block}{Exercise 12.4 --- One Simplex Pivot}
+  \textbf{Problem.} Given $\Av \in \mathbb{R}^{4\times6}$ with initial basis
+  $\calB = \{1,2,3,4\}$: verify $\Av_\calB$ is invertible, compute
+  $\xv_\calB$, $\muv_\calV$, and execute one pivot.
 
-% -----------------------------------------------------------------------------
-\begin{frame}{Exercise 12.7 --- Log-Barrier Reformulation}
-  \begin{block}{Problem}
-    Reformulate $\minimize_\xv\;\cv^\top\xv$ s.t.\ $\Av\xv\ge\mathbf{0}$
-    as an unconstrained problem with a log barrier penalty.
-  \end{block}
-  \begin{block}{Solution}
-    Replace the constraints $\Av_{\{i\}}\xv\ge0$ with a log barrier:
-    \[
-      \minimize_\xv\;\cv^\top\xv
-      - \mu\sum_i \log\!\bigl(\Av_{\{i\}}\xv\bigr)
-    \]
-    \begin{itemize}
-      \item $\mu>0$ is a barrier parameter
-      \item As $\mu\to0$, the solution approaches the LP optimum
-      \item This is the basis of \textbf{interior-point methods} (Ch.\ 10.11)
-      \item The gradient vanishes at $\cv - \mu\sum_i \frac{\Av_{\{i\}}^\top}{\Av_{\{i\}}\xv} = \mathbf{0}$
-    \end{itemize}
-  \end{block}
+  \textbf{Solution sketch.}
+  Suppose we find $\xv_\calB = [2,3,4,5]^\top$ and
+  $\muv_\calV = [-4/3,\,-5/3]^\top$ (both negative, so the vertex is suboptimal).
+  Using Dantzig's rule, we choose $q = 6$ (the most negative reduced cost is
+  $\mu_6 = -5/3$).  The minimum ratio test (not shown here) yields $x_6' = 3$
+  with leaving index $p = 4$.  The new basis is
+  $\calB' = \{1,2,3,6\}$.
+\end{block}
+
+\framebreak
+
+\begin{block}{Exercise 12.6 --- Why the Minimum Ratio Test is Essential}
+  \textbf{Problem.} LP with
+  $\Av = \begin{bmatrix}1&0&0&1\\0&1&0&1\\0&0&1&1\end{bmatrix}$,
+  $\bv = [1,2,3]^\top$.
+  Initial $\calB = \{1,2,3\}$; introduce $q = 4$.
+  What happens if we choose $p = 2$ instead of the correct leaving index $p = 1$?
+
+  \textbf{Correct minimum ratio test.}
+  The direction vector is $\mathbf{d} = \Av_\calB^{-1}\Av_{\{4\}} = \mathbf{I}\,[1,1,1]^\top = [1,1,1]^\top$.
+  The ratios are $1/1 = 1$, $2/1 = 2$, $3/1 = 3$.  The minimum is $1$, achieved at
+  $i = 1$, so the correct leaving index is $p = 1$.
+
+  \textbf{What goes wrong if we choose $p = 2$ instead.}
+  The new basis would be $\calB' = \{1,3,4\}$.  Computing the new basic variable
+  values: $\xv_{\calB'} = \Av_{\{1,3,4\}}^{-1}\bv = [-1, 1, 2]^\top$.
+  The value $x_1 = -1 < 0$ violates non-negativity!  The resulting point is
+  \textbf{infeasible}.  The minimum ratio test exists precisely to prevent this.
+  By always choosing the variable that hits zero first (the one with the smallest
+  ratio), we guarantee that all basic variables remain non-negative after the pivot.
+\end{block}
+
+\begin{block}{Exercise 12.7 --- Log-Barrier Reformulation}
+  \textbf{Problem.} Reformulate the LP
+  $\minimize_\xv\;\cv^\top\xv$ s.t.\ $\Av\xv \ge \mathbf{0}$
+  as an unconstrained problem using a log-barrier penalty.
+
+  \textbf{Solution.} Replace each inequality constraint $(\Av\xv)_i \ge 0$ with a
+  penalty that goes to $+\infty$ as $(\Av\xv)_i \to 0^+$:
+  \[
+    \minimize_\xv\;\cv^\top\xv
+    - \mu\sum_{i=1}^m \log\!\bigl((\Av\xv)_i\bigr)
+  \]
+  where $\mu > 0$ (mu, ``mew'') is the \emph{barrier parameter}.
+  The $\log$ (logarithm) term is $-\infty$ if any $(\Av\xv)_i \le 0$, so the
+  penalty forces the solution to stay strictly inside the feasible set.
+  As $\mu \to 0^+$ (mu approaches zero from above), the penalty shrinks and the
+  solution of the unconstrained problem approaches the LP optimum.
+  This is the basis of \emph{interior-point methods}: by gradually decreasing
+  $\mu$ and solving the unconstrained problem at each value, we trace a path
+  (the ``central path'') through the interior of the feasible set converging
+  to the optimum.
+\end{block}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
@@ -1176,7 +1838,7 @@ print("Optimal pair:", is_opt)
 import numpy as np
 from scipy.optimize import linprog
 
-# -- Exercise 12.3: Verify dual certificate (Example 12.9) -------------------
+# -- Example 12.9: Solve and extract dual certificate -------------------------
 # LP:  min x^T c  s.t.  Ax = b,  x >= 0
 A = np.array([[ 1.,  1., -1.],
               [-1.,  2.,  0.],
@@ -1207,65 +1869,100 @@ for delta in [-1, 0, 1]:
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Chapter 12 --- Key Formulas Reference}
-  \begin{columns}[t]
-    \begin{column}{0.47\textwidth}
+\begin{frame}[allowframebreaks]{Chapter 12 --- Key Formulas Reference}
+
+The following is a concise reference for all the major formulas developed in this
+chapter.  Each formula is stated with its role in the simplex algorithm.
+
+\begin{columns}[t]
+  \begin{column}{0.47\textwidth}
+    \begin{block}{Problem Formulation}
       \textbf{Equality form LP:}
-      \[ \minimize_\xv\;\cv^\top\xv\;\text{ s.t. }\;\Av\xv=\bv,\;\xv\ge\mathbf{0} \]
+      \[ \minimize_\xv\;\cv^\top\xv\;\text{ s.t.\ }\;\Av\xv=\bv,\;\xv\ge\mathbf{0}. \]
+      The matrix $\Av \in \mathbb{R}^{m\times n}$ has $m$ rows (constraints) and
+      $n$ columns (variables), with $m \le n$.
+    \end{block}
 
-      \textbf{Vertex extraction:}
-      \[ \xv_\calB = \Av_\calB^{-1}\bv \]
+    \begin{block}{Vertex and Basis Computations}
+      \textbf{Vertex extraction} (basic variable values):
+      \[ \xv_\calB = \Av_\calB^{-1}\bv. \]
 
-      \textbf{Lagrange multiplier:}
-      \[ \lav = \Av_\calB^{-\top}\cv_\calB \]
+      \textbf{Lagrange multipliers} $\lav$ (lambda) at the current vertex:
+      \[ \lav = \Av_\calB^{-\top}\cv_\calB. \]
 
-      \textbf{Reduced costs (optimality check):}
-      \[ \muv_\calV = \cv_\calV - \bigl(\Av_\calB^{-1}\Av_\calV\bigr)^\top\cv_\calB \]
-    \end{column}
-    \begin{column}{0.51\textwidth}
-      \textbf{Edge transition direction:}
-      \[ \mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}} \]
+      \textbf{Reduced costs} $\muv_\calV$ (mu sub V, the optimality check):
+      \[ \muv_\calV = \cv_\calV - \bigl(\Av_\calB^{-1}\Av_\calV\bigr)^\top\cv_\calB. \]
+      If $\muv_\calV \ge \mathbf{0}$: optimal.  Else: pivot on any $q$ with $\mu_q < 0$.
+    \end{block}
+  \end{column}
+  \begin{column}{0.51\textwidth}
+    \begin{block}{Pivot Computations}
+      \textbf{Direction vector} (how basics change as $x_q$ enters):
+      \[ \mathbf{d} = \Av_\calB^{-1}\Av_{\{q\}}. \]
 
-      \textbf{Minimum ratio test:}
-      \[ x'_q = \min_{d_i>0}\,\frac{(\xv_\calB)_i}{d_i} \]
+      \textbf{Minimum ratio test} (step size, leaving variable):
+      \[ x_q' = \min_{\substack{i:\,d_i>0}}\,\frac{(\xv_\calB)_i}{d_i}. \]
 
-      \textbf{Objective change per pivot:}
-      \[ \cv^\top\xv' - \cv^\top\xv = \mu_q\,x'_q \]
+      \textbf{Objective change per pivot}:
+      \[ \cv^\top\xv' - \cv^\top\xv = \mu_q\,x_q'. \]
+      Since $\mu_q < 0$ and $x_q' \ge 0$, each non-degenerate pivot decreases the
+      objective.
+    \end{block}
 
-      \textbf{Dual problem:}
-      \[ \text{maximize}\;\bv^\top\lav\;\text{ s.t. }\;\Av^\top\lav\le\cv \]
+    \begin{block}{Duality}
+      \textbf{Dual problem}: $\maximize\;\bv^\top\lav$ s.t.\ $\Av^\top\lav \le \cv$.
 
-      \textbf{Strong duality:}
-      \[ p^* = \cv^\top\xv^* = \bv^\top\lav^* = d^* \]
-    \end{column}
-  \end{columns}
+      \textbf{Strong duality} (primal and dual optima are equal):
+      \[ p^* = \cv^\top\xv^* = \bv^\top\lav^* = d^*. \]
+    \end{block}
+  \end{column}
+\end{columns}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------
-\begin{frame}{Chapter 12 --- Summary}
+\begin{frame}[allowframebreaks]{Chapter 12 --- Final Takeaways}
   \begin{center}
-    \large\textbf{Linear Programming: Take-Aways}
+    \large\textbf{Linear Programming: Six Essential Takeaways}
   \end{center}
-  \vspace{10pt}
+  \vspace{6pt}
+
   \begin{enumerate}
     \setlength\itemsep{8pt}
-    \item LPs consist of a \textbf{linear objective} and \textbf{linear constraints};
-          any LP can be converted to equality form.
+
+    \item An LP consists of a \textbf{linear objective} and \textbf{linear constraints}.
+          Because both are linear, the feasible set is a convex polytope and the
+          objective surface is flat, making the problem globally tractable.
+
+    \item Any LP in general form can be converted to \textbf{equality form}
+          $\Av\xv = \bv$, $\xv \ge \mathbf{0}$ using slack variables and
+          variable splitting.  This is the form required by simplex.
+
     \item The feasible set is a \textbf{convex polytope}; the optimum always lies
-          at a \textbf{vertex}.
-    \item The \textbf{simplex algorithm} traverses vertices by pivoting:
-          entering index (Dantzig/Bland), leaving index (min-ratio test).
-    \item An \textbf{auxiliary LP} (2-phase method) initializes the simplex
-          to a feasible vertex.
-    \item \textbf{Strong duality} ($p^*=d^*$) allows efficient optimality
-          verification via \textbf{dual certificates}.
-    \item Python: use \texttt{scipy.optimize.linprog} for practical LP solving;
-          dual variables are available via \texttt{res.eqlin.marginals}.
+          at a \textbf{vertex}.  This is why the simplex algorithm --- which examines
+          vertices --- is a complete and correct method.
+
+    \item The \textbf{simplex algorithm} maintains a basis partition $(\calB, \calV)$
+          and moves between adjacent vertices by pivoting: the entering variable
+          is chosen by Dantzig's or Bland's rule; the leaving variable is determined
+          by the minimum ratio test.
+
+    \item The \textbf{two-phase structure} handles initialisation: Phase 1 (auxiliary LP)
+          finds a feasible starting vertex; Phase 2 (optimisation) pivots to the optimum.
+          If Phase 1 fails ($\zv^* \ne \mathbf{0}$), the original LP is infeasible.
+
+    \item \textbf{Strong duality} ($p^* = d^*$) allows efficient optimality verification
+          via \textbf{dual certificates}.  The simplex algorithm delivers the optimal
+          dual solution $\lav^*$ automatically.  In Python, use
+          \texttt{scipy.optimize.linprog} with the \texttt{'highs'} method and access
+          dual variables via \texttt{res.eqlin.marginals}.
   \end{enumerate}
-  \vspace{10pt}
+
+  \vspace{8pt}
   \begin{center}
     \textit{Next: Chapter 13 --- Quadratic Programming}
   \end{center}
+
 \end{frame}
 
 % -----------------------------------------------------------------------------

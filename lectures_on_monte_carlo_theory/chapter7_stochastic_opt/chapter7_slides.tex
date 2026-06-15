@@ -8,6 +8,9 @@
 \usetheme{Madrid}
 \usecolortheme{seahorse}
 \setbeamertemplate{footline}[frame number]
+% Prevent Beamer from interfering with math fonts (fixes "missing {}" errors
+% that arise from boldsymbol/mathbf in allowframebreaks frames)
+\usefonttheme[onlymath]{serif}
 
 % -- packages ------------------------------------------------
 \usepackage{amsmath,amssymb,mathtools}
@@ -51,6 +54,9 @@
 \newcommand{\calS}{\mathcal{S}}
 \newcommand{\calE}{\mathcal{E}}
 \newcommand{\calN}{\mathcal{N}}
+% Indicator function -- avoids \mathbf{1} inside allowframebreaks frames
+% which triggers Beamer math-font bookkeeping errors.
+\newcommand{\ind}[1]{\mathbf{1}\!\left(#1\right)}
 
 % ============================================================
 \title[Ch.7 Stochastic Optimization]{Chapter 7\\Stochastic Optimization}
@@ -1570,7 +1576,7 @@ $\approx 30$ iterations for $d=100$.  Each iteration uses $M=200$ samples.}
 \end{frame}
 
 \begin{frame}[fragile]{CE for the Knapsack: Python Implementation}
-  \begin{lstlisting}[style=python]
+  \begin{lstlisting}[style=python,basicstyle=\ttfamily\tiny]
 import numpy as np
 
 def ce_knapsack(d, w, v, W, theta0, M=200, rho=0.1, alpha=0.7,
@@ -1724,8 +1730,8 @@ for plain Metropolis at 100 steps).
 
 \end{frame}
 
-\begin{frame}[fragile]{CE for TSP: Python Implementation}
-  \begin{lstlisting}[style=python]
+\begin{frame}[fragile]{CE for TSP: Python Implementation (Part 1)}
+  \begin{lstlisting}[style=python,basicstyle=\ttfamily\tiny]
 import numpy as np
 
 def sample_tour(theta, n, rng):
@@ -1734,10 +1740,9 @@ def sample_tour(theta, n, rng):
     for k in range(n - 1):
         row = theta[sigma[-1]].copy()
         for already in sigma:
-            row[already] = 0.0         # exclude already-visited cities
-        row /= row.sum()               # normalise remaining probabilities
-        next_city = rng.choice(n, p=row)
-        sigma.append(next_city)
+            row[already] = 0.0     # exclude already-visited cities
+        row /= row.sum()           # normalise remaining probabilities
+        sigma.append(rng.choice(n, p=row))
     return sigma
 
 def tour_length(sigma, M_dist):
@@ -1751,10 +1756,10 @@ def ce_tsp_update(elite_tours, n, alpha=0.7, theta_prev=None):
     counts = np.zeros((n, n))
     for tour in elite_tours:
         for k in range(len(tour) - 1):
-            counts[tour[k], tour[k + 1]] += 1  # count edge a->b occurrences
+            counts[tour[k], tour[k + 1]] += 1  # count edge a->b
     row_sums = counts.sum(axis=1, keepdims=True)
-    row_sums[row_sums == 0] = 1.0     # avoid division by zero for empty rows
-    theta_new = counts / row_sums     # row-normalise: each row sums to 1
+    row_sums[row_sums == 0] = 1.0   # avoid division by zero
+    theta_new = counts / row_sums   # row-normalise: each row sums to 1
     if theta_prev is not None:
         theta_new = alpha * theta_new + (1 - alpha) * theta_prev
     return theta_new
@@ -1765,6 +1770,7 @@ def ce_tsp_update(elite_tours, n, alpha=0.7, theta_prev=None):
 \section{7.5 The Metropolis Cross-Entropy Hybrid}
 % ============================================================
 
+% --- Frame 1 of 3: overview ----------------------------------------
 \begin{frame}[allowframebreaks]{7.5 The Metropolis Cross-Entropy: A Hybrid Approach}
 
 \textbf{Comparing the two paradigms.}
@@ -1780,24 +1786,14 @@ independent samples at each step.  The state is a parameter, not a solution.
 \medskip
 \textbf{The Metropolis-CE hybrid idea (Algorithm 72).}
 The Metropolis-CE algorithm combines both paradigms.  The state at time $t$
-is simultaneously:
-\begin{itemize}
-  \item A current solution $X^{(t)}$ (the Metropolis perspective), and
-  \item A distribution parameter $\btheta'_{t-1}$ for the
-    \emph{neighbour proposal} distribution (the CE perspective).
-\end{itemize}
+is simultaneously a current solution $X^{(t)}$ (the Metropolis perspective)
+and a distribution parameter $\btheta'_{t-1}$ for the neighbour proposal
+distribution (the CE perspective).
 
-At each step $t$, the algorithm:
-\begin{enumerate}
-  \item Generates $M$ \emph{neighbours} of $X^{(t-1)}$ by sampling from
-    the transition distribution $Q_{\btheta'_{t-1}}(X^{(t-1)}, \cdot)$.
-  \item Computes the elite threshold $\gamma_t$ and identifies elite neighbours.
-  \item Updates $\btheta'_t$ using the CE maximum-likelihood update on the
-    elite neighbours (maximising log-probability of elite neighbours under
-    $Q_\btheta$).
-  \item Sets $X^{(t)}$ to the best-performing sample among all $M$
-    neighbours.
-\end{enumerate}
+At each step $t$, the algorithm generates $M$ neighbours of $X^{(t-1)}$ by
+sampling from $Q_{\btheta'_{t-1}}(X^{(t-1)}, \cdot)$, computes the elite
+threshold $\gamma_t$, updates $\btheta'_t$ via CE maximum-likelihood on the
+elite neighbours, and sets $X^{(t)}$ to the best-performing neighbour found.
 
 \begin{block}{Metropolis-CE Parameter Update (Eq.~7.5.1)}
   \[
@@ -1805,85 +1801,90 @@ At each step $t$, the algorithm:
       \sum_{i=1}^M \mathbf{1}(h(X_i) \ge \gamma_t)
       \log Q_{\btheta}(X^{(t-1)}, X_i).
   \]
-  Key difference from CE: the likelihood $Q_{\btheta}(X^{(t-1)}, X_i)$
-  is the \emph{transition probability from the current state} $X^{(t-1)}$
-  to $X_i$, not a global distribution over $\calS$.  This focuses learning
-  on which \emph{moves from the current position} are most productive.
+  The likelihood $Q_{\btheta}(X^{(t-1)}, X_i)$ is the transition probability
+  from the current state $X^{(t-1)}$ to $X_i$, not a global distribution over
+  $\calS$.  This focuses learning on which moves from the current position are
+  most productive.
 \end{block}
 
-\framebreak
+\end{frame}
 
-\textbf{Metropolis-CE for the Knapsack: derivation.}
+% --- Frame 2 of 3: knapsack derivation ----------------------------
+\begin{frame}[allowframebreaks]{7.5 Metropolis-CE for the Knapsack: Derivation}
+
+\textbf{Metropolis-CE for the Knapsack.}
 
 Define the transition distribution: from the current state $\bx = X^{(t-1)}$,
 flip coordinate $k$ with probability $\theta_k \ge 0$, where
-$\sum_k \theta_k = 1$ (i.e., $\btheta$ is a probability vector over the
+$\sum_k \theta_k = 1$ (i.e., $\boldsymbol{\theta}$ is a probability vector over the
 $d$ possible bit-flips).  A neighbour $X_i$ produced by flipping coordinate
-$a_i$ contributes $\log Q_\btheta(X^{(t-1)}, X_i) = \log \theta_{a_i}$.
+$a_i$ contributes $\log Q_{\boldsymbol{\theta}}(X^{(t-1)}, X_i) = \log \theta_{a_i}$.
 
 The CE objective with constraint $\sum_k \theta_k = 1$ is maximised via the
-Lagrangian:
-\[
-  \mathcal{L}(\btheta, \lambda) = \frac{1}{M}\sum_{i=1}^M
+Lagrangian with multiplier $\lambda$ (lambda):
+\begin{equation*}
+  \mathcal{L}(\boldsymbol{\theta}, \lambda) = \frac{1}{M}\sum_{i=1}^M
   \mathbf{1}(h(X_i) \ge \gamma_t)\log \theta_{a_i}
   + \lambda\!\left(1 - \sum_{k=1}^d \theta_k\right).
-\]
+\end{equation*}
 Setting $\partial\mathcal{L}/\partial\theta_k = C_k/\theta_k - \lambda = 0$
 gives $\theta_k = C_k/\lambda$.  From $\sum_k \theta_k = 1$ we get
-$\lambda = \sum_j C_j$, so:
+$\lambda = \sum_j C_j$, yielding the closed-form update:
 
 \begin{block}{CE Update for Knapsack Transitions}
-  \[
+\begin{equation*}
     \theta'_k = \frac{C_k}{\sum_{j=1}^d C_j},
-    \qquad
-    C_k = \sum_{i=1}^M \mathbf{1}(h(X_i) \ge \gamma_t)
-    \cdot \mathbf{1}(\text{coordinate }k\text{ was flipped in }X_i).
-  \]
-  Here $C_k$ counts how often flipping bit $k$ produced an elite neighbour.
-  Intuitively: $\theta'_k$ is large if bit-flip $k$ frequently leads to
-  elite neighbours from the current state.  The algorithm learns which bits
-  are most profitable to flip \emph{from where we are right now}.
+    \quad
+    C_k = \#\{\text{elite samples in which coordinate }k\text{ was flipped}\}.
+\end{equation*}
+  The count $C_k$ captures how often flipping bit $k$ produced an elite
+  neighbour.  The update $\theta'_k$ is large if bit-flip $k$ frequently
+  leads to elite neighbours from the current state --- the algorithm learns
+  which bits are most profitable to flip from where we are right now.
 \end{block}
 
-The smoothed update is $\btheta'_t = \alpha\btheta' + (1-\alpha)\btheta'_{t-1}$.
-Running with $\rho=0.3$, $M=30$, $\alpha=0.001$ for 100 steps:
-Metropolis-CE won \textbf{100 out of 100} replications on the knapsack.
+The smoothed update is $\boldsymbol{\theta}'_t = \alpha\boldsymbol{\theta}' +
+(1-\alpha)\boldsymbol{\theta}'_{t-1}$.  Running with $\rho=0.3$, $M=30$,
+$\alpha=0.001$ for 100 steps, Metropolis-CE won \textbf{100 out of 100}
+replications on the knapsack.
 
-\framebreak
+\end{frame}
+
+% --- Frame 3 of 3: TSP -------------------------------------------
+\begin{frame}[allowframebreaks]{7.5 Metropolis-CE for the TSP}
 
 \textbf{Metropolis-CE for the TSP.}
 
 For TSP, neighbours of the current tour $\sigma = X^{(t-1)}$ are obtained
 by swapping positions $i < j$ with probability $\theta(i,j)$.  The
-parameter $\btheta = (\theta(i,j))_{i<j}$ is a probability vector over all
-$\binom{n}{2}$ possible swaps with $\sum_{i<j}\theta(i,j) = 1$.
+parameter vector $(\theta(i,j))_{i<j}$ is a probability distribution over all
+$n(n-1)/2$ possible swaps, satisfying $\sum_{i<j}\theta(i,j) = 1$.
 
 The CE update is derived by the same Lagrangian argument.  A neighbour $X_l$
 produced by swapping positions $(a_l, b_l)$ contributes
-$\log Q_\btheta(\sigma, X_l) = \log \theta(a_l, b_l)$.
+$\log Q_\theta(\sigma, X_l) = \log \theta(a_l, b_l)$.
 
 \begin{block}{CE Update for TSP Swaps (Eq.~7.5.2)}
-  \[
+\begin{equation*}
     \theta'(a,b)
     = \frac{C_{(a,b)}}{\displaystyle\sum_{i<j} C_{(i,j)}},
     \quad
-    C_{(a,b)} = \sum_{l=1}^M \mathbf{1}(h(X_l)\ge\gamma_t)\,
-      \mathbf{1}(\text{swap }(a,b)\text{ was applied in }X_l).
-  \]
+    C_{(a,b)} = \#\{\text{elite samples using swap }(a,b)\}.
+\end{equation*}
+  The weight $\theta'(a,b)$ grows large when swapping positions $a$ and $b$
+  frequently produces elite solutions, so future proposals preferentially try
+  swaps that have been historically productive from the current tour.
 \end{block}
-
-Intuitively: $\theta'(a,b)$ becomes large if swapping positions $a$ and $b$
-frequently produces elite solutions.  Future proposals will preferentially
-try swaps that have historically been productive from the current tour.
 
 \begin{center}
   \includegraphics[width=0.43\textwidth]{fig_mce_vs_ce}
 \end{center}
-{\small \textbf{TSP results} ($M=100$, $\rho=0.35$, $\alpha=0.7$, 100 steps,
-100 replications): CE won \textbf{61} times, Metropolis-CE won \textbf{29}
-times, LIP won \textbf{9.66} times, plain Metropolis won \textbf{0.33} times.
-Metropolis-CE achieves comparable quality to CE at roughly $23\times$ lower
-computational cost.}
+
+\begin{block}{TSP Win Scores (100 replications, 100 steps each)}
+  CE: 61 wins; Metropolis-CE: 29 wins; LIP: 9.66 wins; plain Metropolis:
+  0.33 wins.  Metropolis-CE achieves comparable quality to CE at roughly
+  $23\times$ lower computational cost.
+\end{block}
 
 \end{frame}
 
