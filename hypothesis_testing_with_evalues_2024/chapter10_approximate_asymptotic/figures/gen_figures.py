@@ -57,28 +57,42 @@ def clt_evalue(x, lam):
     return np.exp(lam * np.sqrt(n) * xbar / S - lam ** 2 / 2.0)
 
 
-def simulate_rejection_rate(n, lam, alpha, n_reps, rng):
+def simulate_rejection_rate(n, lam, alpha, n_reps, rng, batch_size=20_000):
     """Population: X = Y - 1 with Y ~ Exp(rate=1), so E[X] = 0, Var(X) = 1,
     but X is strongly right-skewed (skewness = 2) -- a genuinely
-    non-Gaussian null population."""
-    Y = rng.exponential(scale=1.0, size=(n_reps, n))
-    X = Y - 1.0
-    E = clt_evalue(X, lam)
+    non-Gaussian null population. Processed in batches to bound memory
+    use (n_reps * n floats can otherwise be huge for large n)."""
     threshold = 1.0 / alpha  # reject H0 when E^(n) >= 1/alpha
-    return np.mean(E >= threshold), E
+    n_rejected = 0
+    e_sum = 0.0
+    remaining = n_reps
+    while remaining > 0:
+        b = min(batch_size, remaining)
+        Y = rng.exponential(scale=1.0, size=(b, n))
+        X = Y - 1.0
+        E = clt_evalue(X, lam)
+        n_rejected += np.sum(E >= threshold)
+        e_sum += E.sum()
+        remaining -= b
+    return n_rejected / n_reps, e_sum / n_reps
 
 
 alpha = 0.05
 lam = 1.5
-n_reps = 200_000
 ns = [5, 10, 20, 30, 50, 100, 300, 1000, 3000, 10000]
+# Fewer Monte Carlo replicates for large n keeps memory/runtime bounded
+# while still giving a stable rejection-rate estimate.
+n_reps_by_n = {5: 200_000, 10: 200_000, 20: 200_000, 30: 200_000,
+               50: 150_000, 100: 100_000, 300: 60_000, 1000: 30_000,
+               3000: 15_000, 10000: 8_000}
 
 rejection_rates = []
 mean_evalues = []
 for n in ns:
-    rate, E = simulate_rejection_rate(n, lam, alpha, n_reps, rng)
+    n_reps = n_reps_by_n[n]
+    rate, mean_E = simulate_rejection_rate(n, lam, alpha, n_reps, rng)
     rejection_rates.append(rate)
-    mean_evalues.append(E.mean())
+    mean_evalues.append(mean_E)
 
 fig, ax = plt.subplots(figsize=(7.0, 4.6))
 ax.axhline(alpha, color=COLOR_NOM, linestyle="--", linewidth=1.5,
@@ -133,7 +147,7 @@ for n in [30, 100, 1000]:
 # so it is an (eps, 0)-approximate e-variable with a KNOWN bound 1+eps'.
 sigma0 = 1.0
 eps_grid = np.linspace(0.0, 0.30, 16)
-n_mc = 400_000
+n_mc = 200_000
 
 exact_means = []
 approx_means = []
@@ -151,10 +165,10 @@ fig, ax = plt.subplots(figsize=(7.0, 4.6))
 ax.fill_between(eps_grid, 1.0, approx_bounds, color=COLOR_BAND, alpha=0.18,
                  label=r"guaranteed band $[1,\ 1+\varepsilon]$ (approx. bound)")
 ax.plot(eps_grid, exact_means, "-", color=COLOR_MAIN, linewidth=2.5,
-        label=r"exact e-value: $\mathbb{E}[E_{\mathrm{exact}}] \le 1$")
+        label=r"exact e-value: $\mathbb{E}[E_{\mathrm{exact}}] \leq 1$")
 ax.plot(eps_grid, approx_means, "o--", color=COLOR_ALT, linewidth=2,
         markersize=5,
-        label=r"approximate e-value: $\mathbb{E}[E_{\mathrm{approx}}] \le 1+\varepsilon$")
+        label=r"approximate e-value: $\mathbb{E}[E_{\mathrm{approx}}] \leq 1+\varepsilon$")
 ax.plot(eps_grid, approx_bounds, ":", color=COLOR_ALT, linewidth=1.2, alpha=0.8)
 ax.set_xlabel(r"misspecification level $\varepsilon$ (variance plug-in error)")
 ax.set_ylabel(r"$\mathbb{E}[E]$ under the null")

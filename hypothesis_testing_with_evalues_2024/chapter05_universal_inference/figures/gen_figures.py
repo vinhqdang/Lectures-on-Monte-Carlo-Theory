@@ -233,8 +233,8 @@ def power_curve(n_list, mu, lam_fixed=0.75, alpha=0.05, reps=200, B=3, seed=RNG_
 
 
 def fig_power_vs_n():
-    n_list = [20, 40, 80, 160, 320]
-    mu = 0.55  # fixed separation between the two mixture components
+    n_list = [20, 40, 80, 160, 320, 640]
+    mu = 0.8  # fixed separation between the two mixture components
     power_split, power_sub = power_curve(n_list, mu, reps=150, B=3)
 
     fig, ax = plt.subplots(figsize=(8, 4.6))
@@ -247,7 +247,7 @@ def fig_power_vs_n():
     ax.set_xlabel('sample size $n$')
     ax.set_ylabel('estimated power')
     ax.set_title(r'Power of the split/subsampled LR e-value test' + '\n'
-                 r'$H_0: \mu_1=\mu_2$ vs. mixture with true gap $\mu_1-\mu_2 = -2\times 0.55$',
+                 r'$H_0: \mu_1=\mu_2$ vs. mixture with true gap $\mu_1-\mu_2 = -2\times 0.8$',
                  fontsize=10.5)
     ax.set_ylim(-0.03, 1.03)
     ax.legend(fontsize=9)

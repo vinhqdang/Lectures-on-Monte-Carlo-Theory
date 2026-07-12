@@ -74,9 +74,10 @@ plt.close(fig)
 # ----------------------------------------------------------------------
 # Figure (b): e-process path under the alternative (exponential growth)
 # ----------------------------------------------------------------------
-n_steps_alt = 120
+n_steps_alt = 140
 p_true = 0.6  # true bias, matches the bet -> exponential growth
-x_alt = rng.random(n_steps_alt) < p_true
+rng_alt = np.random.default_rng(30)  # chosen so the path crosses 1/alpha well before the end
+x_alt = rng_alt.random(n_steps_alt) < p_true
 factors_alt = np.where(x_alt, 2 * q, 2 * (1 - q))
 wealth_alt = np.concatenate(([1.0], np.cumprod(factors_alt)))
 
@@ -97,7 +98,7 @@ ax.axhline(1.0, color='gray', linestyle=':', linewidth=1.0)
 if stop_time is not None:
     ax.axvline(stop_time, color='crimson', linestyle='-.', linewidth=1.3)
     ax.scatter([stop_time], [wealth_alt[stop_time]], color='crimson', zorder=5,
-               label=r'stop \& reject at $t=%d$' % stop_time)
+               label=r'stop and reject at $t=%d$' % stop_time)
 ax.set_yscale('log')
 ax.set_xlabel('time $t$ (number of flips)')
 ax.set_ylabel(r'wealth / e-process value $M_t$ (log scale)')
@@ -119,8 +120,8 @@ plt.close(fig)
 
 from scipy import stats
 
-n_steps_c = 500
-rng2 = np.random.default_rng(7)
+n_steps_c = 250
+rng2 = np.random.default_rng(11)  # chosen so the p-value dips below 0.05 partway through
 x_c = rng2.random(n_steps_c) < 0.5  # true null
 n_idx = np.arange(1, n_steps_c + 1)
 cum_heads = np.cumsum(x_c)
