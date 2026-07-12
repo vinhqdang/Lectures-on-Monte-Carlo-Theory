@@ -85,18 +85,24 @@ def merged_pvalue(p_row, use_max_prefix):
 # ---------------------------------------------------------------------------
 # Figure 1: validity of 2*mean(p) under strong (worst-case-style) dependence
 # ---------------------------------------------------------------------------
-K = 6
+K = 8
 N = 50000
+rho = 0.95  # strength of the constructed dependence, close to the extremal case
 
-U = rng.uniform(0.0, 1.0, N)
-shifts = np.arange(K) / K
-# "Cyclic shift" construction: P_k = frac(U + (k-1)/K).
-# Each P_k, marginally, is exactly Uniform(0,1) -- but jointly the K
-# p-values are a DETERMINISTIC function of the single variable U, i.e. as
-# strongly (and adversarially) dependent as K uniform p-values can be. This
-# is the classical type of construction used to show that merging bounds
-# for arbitrary dependence are essentially tight.
-P = np.mod(U[:, None] + shifts[None, :], 1.0)
+# Strong-dependence (Gaussian-copula) construction: half of the p-values
+# load POSITIVELY and half load NEGATIVELY on a single common factor W, so
+# that when one half's p-values tend to be large, the other half's tend to
+# be small -- the same qualitative mechanism as the book's extremal example
+# (P_1=U, P_2=1-U, whose average is the constant 1/2, showing the factor 2
+# cannot be improved). Each P_k is still marginally exactly Uniform(0,1);
+# only the joint (strongly dependent, here anti-dependent across the two
+# halves) structure is unusual.
+W = rng.standard_normal(N)
+eps = rng.standard_normal((N, K))
+loadings = np.where(np.arange(K) < K // 2, rho, -rho)
+Z = loadings[None, :] * W[:, None] + np.sqrt(1 - rho**2) * eps
+from scipy.stats import norm
+P = norm.cdf(Z)
 mean_P = P.mean(axis=1)
 twice_mean = np.minimum(2.0 * mean_P, 1.0)
 
@@ -110,7 +116,7 @@ axes[0].hist(twice_mean, bins=50, density=True, color="#4C72B0",
 axes[0].axhline(1.0, color="gray", linestyle="--", linewidth=1.2)
 axes[0].set_xlabel(r"$2\bar P = 2 \cdot \mathrm{mean}(P_1,\dots,P_K)$")
 axes[0].set_ylabel("density")
-axes[0].set_title(f"Histogram of $2\\bar P$, $K={K}$ cyclically-dependent p-values")
+axes[0].set_title(f"Histogram of $2\\bar P$, $K={K}$ strongly anti-dependent p-values")
 
 axes[1].plot(alphas, ecdf, color="#C44E52", linewidth=2.2,
              label=r"empirical $\mathbb{P}(2\bar P \leq \alpha)$")
