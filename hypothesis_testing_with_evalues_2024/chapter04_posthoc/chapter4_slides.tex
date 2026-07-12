@@ -1,0 +1,1191 @@
+\documentclass[aspectratio=169,10pt]{beamer}
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\usefonttheme{professionalfonts}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{array}
+
+\graphicspath{{figures/}}
+
+% ---------------------------------------------------------------------
+% listings style
+% ---------------------------------------------------------------------
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  frame=single,
+  backgroundcolor=\color{gray!7},
+  commentstyle=\color{green!50!black}\itshape,
+  keywordstyle=\color{blue}\bfseries,
+  stringstyle=\color{purple},
+  showstringspaces=false,
+  breaklines=true,
+  tabsize=2
+}
+
+% ---------------------------------------------------------------------
+% beamer cosmetics
+% ---------------------------------------------------------------------
+\setbeamertemplate{footline}[frame number]
+\setbeamertemplate{navigation symbols}{}
+
+% ---------------------------------------------------------------------
+% title data
+% ---------------------------------------------------------------------
+\title[E-Values -- Ch.4]{Hypothesis Testing with E-Values}
+\subtitle{Chapter 4: Post-hoc Testing and Decision Making}
+\author{Based on Ramdas \& Wang}
+\date{}
+
+\begin{document}
+
+% =======================================================================
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Outline}
+  \tableofcontents
+\end{frame}
+
+% =======================================================================
+\section*{Notation and Motivation}
+
+\begin{frame}[allowframebreaks]{Notation you'll need}
+  \textbf{This chapter is about what you are allowed to do \emph{after} you have
+  already looked at your data.} Four ideas recur throughout; here they are in
+  plain English before we see a single formula.
+
+  \begin{block}{Data-dependent error level $\hat\alpha$}
+    Normally you fix a significance level $\alpha$ (e.g. $0.05$) \emph{before}
+    collecting data. A \emph{data-dependent} level $\hat\alpha$ is a random
+    variable (taking values in $(0,1)$) that is allowed to depend on the data
+    in an arbitrary, even adversarial, way --- for instance, you could look at
+    how convincing your result is and only then decide how strict a bar to
+    hold yourself to.
+  \end{block}
+
+  \begin{block}{Post-hoc validity}
+    A testing procedure is \emph{post-hoc valid} if its error-control guarantee
+    survives no matter how $\hat\alpha$ was chosen, even if it was chosen
+    by a mischievous statistician trying to make the result look as
+    significant as possible. Analogy: a post-hoc valid guarantee is like a
+    receipt that is still honoured by the shop no matter which register
+    you take it to, versus an ordinary p-value which is only honoured at the
+    one specific register (the one specific $\alpha$) you announced before
+    walking in.
+  \end{block}
+
+  \framebreak
+
+  \begin{block}{Optional continuation}
+    You ran an experiment; the evidence was suggestive but not conclusive.
+    \emph{Optional continuation} is the (data-dependent!) decision to collect
+    \emph{more} data and combine it with what you already have. The key
+    question: can you still control your type-I error if the decision to
+    keep going --- and how much more to collect --- was itself based on
+    peeking at the first batch of data? Analogy: a detective who, after an
+    inconclusive round of evidence-gathering, decides (based on what they've
+    found so far) whether to keep investigating, and how.
+  \end{block}
+
+  \begin{block}{Principal-agent setup}
+    Two parties with different information and different incentives:
+    a \emph{principal} (e.g.\ a regulator granting licenses) who sets the
+    rules, and an \emph{agent} (e.g.\ a pharmaceutical company) who reacts to
+    them, possibly by lying about what they believe or by running trials they
+    know are futile. \emph{Incentive compatibility} means the rules are
+    designed so that agents who know their claim is false have no reason to
+    even try.
+  \end{block}
+
+  \textbf{Recall from earlier chapters:} an \emph{e-variable} $E$ for a null
+  class $\mathcal P$ satisfies $\mathbb{E}^{\mathbb P}[E]\le 1$ for every
+  $\mathbb P\in\mathcal P$; a \emph{p-variable} $P$ satisfies
+  $\mathbb{P}(P\le \alpha)\le\alpha$ for every $\alpha\in(0,1)$ and every
+  $\mathbb P\in\mathcal P$ (equivalently $\mathbb E^{\mathbb P}[\mathbb 1\{P\le\alpha\}]\le\alpha$).
+\end{frame}
+
+\begin{frame}{Why does this chapter matter?}
+  \begin{itemize}
+    \item Standard hypothesis testing textbook theory assumes: fix $\alpha$,
+    fix your test, fix your sample size, collect data \emph{once}, decide.
+    \item Real science never works this way: people peek at results,
+    change thresholds, run follow-up experiments only when the first one
+    looks promising, and make more than one decision from a single dataset.
+    \item \textbf{Main message of Chapter 4:} e-values are exactly the
+    right currency for all of this --- they remain valid under
+    data-dependent significance levels, non-binary decisions, data-dependent
+    decision problems, optional continuation, and even when the incentives
+    of the analyst are adversarial. P-values, in general, are \emph{not}.
+    \item We will make every one of these claims precise, and back each one
+    with a worked numerical example on a single running scenario: testing
+    whether a coin is fair, $H_0:\theta=0.5$.
+  \end{itemize}
+\end{frame}
+
+% =======================================================================
+\section{Testing at Data-Dependent Error Levels}
+
+\begin{frame}{Section 4.1}
+  \tableofcontents[currentsection]
+\end{frame}
+
+\begin{frame}{Intuition: what if $\alpha$ is chosen after seeing the data?}
+  \begin{itemize}
+    \item Recall: a level-$\alpha$ test for $\mathcal P$ is a function
+    $\phi$ (taking values in $\{0,1\}$, or more generally $[0,1]$, the
+    probability of rejecting) such that $\mathbb E^{\mathbb P}[\phi]\le\alpha$
+    for every $\mathbb P\in\mathcal P$.
+    \item As presented in earlier chapters, $\alpha$ was always a
+    \emph{predefined constant}, agreed upon before the experiment.
+    \item \textbf{Question:} can we build a family of tests
+    $(\phi_\alpha)_{\alpha\in(0,1)}$, one for every possible level, such that
+    we're allowed to pick \emph{which} $\alpha$ to report --- using a rule
+    $\hat\alpha$ that can depend on the data in \emph{any} way --- and still
+    have $\mathbb E^{\mathbb P}[\phi_{\hat\alpha}]\le\hat\alpha$ hold?
+    \item This is a genuinely stronger requirement than ordinary level-$\alpha$
+    validity, because $\hat\alpha$ is allowed to depend on $\phi_\alpha$ itself
+    for every $\alpha$ simultaneously (i.e.\ on the whole family, not just one
+    member).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Definition 4.1: post-hoc valid tests and p-variables}
+  \begin{block}{Post-hoc valid family of tests}
+    A collection $(\phi_\alpha)_{\alpha\in(0,1)}$ is a \emph{post-hoc valid
+    family of tests} for $\mathcal P$ if for every $\mathbb P\in\mathcal P$
+    and every random variable $\hat\alpha$ taking values in $(0,1)$,
+    \[
+      \mathbb E^{\mathbb P}\!\left[\frac{\phi_{\hat\alpha}}{\hat\alpha}\right]\le 1.
+    \]
+    Equivalently,
+    \[
+      \mathbb E^{\mathbb P}\!\left[\sup_{\alpha\in(0,1)} \frac{\phi_\alpha}{\alpha}\right]\le 1
+      \qquad\text{for all }\mathbb P\in\mathcal P.
+    \]
+    \emph{Symbols:} $\phi_\alpha$ is the test at nominal level $\alpha$
+    (rejection probability); $\hat\alpha$ is any --- possibly adversarial
+    --- data-dependent level; the sup is over all possible levels at once.
+  \end{block}
+
+  \begin{block}{Post-hoc p-variable}
+    A nonnegative random variable $P$ is a \emph{post-hoc p-variable} for
+    $\mathcal P$ if for every $\mathbb P\in\mathcal P$ and every random
+    variable $\hat\alpha\in(0,1)$,
+    \[
+      \mathbb E^{\mathbb P}\!\left[\frac{\mathbb 1\{P\le\hat\alpha\}}{\hat\alpha}\right]\le 1,
+      \qquad\text{equivalently}\qquad
+      \mathbb E^{\mathbb P}\!\left[\sup_{\alpha\in(0,1)}\frac{\mathbb 1\{P\le\alpha\}}{\alpha}\right]\le 1.
+      \tag{4.1}
+    \]
+  \end{block}
+
+  \framebreak
+
+  \textbf{Contrast with an ordinary p-variable.} For a p-variable $P$, only a
+  \emph{weaker} condition holds:
+  \[
+    \sup_{\alpha\in(0,1)} \mathbb E^{\mathbb P}\!\left[\frac{\mathbb 1\{P\le\alpha\}}{\alpha}\right]\le 1
+    \qquad\text{for all }\mathbb P\in\mathcal P. \tag{4.2}
+  \]
+  This is precisely the usual definition of a p-variable. The crucial
+  difference between (4.1) and (4.2) is whether the $\sup_\alpha$ sits
+  \emph{inside} or \emph{outside} the expectation:
+  \begin{itemize}
+    \item (4.2): for \emph{each fixed} $\alpha$ chosen in advance, the average
+    rejection rate is $\le\alpha$. Fine if you commit to $\alpha$ up front.
+    \item (4.1): even the \emph{worst-case, data-dependent} choice of
+    $\alpha$ cannot inflate the average past $1$. This is what post-hoc
+    validity requires, and it is a fundamentally stronger property.
+  \end{itemize}
+
+  \begin{block}{Remark 4.2 (a useful generalization)}
+    For a p-variable $P$, the condition $\mathbb E^{\mathbb P}[\mathbb 1\{P\le T\}/T]\le 1$
+    (with $0/0:=0$) also holds for some nonnegative random variables $T$ (not
+    necessarily in $(0,1)$), provided
+    \[
+      p\mapsto \mathbb P(T\le t\mid P\le p)\ \text{is increasing for all } t\in\mathbb R. \tag{4.4}
+    \]
+    This is a form of \emph{negative dependence} between $P$ and $T$.
+    Examples satisfying (4.4): (a) $T$ is a constant; (b) $T$ is independent
+    of $P$; (c) $T$ is a decreasing function of $P$.
+  \end{block}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Proposition 4.3: e-variables generate post-hoc valid families}
+  \begin{block}{Proposition 4.3}
+    Let $E$ be an e-variable for $\mathcal P$. Then $((\alpha E)\wedge 1)_{\alpha\in(0,1)}$
+    is a post-hoc valid family of tests, and $(\mathbb 1\{E\ge 1/\alpha\})_{\alpha\in(0,1)}$
+    is a post-hoc valid family of binary tests.
+
+    \smallskip
+    Conversely, every post-hoc valid family of tests is dominated by
+    $((\alpha E)\wedge 1)_{\alpha\in(0,1)}$ for some e-variable $E$, and every
+    post-hoc valid family of binary tests is dominated by
+    $(\mathbb 1\{E\ge 1/\alpha\})_{\alpha\in(0,1)}$ for some e-variable $E$.
+  \end{block}
+  \emph{Symbols:} $x\wedge 1 = \min(x,1)$; ``dominated'' means member-wise
+  $\le$ (a dominated family rejects no more often, hence is weakly less
+  useful). \textbf{Punchline:} e-variables are (essentially) the
+  \emph{only} way to build post-hoc valid families.
+
+  \framebreak
+
+  \textbf{Why is this true? (proof idea)} The key elementary fact used
+  throughout this chapter is
+  \[
+    \mathbb 1\{x\ge 1\} \le x\wedge 1 \le x \qquad \text{for } x\ge 0, \tag{4.5}
+  \]
+  which is exactly the inequality underlying Markov's inequality. Applying
+  (4.5) with $x = E/\hat\alpha$, for any random $\hat\alpha\in(0,1)$:
+  \[
+    \mathbb E^{\mathbb P}\!\left[\frac{\mathbb 1\{E\ge 1/\hat\alpha\}}{\hat\alpha}\right]
+    \le \mathbb E^{\mathbb P}\!\left[\frac{(\hat\alpha E)\wedge 1}{\hat\alpha}\right]
+    \le \mathbb E^{\mathbb P}\!\left[\frac{\hat\alpha E}{\hat\alpha}\right]
+    = \mathbb E^{\mathbb P}[E] \le 1.
+  \]
+  This one chain of inequalities is the engine behind almost every result in
+  this section: it shows both families are post-hoc valid \emph{for any}
+  $\hat\alpha$ whatsoever, adversarial or not, because $\hat\alpha$ simply
+  cancels out.
+
+  \textit{Converse (sketch):} given a post-hoc valid family
+  $(\phi_\alpha)$, set $E=\sup_\alpha \phi_\alpha/\alpha$; post-hoc validity
+  says exactly that $E$ is an e-variable, and by construction
+  $\phi_\alpha\le(\alpha E)\wedge 1$.
+\end{frame}
+
+\begin{frame}{Proposition 4.4: post-hoc p-variables are (essentially) $1/E$}
+  \begin{block}{Proposition 4.4}
+    For a random variable $P$, the following are equivalent:
+    \begin{enumerate}
+      \item $P$ is a post-hoc p-variable for $\mathcal P$;
+      \item $P = 1/E$ on the event $\{P<1\}$, for some e-variable $E$ for $\mathcal P$;
+      \item $P \ge (1/E)\wedge 1$ for some e-variable $E$ for $\mathcal P$.
+    \end{enumerate}
+  \end{block}
+  If instead we strengthen (4.1) by letting $\alpha$ range over $(0,\infty)$,
+  \[
+    \sup_{\alpha\in(0,\infty)} \mathbb E^{\mathbb P}\!\left[\frac{\mathbb 1\{P\le\alpha\}}{\alpha}\right]\le 1
+    \quad\text{for all }\mathbb P\in\mathcal P, \tag{4.6}
+  \]
+  then a post-hoc p-variable is \emph{precisely} $P=1/E$ for some e-variable
+  $E$ (which may exceed $1$, since we allow p-variables larger than $1$).
+  \textbf{Takeaway:} post-hoc p-variables and e-variables are really the same
+  object, viewed from two sides of the same coin: $P = 1/E$.
+\end{frame}
+
+\begin{frame}{Interpreting the stronger guarantee: $E=41$ vs.\ $P=0.024$}
+  Suppose on the same hypothesis we observe an e-value $E\approx 41.05$
+  \emph{or} a p-value $P\approx 0.0244$ on the same data (as we compute
+  concretely below). These look ``comparable'' ($1/E\approx P$), but they are
+  \emph{not} interchangeable:
+  \begin{itemize}
+    \item Because of Proposition 4.3--4.4, we can \emph{safely} say: ``we
+    reject $H_0$ at level $0.0244$ (chosen after seeing $E$!), and even at
+    level $0.05$.'' This claim is protected by post-hoc validity.
+    \item We \emph{cannot} safely say: ``we reject $H_0$ at level $0.05$''
+    based on $P\approx 0.0244$, \emph{unless the level $0.05$ was fixed
+    before collecting and inspecting the data.}
+    \item If the level was chosen only \emph{after} peeking (e.g.\ ``the
+    p-value looked good, so let's call $0.05$ our threshold''), the ordinary
+    p-value's guarantee (4.2) says nothing, because (4.2) never promised
+    anything about a $\hat\alpha$ that depends on the data.
+  \end{itemize}
+  \textbf{Rule of thumb:} an e-value of $1/a$ carries \emph{strictly more}
+  information than a p-value of $a$, precisely because of this extra
+  post-hoc guarantee.
+\end{frame}
+
+\begin{frame}{Running example, Part 1: peeking is safe with e-values}
+  \textbf{Setup.} $H_0:\theta=0.5$ (fair coin). A scientist tosses the coin
+  $n=20$ times and forms the likelihood-ratio e-value against the simple
+  alternative $\theta=0.75$:
+  \[
+    E(x) = \left(\frac{0.75}{0.5}\right)^{H}\left(\frac{0.25}{0.5}\right)^{T} = 1.5^{H}\cdot 0.5^{T},
+  \]
+  where $H$ = number of heads, $T=20-H$ = number of tails. This $E$ is an
+  e-variable for $H_0$: $\mathbb E^{\theta=0.5}[E] = 1$ exactly (it's a
+  likelihood ratio).
+
+  \medskip
+  \textbf{Data.} Suppose she observes $H=16$ heads, $T=4$ tails. Then
+  \[
+    E = 1.5^{16}\times 0.5^{4} \approx 41.05.
+  \]
+  \textbf{Post-hoc decision.} \emph{After} seeing $E\approx 41.05$, she
+  decides --- on the spot, informed by how good the number looks --- to
+  report significance at the data-dependent level
+  \[
+    \hat\alpha = 1/E \approx 0.0244
+  \]
+  (the smallest level her evidence supports). By Proposition 4.3--4.4 this is
+  completely valid: the family $(\mathbb 1\{E\ge1/\alpha\})_\alpha$ is
+  post-hoc valid \emph{for any} rule choosing $\hat\alpha$, including this
+  self-serving one. She may honestly report ``significant at level $0.0244$,
+  chosen after seeing the data.''
+\end{frame}
+
+\begin{frame}{Running example, Part 2: peeking breaks p-value validity}
+  \textbf{Same idea, now with an ordinary p-value.} Under $H_0$, suppose $P$
+  is (as usual) continuous with $P\sim\text{Uniform}(0,1)$.
+
+  \medskip
+  \textbf{The adversarial choice.} Consider a scientist who, having computed
+  $P$, sets her ``after-the-fact'' threshold to be exactly her own p-value:
+  $\hat\alpha := P$. Then trivially
+  \[
+    \mathbb P\big(P \le \hat\alpha\big) = \mathbb P(P\le P) = 1,
+  \]
+  i.e.\ she can \emph{always} claim ``significant at level $\hat\alpha$'' ---
+  a $100\%$ false-rejection rate under the null, however small $\alpha$
+  ``looks''! Compare to a pre-registered $\alpha=0.05$: type-I error is
+  exactly $0.05$, as it should be.
+
+  \medskip
+  \textbf{Same fact, via Definition 4.1.} The quantity that post-hoc validity
+  requires to be $\le 1$ blows up for p-values:
+  \[
+    \mathbb E^{\mathbb P}\!\left[\sup_{\alpha\in(0,1)}\frac{\mathbb 1\{P\le\alpha\}}{\alpha}\right]
+     = \mathbb E^{\mathbb P}\!\left[\frac1P\right]
+     = \int_0^1 \frac1p\,dp = \infty.
+  \]
+  \textbf{Contrast:} for the e-value family, the analogous quantity is
+  $\mathbb E^{\mathbb P}[E\cdot\mathbb 1\{E\ge1\}]\le\mathbb E^{\mathbb P}[E]\le 1$ ---
+  finite, by Markov's inequality, no matter what. This is the concrete,
+  numerical face of ``post-hoc validity for e-values, but not for p-values.''
+\end{frame}
+
+\begin{frame}[fragile]{Python: post-hoc risk -- e-values vs.\ p-values (\S4.1)}
+\begin{lstlisting}
+import numpy as np
+from scipy.special import erfc
+
+rng = np.random.default_rng(0)
+theta0, theta1, n, M = 0.5, 0.6, 30, 200_000
+
+# simulate under H0: theta = 0.5
+heads = rng.binomial(n, theta0, size=M)
+tails = n - heads
+
+# likelihood-ratio e-value for theta1 vs theta0
+E = (theta1/theta0)**heads * ((1-theta1)/(1-theta0))**tails
+
+# continuous one-sided p-value (normal approximation)
+z = (heads - n*theta0) / np.sqrt(n*theta0*(1-theta0))
+P = np.clip(0.5*erfc(z/np.sqrt(2)), 1e-300, 1.0)
+
+R_P = 1.0 / P                 # sup_alpha 1{P<=alpha}/alpha
+R_E = E * (E >= 1.0)          # sup_alpha 1{E>=1/alpha}/alpha
+
+print("running avg R_P (p-values):", np.mean(R_P))   # unstable, >> 1
+print("running avg R_E (e-values):", np.mean(R_E))   # stays <= 1
+\end{lstlisting}
+  \textbf{Output (M=200{,}000 replicates):} running average of $R_P\approx 15$
+  (unstable, keeps growing with $M$ since $\mathbb E[1/P]=\infty$), while
+  running average of $R_E\approx 0.71 \le 1$, exactly as guaranteed by
+  Markov's inequality applied to the e-variable $E$. See
+  \texttt{figures/fig\_posthoc\_validity.pdf} for the full trajectory.
+\end{frame}
+
+\begin{frame}{Section 4.1 take-aways}
+  \begin{itemize}
+    \item Ordinary level-$\alpha$ tests only control error \emph{for a fixed,
+    pre-registered} $\alpha$.
+    \item Post-hoc validity (Def.\ 4.1) additionally controls error for
+    \emph{any}, even adversarially data-dependent, choice of level $\hat\alpha$.
+    \item e-variables generate post-hoc valid families essentially uniquely
+    (Prop.\ 4.3), and post-hoc p-variables are just $1/E$ (Prop.\ 4.4).
+    \item Concretely: it is fine to look at your e-value and then decide how
+    impressive a claim to make; doing the analogous thing with an ordinary
+    p-value can inflate your true error rate all the way to $100\%$.
+  \end{itemize}
+\end{frame}
+
+% =======================================================================
+\section{Post-hoc Decisions Using P-values and E-values}
+
+\begin{frame}{Section 4.2}
+  \tableofcontents[currentsection]
+\end{frame}
+
+\begin{frame}{Intuition: beyond accept/reject}
+  \begin{itemize}
+    \item So far, ``decisions'' meant a binary choice: reject $H_0$ or not.
+    \item Real decision-making is richer: a doctor may choose among
+    \emph{several} treatment intensities; a regulator may choose among
+    several licensing tiers; and \emph{which} decisions are even on the
+    table may itself depend on what the data show (a data-dependent
+    ``scenario'').
+    \item Section 4.2 asks: if we build our decision rule from a p-value vs.\
+    from an e-value, which one keeps its risk-control promise once decisions
+    become non-binary, or once the decision problem itself depends on data?
+    \item \textbf{Spoiler:} for the simplest case (binary decisions, fixed
+    scenario), both work. As soon as either non-binary decisions or
+    data-dependent scenarios enter, only the e-value-based rule survives.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Setup: loss functions and the risk-constrained problem}
+  Consider loss functions $L_b:\{0,1\}\times D_b\to\mathbb R$ indexed by a
+  \emph{scenario} $b\in\mathcal B\subseteq\mathbb R$, where $D_b\subseteq\mathbb N_0$
+  is the set of possible decisions in scenario $b$.
+  \begin{itemize}
+    \item $L_b(0,d)$: loss to the decision maker from decision $d$
+    \emph{when $H_0$ is true};
+    \item $L_b(1,d)$: loss from decision $d$ \emph{when the alternative is true};
+    \item WLOG, $d\mapsto L_b(0,d)$ is strictly increasing and
+    $d\mapsto L_b(1,d)$ is strictly decreasing --- larger $d$ = a ``more
+    aggressive'' decision: costlier if $H_0$ true, more beneficial if the
+    alternative is true.
+  \end{itemize}
+  Data $X\in\mathcal Z$; decision rule $\delta(X)\in D_b$.
+
+  \begin{block}{Risk-constrained decision problem (4.7)}
+    \[
+      \text{minimize}_{\delta:\mathcal Z\to D_b}\ \ \mathbb E^{\mathbb Q}[L_b(1,\delta(X))]
+      \quad\text{s.t.}\quad
+      \sup_{\mathbb P\in\mathcal P}\mathbb E^{\mathbb P}[L_b(0,\delta(X))]\le\gamma,
+    \]
+  \end{block}
+  where $\gamma>0$ is a prespecified \emph{risk budget}, and the constraint
+  is the \emph{risk constraint}. (We fix a simple alternative
+  $\mathcal Q=\{\mathbb Q\}$ for simplicity; the composite case is analogous.)
+\end{frame}
+
+\begin{frame}{Example 4.5: ternary significance decisions}
+  A very common real practice: label a result ``non-significant (NS)'',
+  ``significant (S)'', or ``very significant (VS)'' after seeing the data.
+  \[
+    D_b=\{0,1,2\},\qquad 0=\text{NS},\ 1=\text{S},\ 2=\text{VS}.
+  \]
+  If $H_0$ true, decision $0$ (NS) has least loss; if the alternative is
+  true, decision $2$ (VS) has least loss. A common choice:
+  \[
+    \gamma=1,\qquad L_b(0,0)=0,\qquad L_b(0,1)=\frac1{\alpha_1},\qquad L_b(0,2)=\frac1{\alpha_2},
+  \]
+  for some $0<\alpha_2<\alpha_1<1$ (e.g.\ $\alpha_1=0.05$, $\alpha_2=0.01$).
+\end{frame}
+
+\begin{frame}{Decision rules based on p-values and e-values}
+  Suppose a p-variable $P(X)$ and an e-variable $E(X)$ for $\mathcal P$ are
+  both computed from the data.
+  \begin{block}{p-value decision rule (4.8)}
+    \[
+      \delta_P(X) = \max\{\,d\in D_b : P(X)\,L_b(0,d)\le\gamma\,\}.
+    \]
+  \end{block}
+  \begin{block}{e-value decision rule (4.9)}
+    \[
+      \delta_E(X) = \max\{\,d\in D_b : L_b(0,d)\le\gamma\,E(X)\,\}.
+    \]
+  \end{block}
+  \emph{Symbols:} both rules pick the most aggressive decision $d$ still
+  compatible with the risk budget $\gamma$, using either $P(X)$ or $E(X)$ as
+  the ``evidence multiplier.''
+\end{frame}
+
+\begin{frame}{Example 4.6: ternary decisions, worked out with numbers}
+  Take $\alpha_1=0.05$, $\alpha_2=0.01$, $\gamma=1$ (as in Example 4.5).
+  \begin{block}{p-value rule (4.8)}
+    \[
+      \delta_P(X) =
+      \begin{cases}
+        2 & \text{if } P(X)\le 0.01,\\
+        1 & \text{if } 0.01 < P(X) \le 0.05,\\
+        0 & \text{otherwise.}
+      \end{cases}
+    \]
+    This is standard scientific practice (``$*$'' vs.\ ``$**$'' asterisks on
+    p-values) -- \textbf{but it will turn out not to satisfy the risk
+    constraint (4.7) in general (Example 4.10)!}
+  \end{block}
+  \begin{block}{e-value rule (4.9)}
+    \[
+      \delta_E(X) =
+      \begin{cases}
+        2 & \text{if } E(X)\ge 100,\\
+        1 & \text{if } 20\le E(X) < 100,\\
+        0 & \text{otherwise.}
+      \end{cases}
+    \]
+    This rule \emph{always} satisfies the risk constraint (Theorem 4.9).
+  \end{block}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Binary decisions in a fixed scenario: Proposition 4.7}
+  Simplest case: $D_b=\{0,1\}$ ($0$=accept, $1$=reject), and WLOG
+  $L_b(0,0)=L_b(1,1)=0$, $L_b(0,1)=L_b(1,0)=1$. Then (4.7) becomes the
+  familiar
+  \[
+    \text{maximize}\ \ \mathbb Q(\delta(X)=1)\quad\text{s.t.}\quad
+    \sup_{\mathbb P\in\mathcal P}\mathbb P(\delta(X)=1)\le\gamma, \tag{4.10}
+  \]
+  i.e.\ maximize power subject to type-I error control $\gamma$.
+  \begin{itemize}
+    \item p-value rule: $\delta_P(X)=1$ iff $P(X)\le\gamma$.
+    \item e-value rule: $\delta_E(X)=1$ iff $E(X)\ge 1/\gamma$.
+  \end{itemize}
+
+  \begin{block}{Proposition 4.7}
+    Given a fixed scenario $b$ with $D_b=\{0,1\}$, both $\delta_P$ and
+    $\delta_E$ satisfy the risk constraint in (4.10).
+  \end{block}
+
+  \framebreak
+  \textbf{Proof.} For any $\mathbb P\in\mathcal P$:
+  \[
+    \mathbb E^{\mathbb P}[L_b(0,\delta_P(X))] = \mathbb P(\delta_P(X)=1) = \mathbb P(P(X)\le\gamma)\le\gamma,
+  \]
+  using the p-variable property. And
+  \[
+    \mathbb E^{\mathbb P}[L_b(0,\delta_E(X))] \le \mathbb E^{\mathbb P}[\gamma E(X)] \le \gamma,
+  \]
+  using $L_b(0,\delta_E(X))\le\gamma E(X)$ by construction, and
+  $\mathbb E^{\mathbb P}[E]\le1$.
+
+  \medskip
+  \textbf{Conclusion for this simple case:} both approaches are valid! Since
+  $1/E(X)$ is itself a p-variable (Section 2.1), the e-value rule is
+  typically \emph{more conservative} than the p-value rule here. The real
+  difference emerges only once we leave this simplest binary/fixed-scenario
+  world.
+\end{frame}
+
+\begin{frame}{Non-binary or data-dependent scenarios: Example 4.8}
+  \textbf{Vaccine story.} A clinical trial's data can put the scientist in
+  one of two \emph{scenarios} $B\in\{1,2\}$:
+  \begin{itemize}
+    \item $B=1$ (``promising''): decisions $D_1=\{0,1\}$, where
+    $\delta(X,1)=0$ means \emph{don't vaccinate anyone} and $\delta(X,1)=1$
+    means \emph{vaccinate the highest-risk population}.
+    \item $B=2$ (``extremely effective'', unexpected): now
+    $\delta(X,2)=1$ means something more aggressive: \emph{vaccinate the
+    full population}.
+  \end{itemize}
+  \begin{block}{Toy numeric loss table}
+    \begin{center}
+    \begin{tabular}{lccc}
+      \toprule
+      Scenario $b$ & $L_b(0,0)$ & $L_b(0,1)$ & meaning of $d=1$\\
+      \midrule
+      $B=1$ (promising) & $0$ & $1$ & vaccinate high-risk only\\
+      $B=2$ (extremely effective) & $0$ & $10$ & vaccinate everyone\\
+      \bottomrule
+    \end{tabular}
+    \end{center}
+  \end{block}
+  Note $D_1$ and $D_2$ carry \emph{different meanings} for the same label
+  $d=1$ -- and which scenario $B$ you're even in is itself random,
+  determined by the data!
+\end{frame}
+
+\begin{frame}[allowframebreaks]{The formal data-dependent problems (4.11)-(4.12)}
+  Write $B$ (a function of $X$) for the observable, data-dependent scenario;
+  the decision rule now takes both $X$ and $B$: $\delta(X,B)\in D_B$.
+
+  \begin{block}{Problem (4.11): scenario $B$ known to the decision maker}
+    \[
+      \text{minimize}\ \ \mathbb E^{\mathbb Q}[L_B(1,\delta(X,B))]
+      \quad\text{s.t.}\quad
+      \sup_{\mathbb P\in\mathcal P}\mathbb E^{\mathbb P}[L_B(0,\delta(X,B))]\le\gamma.
+    \]
+  \end{block}
+
+  \begin{block}{Problem (4.12): worst-case objective/constraint over all $b\in\mathcal B$}
+    \[
+      \text{minimize}\ \ \mathbb E^{\mathbb Q}\!\Big[\sup_{b\in\mathcal B}L_b(1,\delta(X,b))\Big]
+      \quad\text{s.t.}\quad
+      \sup_{\mathbb P\in\mathcal P}\mathbb E^{\mathbb P}\!\Big[\sup_{b\in\mathcal B}L_b(0,\delta(X,b))\Big]\le\gamma.
+    \]
+  \end{block}
+  The e-value rule extends naturally to this setting and by construction
+  satisfies, for every $b$,
+  \[
+    L_b(0,\delta_E(X,b)) \le \gamma E(X). \tag{4.13}
+  \]
+
+  \framebreak
+  \begin{block}{Theorem 4.9}
+    \begin{enumerate}
+      \item $\delta_E$ (for any e-variable $E(X)$) satisfies the risk
+      constraints in both (4.11) and (4.12).
+      \item Any $\delta^*$ satisfying the constraint in (4.11) can be written
+      as $\delta_E(X,B)$ for some e-variable $E(X)$.
+      \item Any $\delta^*$ satisfying the constraint in (4.12) satisfies
+      $\delta^*(X,b)\le\delta_E(X,b)$ for some e-variable $E(X)$ and
+      \emph{all} $b\in\mathcal B$ (i.e.\ $\delta^*$ is weakly improved by
+      using e-variables).
+      \item The p-value rule $\delta_P$ does \emph{not} satisfy the risk
+      constraint in (4.11) or (4.12) in general, once $D_b$ has at least $3$
+      elements or $\mathcal B$ has at least $2$ elements.
+    \end{enumerate}
+  \end{block}
+  \textbf{Proof of (i):} directly from (4.13), $\mathbb E^{\mathbb P}[\sup_b L_b(0,\delta_E(X,b))]\le\mathbb E^{\mathbb P}[\gamma E(X)]\le\gamma$.
+\end{frame}
+
+\begin{frame}{Example 4.10: a concrete counterexample for $\delta_P$}
+  Let $P(X)\sim\text{Uniform}[0,1]$ under $\mathbb P\in\mathcal P$.
+  Take $\mathcal B=\{1,2\}$, $D_b=\{0,1\}$, $L_1(0,1)=\ell_1$,
+  $L_2(0,1)=\ell_2$ with $\ell_1<\ell_2$, and let the scenario be
+  $B=2$ exactly when $P(X)\le\gamma/\ell_2$ (otherwise $B=1$). A direct
+  computation gives
+  \[
+    \mathbb E^{\mathbb P}[L_B(0,\delta_P(X))]
+    = \ell_1\,\mathbb P\!\left(\tfrac{\gamma}{\ell_2}\le P(X)\le\tfrac{\gamma}{\ell_1}\right)
+      + \ell_2\,\mathbb P\!\left(P(X)\le\tfrac{\gamma}{\ell_2}\right)
+    = \gamma\Big(1-\tfrac{\ell_1}{\ell_2}\Big)+\gamma \;>\;\gamma. \tag{4.14}
+  \]
+  \textbf{Concrete numbers:} take $\gamma=0.05$, $\ell_1=1$, $\ell_2=10$.
+  Then the achieved risk is
+  \[
+    0.05\Big(1-\tfrac1{10}\Big)+0.05 = 0.045+0.05 = 0.095,
+  \]
+  \emph{nearly double} the allowed budget $\gamma=0.05$! The p-value rule
+  looks fine \emph{within} each fixed scenario, but silently breaks the
+  overall risk guarantee once the scenario itself is chosen using the data.
+  By contrast (Theorem 4.9(i)), $\delta_E$ never does this.
+\end{frame}
+
+\begin{frame}[fragile]{Python: verifying Example 4.10 by simulation (\S4.2)}
+\begin{lstlisting}
+import numpy as np
+rng = np.random.default_rng(1)
+
+gamma, ell1, ell2 = 0.05, 1.0, 10.0
+M = 2_000_000
+P = rng.uniform(0, 1, size=M)          # P-variable under H0
+
+# scenario B depends on the data:
+B = np.where(P <= gamma/ell2, 2, 1)
+
+# delta_P(X) = 1 iff P(X) * L_B(0,1) <= gamma
+L_B_of_1 = np.where(B == 2, ell2, ell1)
+delta_P = (P * L_B_of_1 <= gamma).astype(int)
+
+loss = np.where(delta_P == 1, L_B_of_1, 0.0)
+print("empirical risk of delta_P:", loss.mean(), " (budget =", gamma, ")")
+# --> approx 0.095, almost double the risk budget gamma = 0.05
+\end{lstlisting}
+  The simulated risk matches the closed-form value $0.095$ from (4.14),
+  confirming that a p-value-based ternary/scenario-dependent rule can
+  silently blow through its risk budget.
+\end{frame}
+
+\begin{frame}{Section 4.2 take-aways}
+  \begin{itemize}
+    \item With \emph{binary} decisions and a \emph{fixed} scenario, both
+    p-value- and e-value-based decision rules are valid (Prop.\ 4.7);
+    e-value rules tend to be more conservative here.
+    \item As soon as decisions are non-binary (e.g.\ NS/S/VS) \emph{or} the
+    decision problem itself is data-dependent (the scenario $B$ depends on
+    $X$), only e-value-based rules keep the risk-control promise
+    (Theorem 4.9); p-value-based rules can silently violate it
+    (Example 4.10).
+    \item Practical warning: this failure mode is common and often
+    \emph{unconscious} -- e.g.\ marking p-values with significance asterisks
+    after the fact is exactly this ternary-decision setting.
+  \end{itemize}
+\end{frame}
+
+% =======================================================================
+\section{Optional Continuation of Experiments}
+
+\begin{frame}{Section 4.3}
+  \tableofcontents[currentsection]
+\end{frame}
+
+\begin{frame}{Intuition: ``I should have collected more data''}
+  \begin{itemize}
+    \item A scientist runs a carefully pre-planned experiment. The result is
+    close, but not quite significant. In hindsight, they realize they
+    underestimated the effect size and should have collected more data.
+    \item With a p-value, this realization is \emph{useless}: the type-I
+    error budget for that test was already spent the moment they committed
+    to that sample size and threshold. Tacking on more data and re-testing
+    (even honestly) inflates the false-positive rate.
+    \item \textbf{The question of Section 4.3:} is there a principled way to
+    let a scientist decide --- \emph{after seeing the first batch of data}
+    --- whether to run more, and if so, keep a valid guarantee against
+    $H_0$? We call this \emph{optional continuation}.
+    \item The answer, again, is yes with e-values.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Coin-fairness example: the Neyman--Pearson baseline}
+  \textbf{Setup.} Test $H_0:\theta=0.5$ (fair coin) vs.\ an anticipated bias
+  $\theta=0.6$. To guarantee both type-I and type-II error at $0.05$, the
+  optimal (Neyman--Pearson) likelihood-ratio test:
+  \begin{itemize}
+    \item tosses the coin $n=280$ times;
+    \item rejects $H_0$ iff at least $154$ heads appear.
+  \end{itemize}
+  Suppose, on performing those $280$ tosses, the scientist does \emph{not}
+  reject. Maybe it's a type-II error; maybe they should have planned for a
+  smaller bias, say $\theta=0.55$. \textbf{But it's too late}: the type-I
+  error budget of this test has already been fully spent, and re-examining
+  the same data with a new threshold is not valid. With p-values, such
+  regrets are simply futile.
+\end{frame}
+
+\begin{frame}[allowframebreaks]{E-values to the rescue: combining fresh batches}
+  Rewrite the original test as: reject when the LR-test p-value drops below
+  $0.05$. Now instead summarize the very same $280$-toss experiment as an
+  e-value $E_1$ from the start (the likelihood ratio is a natural choice).
+
+  \begin{block}{Key martingale property}
+    Suppose the scientist (or someone else) is permitted to toss the coin
+    more times -- say $50$ more -- and computes a fresh e-value $E_2$ based
+    \emph{only} on this new batch. Under the null,
+    \[
+      \mathbb E^{\mathbb P}[E_2\mid E_1] = 1.
+    \]
+    Then $E^{(2)} := E_2 E_1$ is \emph{also} a valid e-value for the same
+    null (by the law of iterated expectation:
+    $\mathbb E^{\mathbb P}[E^{(2)}]=\mathbb E^{\mathbb P}[\mathbb E^{\mathbb P}[E_2E_1\mid E_1]]=\mathbb E^{\mathbb P}[E_1\cdot1]=1$).
+    Crucially: \emph{both} the decision to run this second experiment
+    \emph{and} its design (e.g.\ how many more tosses) are allowed to depend
+    on the first batch of data -- this is a post-hoc decision, and it
+    remains valid!
+  \end{block}
+
+  \framebreak
+  The scientist may still be unsatisfied. They can collect a third batch,
+  summarize it as $E_3$, and form $E^{(3)} := E_3 E^{(2)}$, itself a valid
+  e-value. \textbf{This can be repeated indefinitely}: the evidence process
+  $E^{(1)}, E^{(2)}, \dots$ can be monitored continually, and $H_0$ rejected
+  as soon as the current evidence exceeds $1/\alpha$ -- this is controlled
+  by \emph{Ville's inequality} (Chapter 7). Alternatively, the scientist may
+  stop at any data-dependent stopping time $\tau$ and report $E^{(\tau)}$,
+  itself an e-value, by the \emph{optional stopping theorem} (Chapter 7).
+  When each batch shrinks to a single toss, this becomes a fully sequential
+  test -- Wald's SPRT (Section 7.2).
+\end{frame}
+
+\begin{frame}{Worked numbers: from ``promising'' to a valid rejection}
+  \textbf{Continuing our coin example.} Suppose the scientist's original
+  $n=280$-toss batch yields e-value
+  \[
+    E_1 = 12.
+  \]
+  Since we need $E\ge 1/\alpha = 20$ to reject at $\alpha=0.05$, they cannot
+  reject yet -- but the post-hoc p-value $1/E_1\approx 0.083$ is
+  ``promising.'' \emph{Because} it looked promising, they decide (post-hoc!)
+  to run $50$ more tosses, obtaining a fresh e-value on the new batch alone:
+  \[
+    E_2 = 2.5.
+  \]
+  The combined e-value is
+  \[
+    E^{(2)} = E_1\times E_2 = 12\times 2.5 = 30 \ge 20,
+  \]
+  so \textbf{they may now validly reject $H_0$ at level $\alpha=0.05$} --
+  even though the second experiment was only run \emph{because} the first
+  one was almost significant, and even though this is exactly the kind of
+  peeking that would be illegitimate with p-values.
+\end{frame}
+
+\begin{frame}{Optional continuation vs.\ optional stopping: who's continuing?}
+  \begin{itemize}
+    \item This setting is intimately related to sequential testing /
+    optional stopping (Chapter 7), but is \emph{motivated differently}.
+    \item Here, the scientist who continues the study may be a
+    \emph{different} person from the one who collected the first batch.
+    Data collection may be expensive -- the first scientist may simply have
+    run out of money, or given up because the evidence looked unpromising.
+    \item We call this setting \emph{optional continuation}, in contrast to
+    \emph{optional stopping} (Chapter 7), where a \emph{single} experimenter
+    controls if/when to stop a single ongoing experiment.
+    \item Mathematically the multiplicative combination rule is identical;
+    the distinction is about \emph{who} is making the post-hoc decision, and
+    why.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{The ``living meta-analysis'' story}
+  \textbf{Scenario.} A drug (e.g.\ a pandemic vaccine) is expensive to test.
+  \begin{itemize}
+    \item Country A runs an expensive trial; the findings are impressive but
+    Country B still deems it too risky to launch without its own evidence.
+    \item Country B, piggy-backing on Country A's success, runs its own
+    trial and \emph{appends} its e-value evidence to Country A's.
+    \item Country C, who wasn't even considering the drug, may now be
+    convinced to run its own trial too.
+  \end{itemize}
+  As long as every country's evidence is summarized as an e-value, the
+  overall product $E^{(1)}E^{(2)}E^{(3)}\cdots$ is easy to update and
+  monitor sequentially across this unplanned, ad hoc sequence of trials.
+  \textbf{Toy numbers:} wealthier countries might launch a vaccine program
+  once the combined e-value exceeds $20$ (i.e.\ post-hoc level $\le0.05$),
+  while poorer, more risk-averse countries wait until it exceeds $100$
+  (post-hoc level $\le0.01$) before acting \emph{without even running their
+  own trial}.
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Three important caveats}
+  \begin{block}{1. No hiding unfavorable findings}
+    No participant may discard or hide their result, even if their own batch
+    gives a small e-value (less than $1$, i.e.\ evidence \emph{for} $H_0$).
+    Once the decision to run the experiment is made, the resulting e-value
+    \emph{must} be incorporated into the combined evidence.
+  \end{block}
+
+  \begin{block}{2. The ``poison pill'' problem, and two fixes}
+    A single scientist reporting an e-value of exactly $0$ can permanently
+    destroy \emph{all} previously accumulated evidence (since the running
+    product becomes $0$ forever after). Two ways to guard against this:
+    \begin{itemize}
+      \item Agree in advance to use e-values that are never exactly $0$ by
+      design (e.g.\ log-optimal e-values);
+      \item Or agree to combine via
+      $\prod_{i=1}^n\big(\tfrac{1+E_i}{2}\big)$, so no single batch can
+      destroy more than half of the existing evidence -- generalizable to
+      $\prod_{i=1}^n(\lambda_i+(1-\lambda_i)E_i)$ with $\lambda_i\in[0,1]$
+      \emph{fixed before seeing $E_i$}.
+    \end{itemize}
+    Either way: the $i$-th e-value's construction, and how it is combined
+    with the previous ones, must be specified \emph{before} seeing the
+    $i$-th batch of data.
+  \end{block}
+
+  \framebreak
+  \begin{block}{3. The decision to continue cannot be based on the p-value ``not being small enough''}
+    The decision to continue collecting data at a second stage \emph{cannot}
+    be triggered by ``the first p-value wasn't quite below $0.05$'' --
+    testing at the first stage with that p-value already used up the entire
+    type-I error budget. One must commit either to using a p-value with a
+    single, fixed batch, \emph{or} to using an e-value with the possibility
+    of extending the analysis -- not switch between the two after the fact.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Why can't we just combine p-values the same way?}
+  It is tempting to think the second batch (say Country B's trial data) is
+  ``independent'' of the first, and to merge the two p-values with a
+  standard rule for independent p-values (e.g.\ Fisher's method).
+  \textbf{This would be a mistake.}
+  \begin{itemize}
+    \item The second p-value is \emph{not} really independent of the first,
+    despite being computed on ``separate'' data: it would not even exist had
+    the first p-value not looked promising enough to justify continuing!
+    \item So the \emph{number} of p-values collected is itself random, and
+    the p-values are \emph{sequentially dependent} in a complicated way that
+    standard combination rules do not account for.
+    \item Such post-hoc decisions to run further trials, or to fold in
+    accumulated data from separate trials, are a defining feature of
+    e-value-based evidence collection -- and a fundamental obstacle for
+    p-value-based analysis.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Python: e-process vs.\ naive p-value peeking (\S4.3)}
+\begin{lstlisting}
+import numpy as np
+from scipy.special import erfc
+rng = np.random.default_rng(2)
+
+theta0, theta1 = 0.5, 0.6
+n_batches, batch_size, n_runs, alpha = 20, 10, 20_000, 0.05
+threshold = 1/alpha                     # = 20
+
+heads = rng.binomial(batch_size, theta0, size=(n_runs, n_batches))
+tails = batch_size - heads
+
+e_batch = (theta1/theta0)**heads * ((1-theta1)/(1-theta0))**tails
+z = (heads - batch_size*theta0)/np.sqrt(batch_size*theta0*(1-theta0))
+p_batch = np.clip(0.5*erfc(z/np.sqrt(2)), 1e-300, 1.0)
+
+e_process = np.cumprod(e_batch, axis=1)          # the e-process
+ever_reject_e = (np.cumsum(e_process >= threshold, axis=1) > 0)
+ever_reject_p = (np.cumsum(p_batch < alpha, axis=1) > 0)   # naive peeking
+
+print("false-rejection rate, e-process (Ville):", ever_reject_e[:, -1].mean())
+print("false-rejection rate, naive p peeking  :", ever_reject_p[:, -1].mean())
+\end{lstlisting}
+  \textbf{Output (20 looks, $\alpha=0.05$):} e-process monitoring stays at
+  $\approx 0.028\le 0.05$ (Ville's inequality holds), while naive repeated
+  p-value peeking inflates to $\approx 0.675$ -- more than \emph{thirteen
+  times} the nominal level. See \texttt{figures/fig\_optional\_continuation.pdf}.
+\end{frame}
+
+\begin{frame}{Section 4.3 take-aways}
+  \begin{itemize}
+    \item E-values multiply: fresh e-values on fresh (even post-hoc decided)
+    batches combine into a valid e-value for the whole history, by the
+    tower property $\mathbb E^{\mathbb P}[E_2\mid E_1]=1$.
+    \item This licenses \emph{optional continuation}: deciding whether, and
+    how, to gather more data \emph{after} seeing preliminary results ---
+    something ordinary p-values cannot support once the first test's error
+    budget is spent.
+    \item Three caveats keep the guarantee honest: no hiding results, guard
+    against a poison-pill e-value of $0$, and never let the p-value's own
+    "closeness to significance" trigger continuation.
+    \item Sequential monitoring of the e-process is controlled by Ville's
+    inequality (previewed here, developed fully in Chapter 7).
+  \end{itemize}
+\end{frame}
+
+% =======================================================================
+\section{Incentive-Compatible Principal-Agent Hypothesis Testing}
+
+\begin{frame}{Section 4.4}
+  \tableofcontents[currentsection]
+\end{frame}
+
+\begin{frame}{Intuition: the regulator and the pharma company}
+  \begin{itemize}
+    \item Two parties: a \emph{principal} (e.g.\ a regulator granting drug
+    licenses) and an \emph{agent} (e.g.\ a pharmaceutical company running a
+    trial).
+    \item Two features make this different from ordinary testing:
+    \begin{enumerate}
+      \item \textbf{Information asymmetry:} the agent may know far more
+      about whether their drug actually works than the regulator does.
+      \item \textbf{Conflicting incentives:} the regulator wants to keep
+      ineffective drugs off the market; the agent wants a license to sell
+      and profit, whether or not the drug works.
+      \end{enumerate}
+    \item Standard practice: if $P<0.05$, grant the license. We will see
+    \emph{numerically} why this is not \emph{incentive compatible}, and how
+    e-values fix it.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{The incentive-compatibility problem: a numeric payoff table}
+  A testing paradigm is \emph{incentive compatible} if it discourages
+  \emph{malicious} agents (who know $H_0$ is true, e.g.\ they have a
+  placebo) from even attempting a trial. Suppose a trial costs
+  \$$10$ million, and the standard rule is: license granted iff $P<0.05$.
+
+  \begin{block}{Toy payoff table for a malicious agent (drug is a placebo)}
+    \begin{center}
+    \begin{tabular}{lccc}
+      \toprule
+      Anticipated profit if approved & Trial cost & $\Pr(\text{approval}\mid H_0)$ & Expected net profit\\
+      \midrule
+      \$100 million & \$10 million & $0.05$ & $100(0.05)-10 = -\$5$M\\
+      \$1{,}000 million (\$1B) & \$10 million & $0.05$ & $1000(0.05)-10=+\$40$M\\
+      \bottomrule
+    \end{tabular}
+    \end{center}
+  \end{block}
+  \textbf{Reading the table:} if the anticipated profit is modest (\$100M),
+  the malicious agent expects to \emph{lose} money and won't run the trial
+  -- good. But if the anticipated profit is large enough (\$1B), the
+  malicious agent's expected profit is strongly \emph{positive}: they will
+  run the trial \emph{purely to gamble on the $5\%$ chance of approval}.
+  The threshold rule is \emph{not} incentive compatible once profits are
+  large enough.
+\end{frame}
+
+\begin{frame}{Why this matters at scale}
+  \begin{block}{A quick back-of-envelope calculation}
+    Suppose there are $20$ times as many ineffective drugs (placebos, in
+    development) as truly effective ones, and $5\%$ of ineffective drugs get
+    approved (the false-positive rate $\alpha=0.05$).
+    \begin{center}
+    \begin{tabular}{lccc}
+      \toprule
+      Drug type & Relative count & Approval rate & Expected \# approved\\
+      \midrule
+      Ineffective & $20$ & $5\%$ & $20\times0.05 = 1.0$\\
+      Effective & $1$ & $\le 100\%$ (power) & $\le 1.0$\\
+      \bottomrule
+    \end{tabular}
+    \end{center}
+  \end{block}
+  Since the expected number of \emph{ineffective} drugs approved ($1.0$) is
+  already at least as large as the expected number of \emph{effective}
+  drugs approved ($\le1.0$), \textbf{at least half of all approved drugs
+  will be ineffective} -- a stark illustration of why the naive
+  threshold-on-a-p-value protocol is dangerous at a population level, quite
+  apart from the incentive problem above.
+\end{frame}
+
+\begin{frame}{Designing a better protocol}
+  Another problem with the naive protocol: a malicious agent's potential
+  profit is limited only by \emph{market size}, not by the strength of their
+  statistical evidence. We would like a protocol with two properties:
+  \begin{enumerate}
+    \item \textbf{Incentive compatible:} malicious agents have no incentive
+    to participate, regardless of market size.
+    \item \textbf{Evidence-scaled reward:} if an agent participates, their
+    permitted sales/profit should \emph{increase with the strength of the
+    statistical evidence} for effectiveness.
+  \end{enumerate}
+  We will see that both are easily achieved with a \emph{statistical
+  contract} built from e-values.
+\end{frame}
+
+\begin{frame}{The statistical contract}
+  Let $\theta\in\Theta$ be the drug's true quality (known to the agent),
+  with $\Theta_0\subsetneq\Theta$ the ``placebo'' parameter values the
+  regulator wants to keep off the market.
+
+  \begin{block}{Protocol: the agent follows these steps, in order}
+    \begin{enumerate}
+      \item Choose a nonnegative \emph{license function} $f$ from a menu of
+      options $\mathcal F$ (offered by the regulator).
+      \item Incur a fixed cost $C$ to run a trial, collecting data
+      $Z\overset{\mathrm d}{\sim}\mathbb P_\theta$.
+      \item Receive a license to profit at most $L=f(Z)$.
+    \end{enumerate}
+  \end{block}
+  The agent's expected profit is $\mathbb E^{\mathbb P_\theta}[f(Z)]-C$; they
+  participate iff this is positive. The regulator wants this to be
+  \emph{negative} whenever $\theta\in\Theta_0$ (a placebo).
+\end{frame}
+
+\begin{frame}{Proposition 4.11: characterizing incentive compatibility}
+  \begin{block}{Proposition 4.11}
+    The statistical contract is incentive compatible if and only if
+    $f(Z)/C$ is an e-variable for $\{\mathbb P_\theta:\theta\in\Theta_0\}$,
+    for every $f\in\mathcal F$.
+  \end{block}
+  \textbf{Proof.} Incentive compatible means
+  $\mathbb E^{\mathbb P_\theta}[f(Z)]\le C$ for all $\theta\in\Theta_0$,
+  i.e.\ $\mathbb E^{\mathbb P_\theta}[f(Z)/C]\le 1$ for all
+  $\theta\in\Theta_0$ -- precisely the definition of $f(Z)/C$ being an
+  e-variable for the placebo class. $\blacksquare$
+
+  \medskip
+  \textbf{This is exactly Section 4.2's decision-maker framework}, with the
+  regulator constructing a menu of \emph{scaled e-values} as the allowed
+  license functions.
+\end{frame}
+
+\begin{frame}{A p-to-e calibrator fixes the naive protocol}
+  Suppose evidence is summarized as a p-value $P$. It might be tempting to
+  promise a license with profit margin \emph{inversely proportional} to
+  $P$, i.e.\ $f(Z)=C/P$.
+  \begin{itemize}
+    \item This is \textbf{not} incentive compatible: since
+    $\mathbb E^{\mathbb P_\theta}[1/P]=\infty$ (as we computed in Section 4.1!),
+    the expected profit under the null is \emph{infinite}.
+    \item Instead, awarding a license of
+    \[
+      f(Z) = \frac{C}{2\sqrt{P}}
+    \]
+    \emph{is} incentive compatible: $p\mapsto 1/(2\sqrt p)$ is a
+    \emph{p-to-e calibrator}, i.e.\ $\mathbb E^{\mathbb P_\theta}[1/(2\sqrt P)]\le1$
+    under $H_0$, so $\mathbb E^{\mathbb P_\theta}[f(Z)]\le C$ for all
+    $\theta\in\Theta_0$ as required.
+    \item Intuition: the calibrator ``tempers'' the explosive $1/P$ tail
+    just enough to keep its expectation finite -- turning a p-value into a
+    genuine e-value.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Python: checking incentive compatibility of license functions (\S4.4)}
+\begin{lstlisting}
+import numpy as np
+rng = np.random.default_rng(3)
+
+M = 2_000_000
+P = rng.uniform(0, 1, size=M)     # p-value under a placebo (H0 true)
+C = 10.0                          # trial cost, in $ millions
+
+f_naive = C / P                   # naive: profit inversely prop. to P
+f_calibrated = C / (2*np.sqrt(P)) # p-to-e calibrator: 1/(2 sqrt(p))
+
+print("E[f_naive(Z)]/C       :", np.mean(f_naive)/C, " (theory: infinite)")
+print("E[f_calibrated(Z)]/C  :", np.mean(f_calibrated)/C, " (theory: <= 1)")
+\end{lstlisting}
+  Empirically, \texttt{f\_naive} keeps growing without bound as $M$
+  increases (occasional tiny $P$ dominate the average), confirming it is
+  \emph{not} incentive compatible; \texttt{f\_calibrated} stabilizes at a
+  value $\le 1$, confirming $f(Z)/C$ is a genuine e-variable.
+\end{frame}
+
+\begin{frame}{Connecting back to Section 4.2: two decision makers}
+  \begin{enumerate}
+    \item \textbf{The regulator moves first:} they have no objective to
+    maximize, but must meet the constraint of incentive compatibility. This
+    is achieved by offering a menu $\mathcal F$ composed of (scaled)
+    e-values; to encourage effective drugs to participate, $\mathcal F$
+    should otherwise be \emph{unrestricted} -- the set of \emph{all} scaled
+    e-values.
+    \item \textbf{The agent moves second:} facing a data-dependent loss
+    (their payout depends on the data they will collect), and with
+    incentive compatibility already guaranteed by the regulator's choice of
+    $\mathcal F$, their decision is simple: participate iff some $f\in\mathcal F$
+    is profitable in expectation under their true (privately known)
+    $\theta$. Malicious agents (who know $\theta\in\Theta_0$) never will;
+    agents with genuinely effective drugs may.
+  \end{enumerate}
+  \textbf{Summary:} smart use of data-dependent loss functions, built from a
+  menu of scaled e-values, considerably simplifies the decision problem for
+  \emph{both} parties.
+\end{frame}
+
+\begin{frame}{Section 4.4 take-aways}
+  \begin{itemize}
+    \item Fixed p-value thresholds are not incentive compatible: a
+    malicious agent with a large enough potential market will always find
+    it profitable to gamble on the false-positive rate.
+    \item Incentive compatibility is exactly characterized (Prop.\ 4.11) by
+    requiring the license/profit function, scaled by the trial cost, to be
+    an e-variable for the ``placebo'' null class.
+    \item A p-to-e calibrator (e.g.\ $1/(2\sqrt P)$) converts a naive,
+    incentive-\emph{in}compatible p-value-based reward into an incentive
+    compatible one.
+    \item This is the same decision-theoretic machinery as Section 4.2,
+    applied to a two-player (principal-agent) game instead of a single
+    decision maker.
+  \end{itemize}
+\end{frame}
+
+% =======================================================================
+\section*{Chapter Summary}
+
+\begin{frame}{Chapter 4: the big picture}
+  \begin{itemize}
+    \item \textbf{4.1} Post-hoc validity: e-values (uniquely) support
+    choosing your significance level \emph{after} seeing the data, with a
+    guarantee that survives even adversarial choices of $\hat\alpha$.
+    Ordinary p-values do not: $\mathbb E[1/P]=\infty$.
+    \item \textbf{4.2} Post-hoc decisions: e-value-based decision rules
+    satisfy risk constraints even for non-binary decisions and
+    data-dependent decision problems; p-value-based rules can silently
+    violate the risk budget (Example 4.10).
+    \item \textbf{4.3} Optional continuation: e-values combine
+    multiplicatively across post-hoc-decided follow-up experiments,
+    licensing ``living'' analyses that grow evidence over time; p-values
+    cannot be safely recombined this way.
+    \item \textbf{4.4} Principal-agent testing: incentive compatibility of a
+    statistical contract is exactly captured by requiring scaled license
+    functions to be e-variables -- protecting a regulator from agents who
+    already know the truth.
+    \item \textbf{Common thread:} in all four settings, the object that
+    remains valid under adversarial, data-dependent manipulation is always
+    the e-value.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Bibliographical note}
+  \begin{itemize}
+    \item \S4.1 combines results explicit or implicit in Wang and Ramdas
+    (2022), Xu et al.\ (2024), and Koning (2023a), in the context of
+    post-hoc $\alpha$ for testing or FDR/FCR control. The sufficient
+    condition in Remark 4.2 is due to Blanchard and Roquain (2008).
+    \item \S4.2 is based on Grünwald (2024), with some presentation
+    differences.
+    \item Grünwald et al.\ (2024a) coined the term \emph{optional
+    continuation} (\S4.3); further explored by Shafer (2023) and Ter Schure
+    and Grünwald (2022) (application to meta-analysis).
+    \item The incentive-compatible principal-agent problem of \S4.4 was
+    formulated and studied by Bates et al.\ (2022).
+  \end{itemize}
+\end{frame}
+
+\end{document}
