@@ -24,6 +24,7 @@ the slides (n = 30, 100, 1000).
 """
 
 import numpy as np
+from scipy.stats import norm
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -57,12 +58,11 @@ def clt_evalue(x, lam):
     return np.exp(lam * np.sqrt(n) * xbar / S - lam ** 2 / 2.0)
 
 
-def simulate_rejection_rate(n, lam, alpha, n_reps, rng, batch_size=20_000):
+def simulate_rejection_rate(n, lam, threshold, n_reps, rng, batch_size=20_000):
     """Population: X = Y - 1 with Y ~ Exp(rate=1), so E[X] = 0, Var(X) = 1,
     but X is strongly right-skewed (skewness = 2) -- a genuinely
     non-Gaussian null population. Processed in batches to bound memory
     use (n_reps * n floats can otherwise be huge for large n)."""
-    threshold = 1.0 / alpha  # reject H0 when E^(n) >= 1/alpha
     n_rejected = 0
     e_sum = 0.0
     remaining = n_reps
@@ -78,19 +78,29 @@ def simulate_rejection_rate(n, lam, alpha, n_reps, rng, batch_size=20_000):
 
 
 alpha = 0.05
-lam = 1.5
+lam = 1.0
+# Reject H0 when E^(n) >= threshold. Choosing threshold = exp(lam*c - lam^2/2)
+# with c = Phi^{-1}(1-alpha) makes "E^(n) >= threshold" EXACTLY the event
+# "sqrt(n) Xbar/S >= c". Since sqrt(n) Xbar/S -> N(0,1) in distribution
+# (CLT + Slutsky), the rejection probability converges to exactly
+# P(Z >= c) = alpha as n -> infinity: alpha is the true asymptotic
+# ("nominal") level of this e-value test, approached only approximately
+# at finite n because the population is non-Gaussian.
+c_alpha = norm.ppf(1 - alpha)
+threshold = np.exp(lam * c_alpha - lam ** 2 / 2.0)
+
 ns = [5, 10, 20, 30, 50, 100, 300, 1000, 3000, 10000]
 # Fewer Monte Carlo replicates for large n keeps memory/runtime bounded
 # while still giving a stable rejection-rate estimate.
-n_reps_by_n = {5: 200_000, 10: 200_000, 20: 200_000, 30: 200_000,
-               50: 150_000, 100: 100_000, 300: 60_000, 1000: 30_000,
-               3000: 15_000, 10000: 8_000}
+n_reps_by_n = {5: 300_000, 10: 300_000, 20: 300_000, 30: 300_000,
+               50: 200_000, 100: 150_000, 300: 80_000, 1000: 40_000,
+               3000: 20_000, 10000: 10_000}
 
 rejection_rates = []
 mean_evalues = []
 for n in ns:
     n_reps = n_reps_by_n[n]
-    rate, mean_E = simulate_rejection_rate(n, lam, alpha, n_reps, rng)
+    rate, mean_E = simulate_rejection_rate(n, lam, threshold, n_reps, rng)
     rejection_rates.append(rate)
     mean_evalues.append(mean_E)
 
