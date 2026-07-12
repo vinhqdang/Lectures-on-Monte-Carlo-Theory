@@ -108,7 +108,7 @@ fig, ax = plt.subplots(figsize=(7.0, 4.6))
 ax.axhline(alpha, color=COLOR_NOM, linestyle="--", linewidth=1.5,
            label=f"nominal level $\\alpha={alpha}$")
 ax.plot(ns, rejection_rates, "o-", color=COLOR_MAIN, linewidth=2,
-        markersize=6, label="actual rejection rate $\\widehat{\\mathbb{P}}(E^{(n)} \\geq 1/\\alpha)$")
+        markersize=6, label="actual rejection rate $\\widehat{\\mathbb{P}}(E^{(n)} \\geq \\mathrm{thr})$")
 ax.set_xscale("log")
 ax.set_xlabel("sample size $n$ (log scale)")
 ax.set_ylabel("rejection rate under $H_0$")
