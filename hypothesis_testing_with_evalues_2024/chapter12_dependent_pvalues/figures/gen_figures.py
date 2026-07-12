@@ -159,7 +159,7 @@ for a in a_grid:
 power_arith = np.array(power_arith)
 power_exch = np.array(power_exch)
 
-fig2, ax = plt.subplots(figsize=(7.5, 5.2))
+fig2, ax = plt.subplots(figsize=(9.0, 4.2))
 ax.plot(a_grid, power_arith, "o-", color="#4C72B0", linewidth=2,
          label="Arbitrary-dependence rule (Thm 12.17, full average)")
 ax.plot(a_grid, power_exch, "s-", color="#C44E52", linewidth=2,
