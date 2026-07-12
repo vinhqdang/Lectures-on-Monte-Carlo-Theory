@@ -186,7 +186,7 @@ ax.set_xscale("log")
 ax.set_xlabel("number of simulated trials (log scale)")
 ax.set_ylabel("running-average FCR estimate")
 ax.set_title(r"FCR of selecting the $L{=}2$ most extreme of $K{=}6$ independent coins"
-             "\nacross repeated trials: naive vs.\\ e-BY-corrected")
+             "\nacross repeated trials: naive vs. e-BY-corrected")
 ax.legend(loc="upper right", fontsize=9, framealpha=0.9)
 ax.set_ylim(0, max(0.02, running_naive.max() * 1.15))
 fig.tight_layout()
