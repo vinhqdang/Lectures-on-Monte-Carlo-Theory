@@ -31,7 +31,7 @@
 \newcommand{\PP}{\mathbb{P}}
 \newcommand{\EE}{\mathbb{E}}
 \newcommand{\RR}{\mathbb{R}}
-\newcommand{\1}{\mathbbm{1}}
+\newcommand{\1}{\mathbb{1}}
 
 \title[E-Values -- Ch.16]{Hypothesis Testing with E-Values}
 \subtitle{Chapter 16: E-Values and Risk Measures}
@@ -184,28 +184,23 @@ $\mathcal R: \mathcal X_{\mathcal R} \to (-\infty,\infty]$ is $\downarrow$-conti
 import numpy as np
 
 def empirical_var(losses, beta):
-    """VaR_beta(F) = inf{x : F(x) >= beta}, F = empirical cdf of `losses`."""
+    """VaR_beta(F) = inf{x : F(x) >= beta}."""
     x = np.sort(losses)
     n = len(x)
-    k = int(np.ceil(beta * n))     # smallest k with k/n >= beta
-    k = min(max(k, 1), n)
-    return x[k - 1]                # 1-indexed k-th smallest -> index k-1
+    k = min(max(int(np.ceil(beta * n)), 1), n)
+    return x[k - 1]
 
 def empirical_es(losses, beta):
-    """ES_beta(F) = (1/(1-beta)) * integral_beta^1 VaR_gamma(F) dgamma,
-    computed exactly for the empirical (n-point) distribution."""
+    """ES_beta(F), exact tail integral for the empirical n-point law."""
     x = np.sort(losses)
     n = len(x)
-    # VaR_gamma is a step function, constant = x[k-1] for gamma in ((k-1)/n, k/n]
     total, k = 0.0, int(np.ceil(beta * n))
     for i in range(k, n + 1):
-        lo = max(beta, (i - 1) / n)
-        hi = i / n
-        total += (hi - lo) * x[i - 1]
+        total += (i / n - max(beta, (i - 1) / n)) * x[i - 1]
     return total / (1 - beta)
 
 np.random.seed(1)
-losses = np.random.normal(loc=0.5, scale=2.0, size=100_000)  # simulated daily losses
+losses = np.random.normal(loc=0.5, scale=2.0, size=100_000)  # simulated losses
 
 for beta in [0.90, 0.95, 0.975, 0.99]:
     v = empirical_var(losses, beta)
@@ -316,26 +311,23 @@ import numpy as np
 
 np.random.seed(2)
 n = 20000
-X = np.random.normal(loc=0.5, scale=2.0, size=n)      # loss under P0
+X = np.random.normal(loc=0.5, scale=2.0, size=n)   # loss under P0
 beta = 0.95
-cap = 1.0 / (1 - beta)                                 # likelihood-ratio cap
+cap = 1.0 / (1 - beta)                              # likelihood-ratio cap
 
-# Direct definition: ES_beta(F) via order statistics (as in the previous slide)
+# Direct definition: ES_beta(F) via order statistics
 x_sorted = np.sort(X)
 k = int(np.ceil(beta * n))
-es_direct = x_sorted[k - 1:].mean()                    # average of the worst tail (n - k + 1 pts)
+es_direct = x_sorted[k - 1:].mean()                 # average of the worst tail
 
-# Dual/super-expectation side: the optimal P* re-weights P0 by putting the
-# full allowed mass (1/(1-beta) per unit of P0-probability) on the largest
-# values of X, and 0 elsewhere -- i.e., likelihood ratio = cap on the top
-# (1-beta) fraction, 0 on the rest. Approximate this on our empirical sample:
+# Dual side: optimal P* puts likelihood ratio `cap` on the top (1-beta)
+# fraction of X, 0 elsewhere -- approximate on our empirical sample:
 weights = np.zeros(n)
 weights[np.argsort(X)[-(n - k + 1):]] = cap / n
-es_dual = np.sum(weights * X) / np.sum(weights)        # E^{P*}[X], P* has dP*/dP0 <= cap
+es_dual = np.sum(weights * X) / np.sum(weights)     # E^{P*}[X], dP*/dP0 <= cap
 
 print(f"ES_beta direct (tail average) : {es_direct:.4f}")
 print(f"ES_beta dual (sup over P)     : {es_dual:.4f}")
-print("(they agree because both target the same worst (1-beta) fraction of mass)")
 \end{lstlisting}
 
 \end{frame}
@@ -544,7 +536,7 @@ M_t = \prod_{s=1}^t \bigl(0.5 + 0.5\, E_s\bigr): \quad \text{factor} = 0.5 \text
 After all 10 days: $M_{10} = 0.5^7 \times 10.5^3 \approx 9.04$.
 \end{block}
 
-\textbf{Interpretation.} $M_{10}\approx 9.04 > 1$ is evidence against $H_0$: the observed exceedance rate ($3$ out of $10$, i.e.\ $30\%$) is far above the $5\%$ rate expected if $\mathrm{VaR}_{0.95}(F)\le 3$, suggesting the true $95\%$ VaR exceeds $\$3{,}000$. (By Ville's inequality, an e-process of $9.04$ bounds the corresponding anytime-valid p-value by $1/9.04\approx 0.111$.)
+\textbf{Interpretation.} $M_{10}\approx 9.04 > 1$ is evidence against $H_0$: the observed exceedance rate ($30\%$) is far above the $5\%$ rate expected under $\mathrm{VaR}_{0.95}(F)\le 3$. (Ville's inequality: this e-process bounds the anytime-valid p-value by $1/9.04\approx 0.111$.)
 
 \end{frame}
 
@@ -552,10 +544,10 @@ After all 10 days: $M_{10} = 0.5^7 \times 10.5^3 \approx 9.04$.
 \begin{frame}{Figure: backtesting VaR with an e-process}
 
 \begin{center}
-\includegraphics[width=0.72\textwidth]{fig2_eprocess.pdf}
+\includegraphics[width=0.62\textwidth]{fig2_eprocess.pdf}
 \end{center}
 \vspace{-2mm}
-{\footnotesize Top: the 10 daily losses, with exceedances of the candidate threshold $r=3$ in red. Bottom: the resulting e-process $M_t = \prod_{s\le t}(0.5+0.5E_s)$ testing $H_0:\mathrm{VaR}_{0.95}(F)\le 3$. Each exceedance multiplies $M_t$ by $10.5$; each non-exceedance multiplies it by $0.5$. The process ends at $M_{10}\approx 9.04$, evidence against $H_0$.}
+{\footnotesize Top: the 10 daily losses, exceedances of threshold $r=3$ in red. Bottom: e-process $M_t=\prod_{s\le t}(0.5+0.5E_s)$ testing $H_0:\mathrm{VaR}_{0.95}(F)\le 3$. Exceedances multiply $M_t$ by $10.5$; non-exceedances by $0.5$. Ends at $M_{10}\approx 9.04$, evidence against $H_0$.}
 
 \end{frame}
 
