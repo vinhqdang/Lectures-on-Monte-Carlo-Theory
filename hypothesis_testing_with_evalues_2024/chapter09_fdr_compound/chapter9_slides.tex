@@ -492,31 +492,26 @@ If $E_1,\dots,E_K$ are \emph{tight} simple separable compound e-values, then the
 import numpy as np
 rng = np.random.default_rng(1)
 
-# Gaussian sequence model: H_k : X_k ~ N(0,1) (null); K=10 hypotheses.
-# Suppose (from pooling data / domain knowledge) we believe the
-# alternative means are mu = (0,...,0, 2, 2.5, 3, 3.5) (last 4 biased).
+# H_k : X_k ~ N(0,1) (null), K=10. Believed alt. means (pooled/learned):
 K = 10
 mu = np.array([0,0,0,0,0,0, 2.0, 2.5, 3.0, 3.5])
 
-def p_dens(x):            # common null density N(0,1)
+def p_dens(x):   # common null density N(0,1)
     return np.exp(-0.5*x**2)/np.sqrt(2*np.pi)
 
-def q_mix(x):              # mixture of alternative densities
+def q_mix(x):    # mixture of alternative densities
     return np.mean([np.exp(-0.5*(x-m)**2)/np.sqrt(2*np.pi) for m in mu], axis=0)
 
-def s(x):                  # log-optimal simple separable e-value, Thm 9.21
+def s(x):        # log-optimal simple separable e-value, Thm 9.21
     return q_mix(x) / p_dens(x)
 
-# Monte Carlo check: under the GLOBAL null (all mu=0), E[s(X_k)] <= 1 each,
-# and the K-fold sum should not exceed K (the compound e-value budget).
+# MC check: under the GLOBAL null, E[s(X_k)] <=1 each, sum <= K.
 n_mc = 200_000
 vals = [np.mean(s(rng.normal(0, 1, n_mc))) for _ in range(K)]
-print("E[s(X_k)] per hypothesis:", np.round(vals, 3))
-print("Sum over all k:", round(sum(vals), 2), " (budget: K =", K, ")")
-
-# --- output (Monte Carlo, matches theory up to sampling error) ---
-# E[s(X_k)] per hypothesis: [0.985 1.061 0.99  0.991 1.009 0.994 1.057 0.99  1.002 0.983]
-# Sum over all k: 10.06  (budget: K = 10)
+print("E[s(X_k)]:", np.round(vals, 3))
+print("Sum:", round(sum(vals), 2), " (budget K =", K, ")")
+# output: E[s(X_k)]: [0.985 1.061 0.99 0.991 1.009 0.994 1.057 0.99 1.002 0.983]
+# output: Sum: 10.06  (budget K = 10)
 \end{lstlisting}
 \end{frame}
 
@@ -578,7 +573,7 @@ Now $k^\ast = 4$: minimally adaptive e-BH rejects coins $8,6,4,9$ -- \textbf{one
 \end{frame}
 
 % ============================================================
-\begin{frame}[fragile]{Python: minimally adaptive e-BH on our 10 coins}
+\begin{frame}[fragile]{Python: minimally adaptive e-BH on our 10 coins (setup)}
 \begin{lstlisting}[language=Python]
 import numpy as np
 
@@ -594,16 +589,21 @@ def ebh_kstar(e_arr, lvl):
     sat = (k_idx * e_sorted / len(e_arr)) >= (1 / lvl)
     k = np.max(np.where(sat)[0]) + 1 if sat.any() else 0
     return k, order
+\end{lstlisting}
+This helper \texttt{ebh\_kstar} implements the plain e-BH rank/threshold check at any level \texttt{lvl}; we reuse it below both for the initial (level-$\alpha$) and the adaptive (level-$\alpha'$) pass.
+\end{frame}
 
+\begin{frame}[fragile]{Python: minimally adaptive e-BH on our 10 coins (result)}
+\begin{lstlisting}[language=Python]
 # Step 1: global null test via the arithmetic mean e-merging function
 mean_e = e.mean()
 print("Global-null e-value (mean):", mean_e, " vs 1/alpha =", 1/alpha)
 
 if mean_e >= 1 / alpha:
-    alpha_prime = K * alpha / (K - 1)          # Step 3: laxer level
+    alpha_prime = K * alpha / (K - 1)      # Step 3: laxer level
     k_star, order = ebh_kstar(e, alpha_prime)
 else:
-    k_star, order = 0, np.argsort(-e)          # Step 2: no discoveries
+    k_star, order = 0, np.argsort(-e)      # Step 2: no discoveries
 
 print("alpha' =", round(alpha_prime, 4))
 print("k*_adaptive =", k_star,
@@ -612,7 +612,7 @@ print("k*_adaptive =", k_star,
 # --- output ---
 # Global-null e-value (mean): 35.22  vs 1/alpha = 10.0
 # alpha' = 0.1111
-# k*_adaptive = 4 rejected: ['Coin 8', 'Coin 6', 'Coin 4', 'Coin 9']
+# k*_adaptive = 4 rejected: ['Coin 8','Coin 6','Coin 4','Coin 9']
 \end{lstlisting}
 \end{frame}
 
@@ -695,7 +695,7 @@ For arbitrarily dependent e-values, Ge-BH controls FDR $\le \alpha$ and its disc
 \end{frame}
 
 % ============================================================
-\begin{frame}[fragile]{Python: stochastic rounding and randomized e-BH (Ge-BH)}
+\begin{frame}[fragile]{Python: stochastic rounding (setup)}
 \begin{lstlisting}[language=Python]
 import numpy as np
 rng = np.random.default_rng(0)
@@ -705,20 +705,24 @@ e = np.array([0.6, 12.0, 0.4, 34.0, 0.8,
 coins = [f"Coin {i+1}" for i in range(10)]
 K, alpha = len(e), 0.1
 
-grid = np.sort([K/(alpha*k) for k in range(1, K+1)] + [0.0])  # G_alpha (finite part)
+grid = np.sort([K/(alpha*k) for k in range(1, K+1)] + [0.0])  # G_alpha
 
 def stochastic_round(x, rng):
     if x <= 0 or x in grid:
         return x
     below, above = grid[grid <= x], grid[grid >= x]
-    if len(above) == 0:        # x above top grid point -> x^+ = infinity
+    if len(above) == 0:      # x above top grid point: x^+ = infinity
         return x
     x_minus, x_plus = below.max(), above.min()
     if x_plus == x_minus:
         return x
     p_up = (x - x_minus) / (x_plus - x_minus)
     return x_plus if rng.random() < p_up else x_minus
+\end{lstlisting}
+\end{frame}
 
+\begin{frame}[fragile]{Python: randomized e-BH (Ge-BH) -- result}
+\begin{lstlisting}[language=Python]
 def ebh_kstar(e_arr, lvl):
     order = np.argsort(-e_arr)
     e_sorted = e_arr[order]
@@ -730,20 +734,21 @@ def ebh_kstar(e_arr, lvl):
 rounded = np.array([stochastic_round(x, rng) for x in e])
 k_star, order = ebh_kstar(rounded, alpha)
 print("Rounded e-values:", np.round(rounded, 3))
-print("Ge-BH k* =", k_star, "rejected:", [coins[i] for i in order[:k_star]])
+print("Ge-BH k* =", k_star,
+      "rejected:", [coins[i] for i in order[:k_star]])
 
 # --- output ---
-# Rounded e-values: [  0.   12.5   0.   50.    0.   50.    0.  200.   25.    0. ]
-# Ge-BH k* = 4 rejected: ['Coin 8', 'Coin 4', 'Coin 6', 'Coin 9']
+# Rounded e-values: [0. 12.5 0. 50. 0. 50. 0. 200. 25. 0.]
+# Ge-BH k* = 4 rejected: ['Coin 8','Coin 4','Coin 6','Coin 9']
 \end{lstlisting}
 \end{frame}
 
 % ============================================================
 \begin{frame}{Numerical experiment: power gains from randomization}
 \begin{center}
-\includegraphics[width=0.62\textwidth]{fdr_simulation.pdf}
+\includegraphics[width=0.52\textwidth]{fdr_simulation.pdf}
 \end{center}
-\footnotesize The book's own simulations (Figure 9.30, one-sided Gaussian testing, $K=100$, $\pi_0=0.3$) show that De-BH and Ue-BH can noticeably improve power over plain e-BH, especially under negative dependence between test statistics, while all three continue to control FDR at the nominal level -- exactly the phenomenon our own FDR simulation below re-creates in a simpler independent-samples setting.
+\footnotesize The book's simulations (one-sided Gaussian testing, $K=100$, $\pi_0=0.3$) show De-BH and Ue-BH noticeably improve power over plain e-BH -- especially under negative dependence -- while all three keep FDR below the nominal level, just as our own FDR simulation confirms below.
 \end{frame}
 
 % ============================================================
@@ -825,25 +830,22 @@ idx = list(e.keys())
 
 def mean_e(A):
     return sum(e[k] for k in A) / len(A)
-
 def fdp(A, R):
-    return 0.0 if len(R) == 0 else len(set(A) & set(R)) / len(R)
+    return 0.0 if len(R)==0 else len(set(A)&set(R))/len(R)
 
-subsets = [c for r in range(1, K+1) for c in itertools.combinations(idx, r)]
+subsets = [c for r in range(1,K+1) for c in itertools.combinations(idx,r)]
 
 best_R = ()
 for R in subsets:
-    # R is a valid candidate iff E_A >= FDP_A(R)/alpha for EVERY subset A
-    if all(mean_e(A) >= fdp(A, R)/alpha - 1e-9 for A in subsets):
+    # R is valid iff E_A >= FDP_A(R)/alpha for EVERY subset A
+    if all(mean_e(A) >= fdp(A,R)/alpha - 1e-9 for A in subsets):
         if len(R) > len(best_R):
             best_R = R
 
-print("Closed e-BH largest candidate set:", best_R)
+print("Largest candidate set:", best_R)
 print("Number of discoveries:", len(best_R))
-
-# --- output ---
-# Closed e-BH largest candidate set: (2, 4, 6, 8, 9)
-# Number of discoveries: 5
+# output: Largest candidate set: (2, 4, 6, 8, 9)
+# output: Number of discoveries: 5
 \end{lstlisting}
 \end{frame}
 
