@@ -30,6 +30,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import norm
 
 plt.rcParams.update({
     "font.size": 12,
@@ -101,7 +102,6 @@ W = rng.standard_normal(N)
 eps = rng.standard_normal((N, K))
 loadings = np.where(np.arange(K) < K // 2, rho, -rho)
 Z = loadings[None, :] * W[:, None] + np.sqrt(1 - rho**2) * eps
-from scipy.stats import norm
 P = norm.cdf(Z)
 mean_P = P.mean(axis=1)
 twice_mean = np.minimum(2.0 * mean_P, 1.0)
