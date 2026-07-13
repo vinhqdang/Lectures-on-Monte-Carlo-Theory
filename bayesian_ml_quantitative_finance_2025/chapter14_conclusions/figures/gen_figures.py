@@ -255,9 +255,9 @@ def draw_theme_quadrant(center_label, quadrants, out_name, title):
     Layout: two on top, two on bottom, arrows converging to the center label,
     same visual grammar as the book's Figs. 14.1-14.3.
     """
-    fig, ax = plt.subplots(figsize=(11, 7.4))
+    fig, ax = plt.subplots(figsize=(11, 8.1))
     ax.set_xlim(0, 11)
-    ax.set_ylim(0, 7.4)
+    ax.set_ylim(0, 8.15)
     ax.axis("off")
 
     header_w, header_h = 4.6, 0.55
@@ -313,7 +313,7 @@ def draw_theme_quadrant(center_label, quadrants, out_name, title):
             ha="center", va="center", fontsize=12.5, color="white",
             fontweight="bold")
 
-    ax.text(0.35, 7.15, "■ contribution   □ future direction", fontsize=8,
+    ax.text(0.35, 7.95, "■ contribution   □ future direction", fontsize=8,
             color="#555555")
     ax.set_title(title, fontsize=13.5, fontweight="bold", pad=6)
     fig.tight_layout()

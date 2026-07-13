@@ -42,35 +42,40 @@ plt.rcParams.update({
 # ======================================================================
 # Toy "sell-side analyst report" dataset (5 fictional reports)
 # ======================================================================
-# Features (already standardised to roughly [-1,1], mirroring the min-max
-# scaling the book applies to the real Bloomberg features):
-#   x1 = sentiment score      (report-text tone: -1 bearish .. +1 bullish)
-#   x2 = EPS revision         (fractional change in forecast EPS, 0.06 = +6%)
-#   x3 = price-target change  (fractional change in the analyst's target price)
+# Features are the *conviction magnitude* of each signal -- i.e. how strong
+# the report's call is, regardless of whether it is bullish or bearish
+# (already standardised to roughly [0,1], mirroring the min-max scaling the
+# book applies to the real Bloomberg features):
+#   x1 = |sentiment score|       (report-text tone strength, 0 = neutral)
+#   x2 = |EPS revision|          (|fractional change| in forecast EPS)
+#   x3 = |price-target change|   (|fractional change| in the target price)
 # Target y: toy "bidirectional accuracy" indicator (1 = stock later moved in
 # the direction the report implied, 0 = it did not) -- mirroring the book's
 # bidirectional-accuracy target (Sect. 13.4.1), but entirely fictional data.
+# The toy story: reports with *stronger conviction* (larger-magnitude
+# sentiment/EPS-revision/target-change, whichever direction) are more often
+# vindicated than wishy-washy, near-zero-conviction "Hold" reports.
 
 REPORT_NAMES = ["Alpha Capital", "Beta Securities", "Gamma Research",
                 "Delta Equities", "Epsilon Analytics"]
 RATINGS = ["Buy", "Sell", "Hold", "Buy", "Hold"]
 X_RAW = np.array([
-    [0.80,  0.060,  0.120],    # Alpha Capital    - bullish "Buy" report
-    [-0.60, -0.040, -0.080],   # Beta Securities   - bearish "Sell" report
-    [0.10,  0.005,  0.010],    # Gamma Research    - neutral "Hold" report
-    [0.50,  0.030,  0.070],    # Delta Equities    - moderately bullish "Buy"
-    [-0.30, -0.010, -0.030],   # Epsilon Analytics - mildly bearish "Hold"
+    [0.80, 0.060, 0.120],   # Alpha Capital    - strong bullish "Buy" call
+    [0.60, 0.040, 0.080],   # Beta Securities  - strong bearish "Sell" call
+    [0.10, 0.005, 0.010],   # Gamma Research   - wishy-washy "Hold" call
+    [0.50, 0.030, 0.070],   # Delta Equities   - moderate bullish "Buy" call
+    [0.20, 0.005, 0.015],   # Epsilon Analytics- weak-conviction "Hold" call
 ])
 Y = np.array([1, 1, 0, 1, 0])  # toy "bidirectional accuracy" outcome
 N_OBS, D_FEAT = X_RAW.shape
 X = np.hstack([np.ones((N_OBS, 1)), X_RAW])  # prepend bias -> 4 columns
 DIM = X.shape[1]
 
-FEATURE_NAMES = ["bias", "sentiment", "EPS revision", "price-target chg."]
+FEATURE_NAMES = ["bias", "|sentiment|", "|EPS revision|", "|price-target chg.|"]
 # Fixed ARD prior variances alpha_j (the book jointly *infers* these via
 # MCMC; here we fix them at illustrative values to keep the toy example
 # self-contained and small).
-ALPHA_PRIOR_VAR = np.array([4.0, 1.0, 1.0, 1.0])
+ALPHA_PRIOR_VAR = np.array([4.0, 4.0, 4.0, 4.0])
 
 RATING_COLOR = {"Buy": "#2E8B57", "Hold": "#DAA520", "Sell": "#B22222"}
 
