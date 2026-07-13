@@ -46,6 +46,7 @@ matplotlib.use("Agg")
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from scipy.optimize import minimize
 
 plt.rcParams.update({
     "font.size": 11,
@@ -285,29 +286,29 @@ def numerical_hessian_from_grad(theta, x, y, alpha, beta, eps=1e-4):
         H[:, i] = (gp - gm) / (2 * eps)
     return H
 
-alpha_prior = 0.1   # prior precision on weights (Gaussian prior N(0, 1/alpha))
+alpha_prior = 0.3   # prior precision on weights (Gaussian prior N(0, 1/alpha))
 beta_noise = 8.0    # likelihood precision (1/noise-variance)
 
-# --- Step 1: find the MAP estimate by gradient descent with the analytic
-#     gradient (ordinary penalised training of the network) ---
+# --- Step 1: find the MAP estimate by gradient-based optimisation
+#     (ordinary penalised / L2-regularised training of the network --
+#     this is exactly "training as usual", just minimising M(theta)) ---
 n_params = 8
-rng2 = np.random.default_rng(1)
+rng2 = np.random.default_rng(9)
 theta0 = rng2.normal(scale=1.0, size=n_params)
-theta_t = theta0.copy()
-lr = 0.02
-for it in range(30000):
-    g = grad_neg_log_posterior(theta_t, xn, y_data, alpha_prior, beta_noise)
-    theta_t = theta_t - lr * g
-theta_map7 = theta_t
+opt_result = minimize(
+    neg_log_posterior, theta0, args=(xn, y_data, alpha_prior, beta_noise),
+    jac=grad_neg_log_posterior, method="BFGS", options={"gtol": 1e-10, "maxiter": 5000},
+)
+theta_map7 = opt_result.x
 
 # --- Step 2: numerically approximate the Hessian A of the negative log
-#     posterior at the MAP estimate ---
+#     posterior at the MAP estimate (by central-differencing the analytic
+#     gradient) ---
 A = numerical_hessian_from_grad(theta_map7, xn, y_data, alpha_prior, beta_noise)
 # Symmetrise for numerical safety
 A = 0.5 * (A + A.T)
-# Small ridge for numerical stability (the toy Hessian can be near-singular
-# along directions the tiny dataset barely constrains)
-A_reg = A + 1e-3 * np.eye(len(theta_map7))
+assert np.all(np.linalg.eigvalsh(A) > 0), "Hessian at the MAP must be positive definite for the Laplace approximation to be valid"
+A_reg = A
 
 # --- Step 3: posterior covariance = inverse Hessian ---
 Sigma = np.linalg.inv(A_reg)

@@ -190,7 +190,10 @@ def hmc_sample(w0, n_samples, n_burnin, eps, L, seed=0):
 # Initialize at a deliberately "wrong" point to show recovery
 w0 = np.array([np.log(0.02), 0.0, 0.0, np.log(0.8)])
 n_burnin, n_samples = 1000, 4000
-eps, L = 0.02, 25  # step size, trajectory length (book fixes L=25 for HMC/S2HMC)
+# Step size eps tuned by hand (small, since the likelihood is highly
+# informative with only 5bp of noise); trajectory length L = 25 matches
+# the fixed L used for HMC/S2HMC in the book's own experiments (Sec. 11.4.1).
+eps, L = 1.0e-4, 25
 
 samples, accept_rate = hmc_sample(w0, n_samples, n_burnin, eps, L, seed=1)
 
