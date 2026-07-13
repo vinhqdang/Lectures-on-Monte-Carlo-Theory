@@ -188,7 +188,7 @@ def make_2d_logposterior(w0_fixed):
     return logpost2, grad2
 
 
-def run_mh_2d(logpost, n_iter=8000, prop_sd=0.35, theta0=None, seed=11):
+def run_mh_2d(logpost, n_iter=8000, prop_sd=2.8, theta0=None, seed=11):
     rng = np.random.default_rng(seed)
     if theta0 is None:
         theta0 = np.zeros(2)
@@ -207,7 +207,7 @@ def run_mh_2d(logpost, n_iter=8000, prop_sd=0.35, theta0=None, seed=11):
     return chain
 
 
-def run_mala_2d(logpost, grad, n_iter=8000, step=0.12, theta0=None, seed=12):
+def run_mala_2d(logpost, grad, n_iter=8000, step=1.8, theta0=None, seed=12):
     rng = np.random.default_rng(seed)
     if theta0 is None:
         theta0 = np.zeros(2)
@@ -283,7 +283,8 @@ def make_mh_vs_mala_figure(mh_chain, mala_chain, burn=1500):
 
     ess_mh = len(mh_post) / (1 + 2 * np.sum(ac_mh[1:20]))
     ess_mala = len(mala_post) / (1 + 2 * np.sum(ac_mala[1:20]))
-    print(f"[toy 2D] rough ESS (w2): MH={ess_mh:.1f}  MALA={ess_mala:.1f}")
+    print(f"[toy 2D] rough ESS (w2) out of {len(mh_post)} post-burn-in draws: "
+          f"MH={ess_mh:.1f}  MALA={ess_mala:.1f}")
 
 
 # ======================================================================
