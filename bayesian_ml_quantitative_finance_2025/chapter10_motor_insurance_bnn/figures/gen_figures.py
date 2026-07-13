@@ -220,24 +220,30 @@ y_data = np.array([4.8, 3.1, 2.0, 2.4, 3.4, 5.1])  # claim amount, in R'000, toy
 x_mean, x_std = x_data.mean(), x_data.std()
 xn = (x_data - x_mean) / x_std  # normalise inputs for stable fitting
 
-# --- Tiny network: 2 tanh hidden units, 1 output ---
-# f(x; theta) = v1*tanh(w1*x+b1) + v2*tanh(w2*x+b2) + c
-# theta = [w1, b1, v1, w2, b2, v2, c]   (7 parameters)
+# --- Tiny network: 2 tanh hidden units plus a linear "skip" unit, 1 output ---
+# f(x; theta) = v1*tanh(w1*x+b1) + v2*tanh(w2*x+b2) + m*x + c
+# theta = [w1, b1, v1, w2, b2, v2, m, c]   (8 parameters)
+# (the linear term m*x is what a single linear-output neuron with a fixed
+#  identity activation would compute; keeping it makes the network's
+#  extrapolation behaviour -- and hence its Laplace uncertainty band --
+#  behave like the familiar "bowtie" widening of a Bayesian linear
+#  regression away from the bulk of the training inputs, exactly as we
+#  would also see from the *linear part* of a real trained BNN.)
 def forward(theta, x):
-    w1, b1, v1, w2, b2, v2, c = theta
+    w1, b1, v1, w2, b2, v2, m, c = theta
     h1 = np.tanh(w1 * x + b1)
     h2 = np.tanh(w2 * x + b2)
-    return v1 * h1 + v2 * h2 + c
+    return v1 * h1 + v2 * h2 + m * x + c
 
 def forward_and_jac(theta, x):
     """Returns f(x;theta) and the analytic gradient d f / d theta at input x
     (x may be a scalar or a 1-D array; returns arrays broadcast over x)."""
-    w1, b1, v1, w2, b2, v2, c = theta
+    w1, b1, v1, w2, b2, v2, m, c = theta
     z1 = w1 * x + b1
     z2 = w2 * x + b2
     h1 = np.tanh(z1)
     h2 = np.tanh(z2)
-    f = v1 * h1 + v2 * h2 + c
+    f = v1 * h1 + v2 * h2 + m * x + c
     sech1_sq = 1.0 - h1 ** 2
     sech2_sq = 1.0 - h2 ** 2
     d_w1 = v1 * sech1_sq * x
@@ -246,8 +252,9 @@ def forward_and_jac(theta, x):
     d_w2 = v2 * sech2_sq * x
     d_b2 = v2 * sech2_sq
     d_v2 = h2
+    d_m = x * np.ones_like(f)
     d_c = np.ones_like(f)
-    J = np.stack([d_w1, d_b1, d_v1, d_w2, d_b2, d_v2, d_c], axis=-1)
+    J = np.stack([d_w1, d_b1, d_v1, d_w2, d_b2, d_v2, d_m, d_c], axis=-1)
     return f, J
 
 def neg_log_posterior(theta, x, y, alpha, beta):
@@ -283,8 +290,9 @@ beta_noise = 8.0    # likelihood precision (1/noise-variance)
 
 # --- Step 1: find the MAP estimate by gradient descent with the analytic
 #     gradient (ordinary penalised training of the network) ---
+n_params = 8
 rng2 = np.random.default_rng(0)
-theta0 = rng2.normal(scale=0.5, size=7)
+theta0 = rng2.normal(scale=0.5, size=n_params)
 theta_t = theta0.copy()
 lr = 0.02
 for it in range(20000):
@@ -336,7 +344,7 @@ plt.close(fig)
 print("\nFigure 2 (toy 1-D BNN regression) summary:")
 print(f"  Training data: x = {x_data.tolist()}")
 print(f"                 y = {y_data.tolist()}")
-print(f"  theta_MP (w1,b1,v1,w2,b2,v2,c) = {np.round(theta_map7, 4).tolist()}")
+print(f"  theta_MP (w1,b1,v1,w2,b2,v2,m,c) = {np.round(theta_map7, 4).tolist()}")
 print(f"  Band widens away from data: std at x=35 (near data) = "
       f"{std_pred_total[np.argmin(np.abs(x_plot-35))]:.4f}, "
       f"std at x=90 (far from data) = {std_pred_total[np.argmin(np.abs(x_plot-90))]:.4f}, "

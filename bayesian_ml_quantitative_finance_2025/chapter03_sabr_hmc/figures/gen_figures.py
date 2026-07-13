@@ -128,7 +128,14 @@ NU = 0.8          # vol-of-vol, fixed (toy value)
 T_MAT = 1.0       # toy maturity
 TRUE_ALPHA = 0.03
 TRUE_RHO = -0.35
-OBS_NOISE_SD = 3.0  # noise in basis points on the normal vol
+OBS_NOISE_SD = 8.0  # noise in basis points on the normal vol
+
+# Diagonal preconditioner (plays the role of the M^{-1} matrix in the book's
+# HMC/S2HMC update equations): alpha and rho live on very different natural
+# scales (~0.01 vs ~1), so an isotropic step size is badly behaved. This is
+# a standard, from-scratch fix -- NOT part of the book's reported results.
+PRECOND = np.array([8e-8, 4e-3])  # M^{-1} diagonal
+MASS = 1.0 / PRECOND               # M diagonal
 
 
 def sabr_normal_vol(k, alpha, rho, nu=NU, beta=BETA, f=F_FWD, t=T_MAT):
@@ -210,27 +217,30 @@ def grad_log_posterior(theta, h=1e-5):
 
 # ---------------- MALA sampler (from scratch) --------------------------
 
-def run_mala(n_iter=6000, step=1.2e-4, theta0=None, seed=1):
+def run_mala(n_iter=6000, base_step=6.0, theta0=None, seed=1):
+    """Preconditioned MALA: proposal covariance is base_step * PRECOND,
+    drift is 0.5 * base_step * PRECOND * grad(log posterior)."""
     rng = np.random.default_rng(seed)
     if theta0 is None:
-        theta0 = np.array([0.02, 0.0])
+        theta0 = np.array([0.025, -0.2])
     theta = theta0.copy()
     lp = log_posterior(theta)
     grad = grad_log_posterior(theta)
     chain = np.zeros((n_iter, 2))
     n_accept = 0
+    step_vec = base_step * PRECOND
     for m in range(n_iter):
-        mean_fwd = theta + 0.5 * step * grad
-        prop = mean_fwd + np.sqrt(step) * rng.standard_normal(2)
+        mean_fwd = theta + 0.5 * step_vec * grad
+        prop = mean_fwd + np.sqrt(step_vec) * rng.standard_normal(2)
         lp_prop = log_posterior(prop)
         if np.isinf(lp_prop):
             chain[m] = theta
             continue
         grad_prop = grad_log_posterior(prop)
-        mean_bwd = prop + 0.5 * step * grad_prop
+        mean_bwd = prop + 0.5 * step_vec * grad_prop
         # log q(theta -> prop) and q(prop -> theta) for the Gaussian proposal
-        log_q_fwd = -np.sum((prop - mean_fwd) ** 2) / (2 * step)
-        log_q_bwd = -np.sum((theta - mean_bwd) ** 2) / (2 * step)
+        log_q_fwd = -np.sum((prop - mean_fwd) ** 2 / step_vec) / 2
+        log_q_bwd = -np.sum((theta - mean_bwd) ** 2 / step_vec) / 2
         log_alpha = (lp_prop + log_q_bwd) - (lp + log_q_fwd)
         if np.log(rng.uniform()) < log_alpha:
             theta, lp, grad = prop, lp_prop, grad_prop
@@ -242,26 +252,28 @@ def run_mala(n_iter=6000, step=1.2e-4, theta0=None, seed=1):
 
 # ---------------- HMC sampler (from scratch) ----------------------------
 
-def run_hmc(n_iter=1500, eps=0.008, L=25, theta0=None, seed=2):
+def run_hmc(n_iter=1500, eps=1.0, L=25, theta0=None, seed=2):
+    """HMC with a diagonal mass matrix M = diag(MASS) so that momentum and
+    step sizes are sensible for both alpha (~0.01 scale) and rho (~1 scale)."""
     rng = np.random.default_rng(seed)
     if theta0 is None:
-        theta0 = np.array([0.02, 0.0])
+        theta0 = np.array([0.025, -0.2])
     theta = theta0.copy()
     chain = np.zeros((n_iter, 2))
     n_accept = 0
     for m in range(n_iter):
-        p0 = rng.standard_normal(2)
+        p0 = rng.standard_normal(2) * np.sqrt(MASS)
         w, p = theta.copy(), p0.copy()
         grad = grad_log_posterior(w)
         for _ in range(L):
             p = p + 0.5 * eps * grad
-            w = w + eps * p
+            w = w + eps * PRECOND * p
             grad = grad_log_posterior(w)
             p = p + 0.5 * eps * grad
         lp_theta = log_posterior(theta)
         lp_w = log_posterior(w)
-        H0 = -lp_theta + 0.5 * np.sum(p0 ** 2)
-        H1 = -lp_w + 0.5 * np.sum(p ** 2)
+        H0 = -lp_theta + 0.5 * np.sum(p0 ** 2 * PRECOND)
+        H1 = -lp_w + 0.5 * np.sum(p ** 2 * PRECOND)
         if np.log(rng.uniform()) < (H0 - H1):
             theta = w
             n_accept += 1
@@ -312,8 +324,11 @@ def make_sampler_figure(chain, name, fname, burn=None):
 
 def autocorr(x, max_lag=60):
     x = x - np.mean(x)
+    denom = np.sum(x ** 2)
+    if denom == 0:
+        denom = 1.0
     result = np.array([1.0 if lag == 0 else
-                        np.sum(x[:-lag] * x[lag:]) / np.sum(x ** 2)
+                        np.sum(x[:-lag] * x[lag:]) / denom
                         for lag in range(max_lag)])
     return result
 

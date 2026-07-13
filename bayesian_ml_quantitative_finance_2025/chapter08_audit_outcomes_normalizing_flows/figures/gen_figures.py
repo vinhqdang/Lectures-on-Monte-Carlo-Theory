@@ -62,11 +62,11 @@ def fig_occams_razor():
     # Simple model: concentrates its predictive mass on a narrow range of
     # datasets, so it is very confident there -> tall, narrow curve.
     simple = 1.05 * np.exp(-0.5 * (d - 0.3) ** 2 / 0.55 ** 2)
-    simple /= np.trapz(simple, d)
+    simple /= np.trapezoid(simple, d)
     # Complex model: spreads its predictive mass over many more possible
     # datasets (it *could* explain many things) -> shorter, wider curve.
     complex_ = 1.0 * np.exp(-0.5 * (d - 0.3) ** 2 / 2.6 ** 2)
-    complex_ /= np.trapz(complex_, d)
+    complex_ /= np.trapezoid(complex_, d)
 
     ax.plot(d, simple, color=BLUE, lw=2.2, label='Simple model $M_1$')
     ax.plot(d, complex_, color=ORANGE, lw=2.2, label='Complex model $M_2$')
@@ -140,8 +140,8 @@ def fig_toy4_harmonic_mean():
     ax2.set_ylabel(r'$1/L(\theta^{(i)})$', fontsize=9.5)
     ax2.set_title(r"Reciprocals -- one term dominates the mean", fontsize=9.2)
     ax2.text(0.02, 0.92,
-             rf"$\widehat{{Z}}_{{\rm HM}} = 1\big/\overline{{1/L}} = {hm_estimate:.3f}$" + "\n"
-             rf"(vs.\ simple mean $\overline{{L}} = {simple_mean:.3f}$)",
+             rf"$\hat{{Z}}_{{HM}} = 1 / \mathrm{{mean}}(1/L) = {hm_estimate:.3f}$" + "\n"
+             rf"(vs. simple mean of $L$ = {simple_mean:.3f})",
              transform=ax2.transAxes, fontsize=8.3, va='top',
              bbox=dict(boxstyle='round', fc='white', ec=GRAY, lw=0.6))
 
@@ -283,7 +283,7 @@ def fig_harmonic_mean_variance():
 
     ax = axes[0]
     data_box = [log_Z_hm, log_Z_flow]
-    bp = ax.boxplot(data_box, labels=['Naive\nharmonic mean', 'Flow-stabilized\n(learnt HM)'],
+    bp = ax.boxplot(data_box, tick_labels=['Naive\nharmonic mean', 'Flow-stabilized\n(learnt HM)'],
                      patch_artist=True, widths=0.5, showfliers=True,
                      flierprops=dict(marker='.', markersize=3, alpha=0.4))
     for patch, c in zip(bp['boxes'], [ORANGE, GREEN]):
@@ -303,7 +303,7 @@ def fig_harmonic_mean_variance():
     ax2.set_title("Distribution of the evidence estimate", fontsize=9.5)
     ax2.legend(fontsize=7.5, frameon=False)
 
-    fig.suptitle("Toy simulation: harmonic mean instability vs.\ flow-stabilized correction",
+    fig.suptitle("Toy simulation: harmonic mean instability vs. flow-stabilized correction",
                   fontsize=10.3, y=1.03)
     fig.tight_layout()
     savefig("fig3_harmonic_mean_variance.pdf")
@@ -330,7 +330,7 @@ def fig_normalizing_flow_schematic():
     X, Y = np.meshgrid(xx, yy)
     Z_base = np.exp(-0.5 * (X ** 2 + Y ** 2))
     ax.contourf(X, Y, Z_base, levels=12, cmap='Blues')
-    ax.set_title(r"Base $q(z)$" + "\n(simple, e.g.\ standard Gaussian)", fontsize=8.7)
+    ax.set_title(r"Base $q(z)$" + "\n(simple, e.g. standard Gaussian)", fontsize=8.7)
     ax.set_xticks([]); ax.set_yticks([])
 
     # arrow annotation between panel 1 and 2 (drawn via fig.text/annotate on axes)
