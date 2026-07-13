@@ -240,11 +240,11 @@
 
   \textbf{At-the-money special case} ($f=k$):
   \begin{block}{ATM implied volatility}
-  \footnotesize
   \begin{equation}
+    \resizebox{0.95\linewidth}{!}{$\displaystyle
     \sigma_{ATM} = \sigma_B(f,f) = \frac{\alpha}{f^{1-\beta}}\left\{1 + \left[\frac{(1-\beta)^2}{24}\frac{\alpha^2}{f^{2-2\beta}} + \frac14 \frac{\rho\beta\nu\alpha}{f^{1-\beta}} + \frac{2-3\rho^2}{24}\nu^2\right]t+\ldots\right\}
+    $}
   \end{equation}
-  \normalsize
   \end{block}
 
   \textbf{Role of each parameter (intuition):}
@@ -311,7 +311,7 @@ vols_bps = sabr_normal_vol(strikes, alpha=0.03, rho=-0.35, nu=0.8)
   \small
   \textbf{To make MALA, HMC and S2HMC concrete}, we will use one toy
   inference problem throughout this chapter:
-  \begin{itemize}
+  \begin{itemize}\itemsep0pt
     \item Fix $\beta=0.5$, $\nu=0.8$, forward $f=7\%$, maturity $t=1$ (all
       illustrative, chosen by us -- not the book's data).
     \item Set \emph{true} parameters $\alpha=0.03$, $\rho=-0.35$.
@@ -322,7 +322,7 @@ vols_bps = sabr_normal_vol(strikes, alpha=0.03, rho=-0.35, nu=0.8)
   \end{itemize}
 
   \begin{center}
-    \includegraphics[width=0.5\textwidth]{fig_toy_sabr_data.pdf}
+    \includegraphics[width=0.42\textwidth]{fig_toy_sabr_data.pdf}
   \end{center}
 \end{frame}
 
@@ -460,7 +460,7 @@ vols_bps = sabr_normal_vol(strikes, alpha=0.03, rho=-0.35, nu=0.8)
   \end{itemize}
 \end{frame}
 
-\begin{frame}[fragile]{Python: MALA on the Toy SABR Posterior}
+\begin{frame}[fragile]{Python: MALA on the Toy SABR Posterior (Log-Posterior)}
   \small We infer $(\alpha,\rho)$ from the 9 synthetic noisy swaption-like
   vols, with a Gaussian likelihood, weak Gaussian priors, and finite-difference
   gradients (from scratch, no autodiff):
@@ -481,7 +481,13 @@ def grad_log_posterior(theta, h=1e-5):      # finite-difference gradient
         tp[i] += h; tm[i] -= h
         grad[i] = (log_posterior(tp) - log_posterior(tm)) / (2*h)
     return grad
+\end{lstlisting}
+\end{frame}
 
+\begin{frame}[fragile]{Python: MALA on the Toy SABR Posterior (Sampler Step)}
+  \small The MALA proposal, drift-adjusted using the gradient above, with the
+  matching Metropolis-Hastings correction:
+\begin{lstlisting}
 def mala_step(theta, step_vec, rng):
     grad = grad_log_posterior(theta)
     mean_fwd = theta + 0.5*step_vec*grad
@@ -494,17 +500,20 @@ def mala_step(theta, step_vec, rng):
     accept = np.log(rng.uniform()) < log_a
     return (prop if accept else theta), accept
 \end{lstlisting}
+  \vspace{2mm}
+  \textbf{Illustrative toy result} (our own simulation, not the book's data):
+  running this for 6000 iterations (1200 burn-in) with a well-tuned step size
+  gives an acceptance rate of about \textbf{68\%} and recovers both true
+  parameters closely.
 \end{frame}
 
 \begin{frame}{Toy MALA Results}
   \small
   \textbf{Illustrative only} -- our own toy simulation, not the book's data.
-  Running the sampler above for 6000 iterations (1200 burn-in) with a
-  well-tuned step size gives an acceptance rate of about \textbf{68\%},
-  and recovers both true parameters closely (correlated trace plots reflect
-  MALA's small, local proposal nudges):
+  Correlated trace plots reflect MALA's small, local proposal nudges; both
+  posteriors nonetheless concentrate close to the true parameter values:
   \begin{center}
-    \includegraphics[width=0.72\textwidth]{fig_mala_toy.pdf}
+    \includegraphics[width=0.62\textwidth]{fig_mala_toy.pdf}
   \end{center}
 \end{frame}
 
@@ -573,30 +582,30 @@ def mala_step(theta, step_vec, rng):
 \end{frame}
 
 \begin{frame}{HMC: Accept/Reject Step and Full Algorithm}
+  \footnotesize
   \begin{block}{Metropolis acceptance probability (Eq.~3.20)}
   \begin{equation}
     \Prob(\text{accept } \bw^*) = \min\left(1, \frac{\exp(-\Ham(\bw^*,\bp^*))}{\exp(-\Ham(\bw,\bp))}\right)
   \end{equation}
   \end{block}
   If the leapfrog integrator solved the dynamics exactly, this would always
-  accept ($\Ham$ perfectly conserved). Because of discretisation error, this
-  MH correction step is required to guarantee the chain still targets the
-  exact posterior.
+  accept ($\Ham$ perfectly conserved); the discretisation error is why this
+  MH correction step is needed to keep the chain exact.
 
   \begin{block}{Algorithm 3.1: Hamiltonian Monte Carlo}
-  \small
   \textbf{Input:} $N, \epsilon, L, w_{\text{init}}, \Ham(w,p)$. \quad
   \textbf{Output:} $(w)_{m=0}^{N}$
   \begin{enumerate}
-    \setlength\itemsep{0.2em}
+    \setlength\itemsep{0pt}
     \item $w_0 \leftarrow w_{\text{init}}$
     \item \textbf{for} $m \to 1$ \textbf{to} $N$ \textbf{do}
     \begin{enumerate}
+      \setlength\itemsep{0pt}
       \item[3.1] $p_{m-1} \sim \mathcal{N}(0,\mathbf{M})$
-      \item[3.2] $p_m, w_m = \textsc{Leapfrog}(p_{m-1}, w_{m-1}, \epsilon, L, \Ham)$ \; [Eq.~3.19]
+      \item[3.2] $p_m, w_m = \textsc{Leapfrog}(p_{m-1}, w_{m-1}, \epsilon, L, \Ham)$ [Eq.~3.19]
       \item[3.3] $\delta H = \Ham(w_{m-1},p_{m-1}) - \Ham(w_m,p_m)$
-      \item[3.4] $\alpha_m = \min(1, \exp(\delta H))$; \quad $u_m \sim \text{Unif}(0,1)$
-      \item[3.5] $w_m = \textsc{Metropolis}(\alpha_m, u_m, w_m, w_{m-1})$ \; [Eq.~3.20]
+      \item[3.4] $\alpha_m = \min(1, \exp(\delta H))$; \ $u_m \sim \text{Unif}(0,1)$
+      \item[3.5] $w_m = \textsc{Metropolis}(\alpha_m, u_m, w_m, w_{m-1})$ [Eq.~3.20]
     \end{enumerate}
     \item \textbf{end for}
   \end{enumerate}
@@ -644,6 +653,7 @@ def mala_step(theta, step_vec, rng):
 \end{frame}
 
 \begin{frame}{Worked Example (continued): Acceptance}
+  \small
   \textbf{Step 3 -- Compute the acceptance probability.} After the leapfrog
   step above,
   \begin{align*}
@@ -654,13 +664,11 @@ def mala_step(theta, step_vec, rng):
     \Prob(\text{accept}) = \min\!\big(1, \exp(H_0 - H_1)\big) = \min\!\big(1, \exp(-0.000063)\big) \approx 0.99994
   \]
 
-  \vspace{2mm}
   \textbf{Step 4 -- Accept or reject.} Draw $u \sim \text{Unif}(0,1)$. Since
   the acceptance probability is $\approx 1$ here (the leapfrog step nearly
   conserved energy exactly, as expected for a small $\epsilon$ on a simple
   quadratic potential), we almost always accept: $w_{\text{new}} = w_1 = 1.025$.
 
-  \vspace{2mm}
   \textbf{Takeaway:} because $H$ is nearly conserved along the whole
   trajectory, HMC can run $L$ such steps (potentially moving quite far from
   $w_0$) while keeping the acceptance probability close to 1 -- this is the
@@ -669,8 +677,9 @@ def mala_step(theta, step_vec, rng):
 
 \begin{frame}{Visualising the Leapfrog Trajectory}
   \begin{center}
-    \includegraphics[width=0.95\textwidth]{fig_leapfrog_schematic.pdf}
+    \includegraphics[width=0.78\textwidth]{fig_leapfrog_schematic.pdf}
   \end{center}
+  \small
   \textbf{Left:} the marble (orange dots, numbered by leapfrog step) rolls
   down and back up the potential well $U(w)=\tfrac12 w^2$. \textbf{Right:}
   in phase space $(w,p)$, the exact continuous-time orbit is a perfect
@@ -679,9 +688,9 @@ def mala_step(theta, step_vec, rng):
 \end{frame}
 
 \begin{frame}[fragile]{Python: HMC on the Toy SABR Posterior}
-  Applying HMC to the same toy $(\alpha,\rho)$ inference problem as MALA,
-  using a diagonal mass matrix (to handle $\alpha$ and $\rho$ living on very
-  different natural scales -- $\alpha\!\sim\!0.01$ vs.\ $\rho\!\sim\!1$):
+  \small Applying HMC to the same toy $(\alpha,\rho)$ inference problem as
+  MALA, using a diagonal mass matrix (to handle $\alpha$ and $\rho$ living on
+  very different natural scales -- $\alpha\!\sim\!0.01$ vs.\ $\rho\!\sim\!1$):
 \begin{lstlisting}
 def leapfrog(w, p, eps, L, precond):
     grad = grad_log_posterior(w)
@@ -699,32 +708,31 @@ def hmc_step(theta, eps, L, precond, mass, rng):
     H1 = -log_posterior(w)     + 0.5*np.sum(p**2 *precond)
     accept = np.log(rng.uniform()) < (H0 - H1)
     return (w if accept else theta), accept
-
-# Book's setting: L = 25 leapfrog steps; step size tuned via dual averaging
-# to target an 80% acceptance rate (we mirror L=25 in our toy demo below).
+# Book's setting: L=25 leapfrog steps, step size tuned via dual averaging
+# to target an 80% acceptance rate (mirrored in our toy demo below).
 \end{lstlisting}
 \end{frame}
 
 \begin{frame}{Toy HMC Results}
+  \small
   \textbf{Illustrative only.} Running HMC with $L=25$ leapfrog steps for
   1500 iterations (300 burn-in) gives an acceptance rate of about
   \textbf{96\%} and again recovers both true parameters:
   \begin{center}
-    \includegraphics[width=0.85\textwidth]{fig_hmc_toy.pdf}
+    \includegraphics[width=0.58\textwidth]{fig_hmc_toy.pdf}
   \end{center}
 \end{frame}
 
 \begin{frame}{MALA vs.\ HMC: Why HMC Mixes Faster}
+  \small
   Comparing the autocorrelation of the $\alpha$ chain from our toy MALA and
   HMC runs makes the payoff of ``rolling like a marble'' concrete:
   \begin{center}
-    \includegraphics[width=0.62\textwidth]{fig_mala_vs_hmc_autocorr.pdf}
+    \includegraphics[width=0.48\textwidth]{fig_mala_vs_hmc_autocorr.pdf}
   \end{center}
   With $L=25$ leapfrog steps per proposal, HMC's samples decorrelate almost
   immediately, while MALA's small local nudges leave noticeable correlation
-  out to lag $\sim$20. Fewer correlated samples means more \emph{effective}
-  samples per iteration -- the practical payoff of HMC's physics-based
-  proposals.
+  out to lag $\sim$20 -- more effective samples per iteration.
 \end{frame}
 
 \subsection{3.3.3 Separable Shadow Hamiltonian Hybrid Monte Carlo (S2HMC)}
