@@ -110,7 +110,7 @@ def reset_grad_counter():
 
 # ---------------- MALA sampler (from scratch, Eq. 13.3 + MH correction) ----
 
-def run_mala(n_iter=4000, step=0.03, seed=1):
+def run_mala(n_iter=4000, step=0.4, seed=1):
     rng = np.random.default_rng(seed)
     w = np.zeros(DIM)
     lp = log_posterior(w)
@@ -136,7 +136,7 @@ def run_mala(n_iter=4000, step=0.03, seed=1):
 
 # ---------------- HMC sampler (from scratch, Eqs. 13.4-13.6) ---------------
 
-def run_hmc(n_iter=1500, eps=0.10, L=15, seed=2):
+def run_hmc(n_iter=1500, eps=0.30, L=15, seed=2):
     rng = np.random.default_rng(seed)
     w = np.zeros(DIM)
     chain = np.zeros((n_iter, DIM))
@@ -195,7 +195,7 @@ def shadow_hamiltonian(w, p, eps):
     return (-log_posterior(w)) + 0.5 * np.sum(p ** 2) + (eps ** 2 / 24.0) * np.sum(Uw ** 2)
 
 
-def run_s2hmc(n_iter=1500, eps=0.10, L=15, seed=3):
+def run_s2hmc(n_iter=1500, eps=0.30, L=15, seed=3):
     rng = np.random.default_rng(seed)
     w = np.zeros(DIM)
     chain = np.zeros((n_iter, DIM))
@@ -263,6 +263,7 @@ def make_prediction_figure(w_post_mean):
                for r in ["Buy", "Hold", "Sell"]]
     handles.append(plt.Line2D([0], [0], color="gray", ls="--", label="threshold = 0.5"))
     ax.legend(handles=handles, fontsize=8, loc="lower right")
+    ax.set_xticks(range(len(REPORT_NAMES)))
     ax.set_xticklabels(REPORT_NAMES, rotation=12)
     fig.tight_layout()
     fig.savefig(f"{OUTDIR}/fig_toy_analyst_predictions.pdf", bbox_inches="tight")

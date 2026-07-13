@@ -252,7 +252,7 @@ def run_mala(n_iter=6000, base_step=6.0, theta0=None, seed=1):
 
 # ---------------- HMC sampler (from scratch) ----------------------------
 
-def run_hmc(n_iter=1500, eps=1.0, L=25, theta0=None, seed=2):
+def run_hmc(n_iter=1500, eps=1.3, L=25, theta0=None, seed=2):
     """HMC with a diagonal mass matrix M = diag(MASS) so that momentum and
     step sizes are sensible for both alpha (~0.01 scale) and rho (~1 scale)."""
     rng = np.random.default_rng(seed)

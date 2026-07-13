@@ -149,7 +149,7 @@ def run_mala_full(n_iter=8000, step=0.8, w0=None, seed=1):
 
 def make_posterior_summary_figure(chain, burn=1500):
     post = chain[burn:]
-    names = [r"$w_0$ (intercept)", r"$w_1$ (amount)", r"$w_2$ (budget-variance \%)"]
+    names = [r"$w_0$ (intercept)", r"$w_1$ (amount)", r"$w_2$ (budget-variance %)"]
     fig, axes = plt.subplots(1, 3, figsize=(12, 3.6))
     means, stds = [], []
     for i in range(3):
@@ -328,10 +328,10 @@ def leapfrog_mhmc(w0, p0, eps, L, G):
 
 
 def make_hmc_vs_mhmc_schematic():
-    w0 = np.array([-1.8, 1.6])
-    p0 = np.array([0.9, 0.2])
-    eps, L = 0.09, 60
-    g = 2.2
+    w0 = np.array([-2.2, 1.2])
+    p0 = np.array([1.0, 0.3])
+    eps, L = 0.08, 35
+    g = 2.5
     G = np.array([[0.0, g], [-g, 0.0]])  # skew-symmetric "magnetic field" matrix
 
     traj_hmc = leapfrog_hmc(w0, p0, eps, L)
