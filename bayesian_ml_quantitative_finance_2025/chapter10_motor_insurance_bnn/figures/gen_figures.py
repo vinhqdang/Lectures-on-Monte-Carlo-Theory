@@ -229,53 +229,72 @@ def forward(theta, x):
     h2 = np.tanh(w2 * x + b2)
     return v1 * h1 + v2 * h2 + c
 
+def forward_and_jac(theta, x):
+    """Returns f(x;theta) and the analytic gradient d f / d theta at input x
+    (x may be a scalar or a 1-D array; returns arrays broadcast over x)."""
+    w1, b1, v1, w2, b2, v2, c = theta
+    z1 = w1 * x + b1
+    z2 = w2 * x + b2
+    h1 = np.tanh(z1)
+    h2 = np.tanh(z2)
+    f = v1 * h1 + v2 * h2 + c
+    sech1_sq = 1.0 - h1 ** 2
+    sech2_sq = 1.0 - h2 ** 2
+    d_w1 = v1 * sech1_sq * x
+    d_b1 = v1 * sech1_sq
+    d_v1 = h1
+    d_w2 = v2 * sech2_sq * x
+    d_b2 = v2 * sech2_sq
+    d_v2 = h2
+    d_c = np.ones_like(f)
+    J = np.stack([d_w1, d_b1, d_v1, d_w2, d_b2, d_v2, d_c], axis=-1)
+    return f, J
+
 def neg_log_posterior(theta, x, y, alpha, beta):
     """M(theta) = alpha/2 * ||theta||^2 (Gaussian prior, precision alpha)
                  + beta/2 * sum (y - f(x;theta))^2 (Gaussian likelihood, precision beta)."""
     resid = y - forward(theta, x)
     return 0.5 * alpha * np.sum(theta ** 2) + 0.5 * beta * np.sum(resid ** 2)
 
-def grad_neg_log_posterior(theta, x, y, alpha, beta, eps=1e-6):
-    """Numerical (finite-difference) gradient of the negative log posterior."""
-    g = np.zeros_like(theta)
-    for i in range(len(theta)):
-        tp = theta.copy(); tp[i] += eps
-        tm = theta.copy(); tm[i] -= eps
-        g[i] = (neg_log_posterior(tp, x, y, alpha, beta) - neg_log_posterior(tm, x, y, alpha, beta)) / (2 * eps)
-    return g
+def grad_neg_log_posterior(theta, x, y, alpha, beta):
+    """Analytic gradient of the negative log posterior (chain rule through
+    the tanh network)."""
+    f, J = forward_and_jac(theta, x)
+    resid = y - f
+    # dM/dtheta = alpha*theta - beta * sum_n resid_n * df_n/dtheta
+    return alpha * theta - beta * (resid[:, None] * J).sum(axis=0)
 
-def numerical_hessian(theta, x, y, alpha, beta, eps=1e-4):
-    """Numerical (finite-difference) Hessian of the negative log posterior at theta."""
+def numerical_hessian_from_grad(theta, x, y, alpha, beta, eps=1e-4):
+    """Numerically approximate the Hessian A of the negative log posterior at
+    theta by central-differencing the *analytic* gradient (more stable than
+    finite-differencing the loss value twice)."""
     n = len(theta)
     H = np.zeros((n, n))
     for i in range(n):
-        for j in range(n):
-            tpp = theta.copy(); tpp[i] += eps; tpp[j] += eps
-            tpm = theta.copy(); tpm[i] += eps; tpm[j] -= eps
-            tmp = theta.copy(); tmp[i] -= eps; tmp[j] += eps
-            tmm = theta.copy(); tmm[i] -= eps; tmm[j] -= eps
-            H[i, j] = (neg_log_posterior(tpp, x, y, alpha, beta)
-                       - neg_log_posterior(tpm, x, y, alpha, beta)
-                       - neg_log_posterior(tmp, x, y, alpha, beta)
-                       + neg_log_posterior(tmm, x, y, alpha, beta)) / (4 * eps ** 2)
+        tp = theta.copy(); tp[i] += eps
+        tm = theta.copy(); tm[i] -= eps
+        gp = grad_neg_log_posterior(tp, x, y, alpha, beta)
+        gm = grad_neg_log_posterior(tm, x, y, alpha, beta)
+        H[:, i] = (gp - gm) / (2 * eps)
     return H
 
 alpha_prior = 0.5   # prior precision on weights (Gaussian prior N(0, 1/alpha))
 beta_noise = 8.0    # likelihood precision (1/noise-variance)
 
-# --- Step 1: find the MAP estimate by (full-batch) gradient descent ---
+# --- Step 1: find the MAP estimate by gradient descent with the analytic
+#     gradient (ordinary penalised training of the network) ---
 rng2 = np.random.default_rng(0)
 theta0 = rng2.normal(scale=0.5, size=7)
 theta_t = theta0.copy()
-lr = 0.05
-for it in range(4000):
+lr = 0.02
+for it in range(20000):
     g = grad_neg_log_posterior(theta_t, xn, y_data, alpha_prior, beta_noise)
     theta_t = theta_t - lr * g
 theta_map7 = theta_t
 
 # --- Step 2: numerically approximate the Hessian A of the negative log
 #     posterior at the MAP estimate ---
-A = numerical_hessian(theta_map7, xn, y_data, alpha_prior, beta_noise)
+A = numerical_hessian_from_grad(theta_map7, xn, y_data, alpha_prior, beta_noise)
 # Symmetrise for numerical safety
 A = 0.5 * (A + A.T)
 # Small ridge for numerical stability (the toy Hessian can be near-singular
@@ -288,23 +307,11 @@ Sigma = np.linalg.inv(A_reg)
 # --- Step 4: propagate uncertainty through the network via a local
 #     linearisation (delta method): Var[f(x)] ~= J(x) Sigma J(x)^T, plus
 #     the observation noise variance 1/beta for the *predictive* band.
-def jacobian_theta(theta, x, eps=1e-6):
-    """Numerical gradient of f(x; theta) w.r.t. theta, at a single input x."""
-    n = len(theta)
-    J = np.zeros(n)
-    for i in range(n):
-        tp = theta.copy(); tp[i] += eps
-        tm = theta.copy(); tm[i] -= eps
-        J[i] = (forward(tp, x) - forward(tm, x)) / (2 * eps)
-    return J
-
 x_plot = np.linspace(-15, 90, 250)
 xn_plot = (x_plot - x_mean) / x_std
-mean_pred = forward(theta_map7, xn_plot)
-var_pred = np.zeros_like(xn_plot)
-for k, xv in enumerate(xn_plot):
-    J = jacobian_theta(theta_map7, xv)
-    var_pred[k] = J @ Sigma @ J
+mean_pred, J_plot = forward_and_jac(theta_map7, xn_plot)   # J_plot: (250, 7)
+var_pred = np.einsum("ni,ij,nj->n", J_plot, Sigma, J_plot)
+var_pred = np.clip(var_pred, 0.0, None)
 std_pred = np.sqrt(var_pred)
 std_pred_total = np.sqrt(var_pred + 1.0 / beta_noise)  # add observation noise
 
