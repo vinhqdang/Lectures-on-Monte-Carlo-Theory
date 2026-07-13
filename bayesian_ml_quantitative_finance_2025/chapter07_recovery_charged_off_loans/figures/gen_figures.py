@@ -190,7 +190,9 @@ def effective_sample_size(x, max_lag=None):
 # =========================================================================
 def make_mcmc_diagnostics():
     X, y, *_ = make_toy_loan_dataset()
-    samples, accept_rate = run_mala(X, y, n_iter=12000, burn_in=2000, step=0.35)
+    # step size chosen so the acceptance rate lands near the ~60% target
+    # the book uses for tuning MALA in Sect. 7.4.2
+    samples, accept_rate = run_mala(X, y, n_iter=12000, burn_in=2000, step=1.6)
 
     param_names = ["intercept", r"$w_{\mathrm{days}}$", r"$w_{\mathrm{balance}}$"]
     ess_vals = [effective_sample_size(samples[:, j]) for j in range(samples.shape[1])]

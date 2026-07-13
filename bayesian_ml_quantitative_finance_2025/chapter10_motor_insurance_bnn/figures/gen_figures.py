@@ -194,7 +194,7 @@ ax.annotate(fr"MAP: $\theta_{{MP}}={theta_map:.3f}$" "\n" fr"$A=M''(\theta_{{MP}
 ax.set_xlabel(r"$\theta$ (a single toy network weight)")
 ax.set_ylabel("density")
 ax.set_title("Laplace approximation, hand-worked scalar example\n"
-              r"$M(\theta)=\tfrac12(\theta-1)^2+0.08(\theta-1)^4$")
+              r"$M(\theta)=\frac{1}{2}(\theta-1)^2+0.08(\theta-1)^4$")
 ax.legend(loc="upper left", fontsize=9.5, frameon=True)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
