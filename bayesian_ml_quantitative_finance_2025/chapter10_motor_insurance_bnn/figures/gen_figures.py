@@ -285,17 +285,17 @@ def numerical_hessian_from_grad(theta, x, y, alpha, beta, eps=1e-4):
         H[:, i] = (gp - gm) / (2 * eps)
     return H
 
-alpha_prior = 0.5   # prior precision on weights (Gaussian prior N(0, 1/alpha))
+alpha_prior = 0.1   # prior precision on weights (Gaussian prior N(0, 1/alpha))
 beta_noise = 8.0    # likelihood precision (1/noise-variance)
 
 # --- Step 1: find the MAP estimate by gradient descent with the analytic
 #     gradient (ordinary penalised training of the network) ---
 n_params = 8
-rng2 = np.random.default_rng(0)
-theta0 = rng2.normal(scale=0.5, size=n_params)
+rng2 = np.random.default_rng(1)
+theta0 = rng2.normal(scale=1.0, size=n_params)
 theta_t = theta0.copy()
 lr = 0.02
-for it in range(20000):
+for it in range(30000):
     g = grad_neg_log_posterior(theta_t, xn, y_data, alpha_prior, beta_noise)
     theta_t = theta_t - lr * g
 theta_map7 = theta_t

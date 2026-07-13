@@ -292,8 +292,8 @@ def make_mh_vs_mala_figure(mh_chain, mala_chain, burn=1500):
 # ======================================================================
 # Toy 2D quadratic potential U(w) = 0.5 * w^T A w  (A anisotropic + correlated,
 # playing the role of the negative-log-posterior "landscape").
-A_MAT = np.array([[3.0, 1.0],
-                   [1.0, 1.0]])
+A_MAT = np.array([[1.5, 0.4],
+                   [0.4, 1.0]])
 
 
 def grad_U(w):
