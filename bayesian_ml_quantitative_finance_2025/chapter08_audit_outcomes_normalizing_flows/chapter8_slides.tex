@@ -145,6 +145,20 @@ This chapter's contribution: use \textbf{normalizing flows} (which you met for d
 \textbf{Throughout these slides}, alongside the book's real results, we build our own small \emph{toy running example} -- two synthetic audit-outcome-style logistic regression models -- so every abstract formula gets a concrete number attached to it.
 \end{frame}
 
+\begin{frame}{8.1 Notation Cheat-Sheet for This Chapter}
+\begin{itemize}
+  \item $D = \{x,y\}$: the data (covariates $x$, binary target $y$); $N$: number of observations.
+  \item $\theta$ (or $\mathbf{w}$): the model's parameters; $M$: a specific model (choice of covariates).
+  \item $\mathbb{P}(\theta\mid D,M)$, shorthand $\mathbb{P}(\theta_M)$: the \textbf{posterior} -- what MCMC samples for you.
+  \item $L(\theta_M) := \mathbb{P}(D\mid\theta,M)$: the \textbf{likelihood}.
+  \item $\pi(\theta_M) := \mathbb{P}(\theta\mid M)$: the \textbf{prior}.
+  \item $Z_M := \mathbb{P}(D\mid M)$: the \textbf{evidence} -- this chapter's new object of interest.
+  \item $B_{ij}$: the \textbf{Bayes factor} comparing model $i$ to model $j$.
+\end{itemize}
+\vspace{0.2cm}
+Keep this slide in mind: every formula from Sect.\ 8.3 onward is built from just these seven symbols.
+\end{frame}
+
 %%=============================================================================
 \section{8.2 Models}
 %%=============================================================================
@@ -222,6 +236,18 @@ This nesting is deliberate: it lets us isolate the marginal value of adding \emp
   \item Model $2 \to 1$: adds ``Debt to Community Wealth/Equity''.
 \end{itemize}
 
+\end{frame}
+
+\begin{frame}{8.2 What Do These Financial Ratios Mean?}
+\begin{itemize}
+  \item \textbf{Debt to Total Operating Revenue}: how many years of revenue would be needed to pay off all debt -- a leverage/solvency indicator, and the one covariate present in \emph{every} model (it is Model 5).
+  \item \textbf{Current Ratio}: current assets $\div$ current liabilities -- a classic short-term liquidity measure.
+  \item \textbf{Net Operating Surplus Margin \%}: operating surplus as a \% of revenue -- an operating-efficiency/profitability measure.
+  \item \textbf{Capital Expenditure \% Total Expenditure}: how much of total spending goes to capital projects vs.\ day-to-day operations.
+  \item \textbf{Debt to Community Wealth/Equity}: leverage relative to the municipality's net asset base.
+\end{itemize}
+\vspace{0.2cm}
+These are exactly the kind of ratios AGSA and researchers (Mabelane et al., 2023) have found most predictive of audit outcomes -- debt ratios, liquidity, and operating-surplus margins consistently rank as top features.
 \end{frame}
 
 \begin{frame}[allowframebreaks]{8.2 Why Nested Models? Setting Up the Comparison}
@@ -331,6 +357,15 @@ where $\mathbb{P}(\theta_M) := \mathbb{P}(\theta \mid D, M)$ is the posterior, $
 
 From the posterior $\mathbb{P}(\theta_M)$ one gets parameter estimates for a given model $M$ (this is what MCMC gives you directly); $Z_M$ is what lets you compare across models. This notation ($L$, $\pi$, $Z_M$) will be used in every formula from here on -- in particular the harmonic mean estimator of Sect.\ 8.4 targets $Z_M$ directly.
 
+\end{frame}
+
+\begin{frame}{8.3 Quick Recap: Posterior vs.\ Evidence}
+\begin{itemize}
+  \item The \textbf{posterior} $\mathbb{P}(\theta_M) \propto L(\theta_M)\pi(\theta_M)$ answers: \emph{within} model $M$, which parameter values are plausible?
+  \item The \textbf{evidence} $Z_M = \int L(\theta_M)\pi(\theta_M)\,d\theta$ answers: \emph{as a whole}, how well does model $M$ explain the data, averaged over everything the prior considers plausible?
+  \item MCMC (MALA/HMC/NUTS) gives you the first \emph{for free}; it never computes the second.
+  \item Getting $Z_M$ from posterior samples \emph{without any extra sampling scheme} is exactly what the harmonic mean estimator (Sect.\ 8.4) promises to do.
+\end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]{8.3 Comparing Models: The Bayes Factor}
@@ -533,6 +568,15 @@ To see this concretely (not just abstractly), we build a toy 2-parameter Bayesia
 \end{itemize}
 This toy simulation is our own illustrative construction -- but it reproduces exactly the qualitative failure the book describes for the classical estimator, and exactly the qualitative fix normalizing flows provide.
 
+\end{frame}
+
+\begin{frame}{8.4 Harmonic Mean Estimator: Summary So Far}
+\begin{itemize}
+  \item \textbf{Identity}: $\mathbb{E}_{\text{posterior}}[1/L(\theta_M)] = 1/Z_M$ -- exact, and derived from Bayes' rule alone.
+  \item \textbf{Estimator} (Eq.\ 8.7): average $1/L(\theta^{(i)})$ over posterior samples you already have.
+  \item \textbf{Failure mode}: equivalent to importance sampling with the \emph{wrong} tail behaviour (sampling density = posterior, target = prior) -- rare low-likelihood posterior samples can dominate and destabilize the average, in the worst case giving infinite variance.
+  \item \textbf{Fix}: replace the (too-broad) prior with a \emph{learned} density whose mass is guaranteed to sit inside the posterior -- this is exactly what a normalizing flow gives us, covered next in Sect.\ 8.4.1.
+\end{itemize}
 \end{frame}
 
 %%=============================================================================
@@ -749,6 +793,15 @@ y = \begin{cases} 1 & \text{unqualified opinion} \\ 0 & \text{not unqualified} \
 \]
 Grouping ``unqualified'' with ``unqualified\_emphasis\_of\_matter'' gives $14\%+41\%=55\%$ of observations in the positive class -- a fairly \textbf{balanced} binary dataset.
 
+\end{frame}
+
+\begin{frame}{8.5.1 Why a Time-Based Train/Test Split?}
+\begin{itemize}
+  \item The 70--30 split is done \textbf{by year}, not by random shuffling of rows.
+  \item This matches the real deployment scenario: a model trained on 2012--$\sim$2016 data is asked to predict audit outcomes for later (2017--2018) municipal-year observations it has never seen.
+  \item A random shuffle would let information from a municipality's \emph{future} financial year leak into training, making the reported AUC over-optimistic.
+  \item This is exactly the same discipline you would apply when back-testing a trading strategy or a credit model in quantitative finance: never let training data ``see the future'' relative to the test period.
+\end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]{8.5.2 Evaluation Protocol and MCMC/Flow Settings}
