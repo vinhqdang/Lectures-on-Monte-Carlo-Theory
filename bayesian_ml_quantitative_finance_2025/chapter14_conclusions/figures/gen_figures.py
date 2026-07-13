@@ -322,8 +322,94 @@ def draw_theme_quadrant(center_label, quadrants, out_name, title):
     print(f"Wrote {out_name}")
 
 
-# --- Derivative modeling (mirrors book Fig. 14.1) ---
-draw_theme_quadrant(
+def draw_theme_triad(center_label, boxes, out_name, title):
+    """
+    boxes: list of exactly 3 dicts with keys 'name', 'contrib', 'future'.
+    Layout: two boxes on top converging into the center label, one box
+    below the center label -- matching the book's own Fig. 14.1, which
+    has only three pillars for the derivative modeling theme.
+    """
+    fig, ax = plt.subplots(figsize=(11, 7.4))
+    ax.set_xlim(0, 11)
+    ax.set_ylim(0, 7.55)
+    ax.axis("off")
+
+    header_w, header_h = 4.6, 0.55
+    body_h = 1.55
+    top_y = 5.35
+    left_x = 0.35
+    right_x = 5.65
+
+    center_w, center_h = 2.6, 1.0
+    center_x = 5.5 - center_w / 2
+    center_y = 3.15 - center_h / 2
+
+    bot_w = 4.6
+    bot_h = 1.9
+    bot_header_h = 0.5
+    bot_x = 5.5 - bot_w / 2
+    bot_y = 0.35
+
+    top_positions = [(left_x, top_y), (right_x, top_y)]
+    for (x0, y0), q in zip(top_positions, boxes[:2]):
+        header = FancyBboxPatch((x0, y0 + body_h), header_w, header_h,
+                                 boxstyle="square,pad=0.0",
+                                 linewidth=0, facecolor="black")
+        ax.add_patch(header)
+        ax.text(x0 + header_w / 2, y0 + body_h + header_h / 2, q["name"],
+                ha="center", va="center", fontsize=9.3, color="white",
+                fontweight="bold")
+        body = FancyBboxPatch((x0, y0), header_w, body_h,
+                               boxstyle="square,pad=0.0",
+                               linewidth=1.0, edgecolor="#999999",
+                               facecolor="#FAFAFA")
+        ax.add_patch(body)
+        ax.plot([x0 + header_w / 2, x0 + header_w / 2], [y0 + 0.08, y0 + body_h - 0.08],
+                color="#BBBBBB", lw=0.8)
+        ax.text(x0 + header_w * 0.25, y0 + body_h / 2, q["contrib"], ha="center",
+                va="center", fontsize=8.0,
+                bbox=dict(boxstyle="round,pad=0.3", fc="#E8F0FA", ec="none"))
+        ax.text(x0 + header_w * 0.75, y0 + body_h / 2, q["future"], ha="center",
+                va="center", fontsize=8.0,
+                bbox=dict(boxstyle="round,pad=0.3", fc="#FDEFE3", ec="none"))
+        cx = x0 + header_w / 2
+        ax.plot([cx, center_x + center_w / 2], [y0, center_y + center_h],
+                color="black", lw=1.0)
+
+    q3 = boxes[2]
+    header3 = FancyBboxPatch((bot_x, bot_y + bot_h), bot_w, bot_header_h,
+                              boxstyle="square,pad=0.0", linewidth=0, facecolor="black")
+    ax.add_patch(header3)
+    ax.text(bot_x + bot_w / 2, bot_y + bot_h + bot_header_h / 2, q3["name"],
+            ha="center", va="center", fontsize=9.3, color="white", fontweight="bold")
+    body3 = FancyBboxPatch((bot_x, bot_y), bot_w, bot_h, boxstyle="square,pad=0.0",
+                            linewidth=1.0, edgecolor="#999999", facecolor="#FAFAFA")
+    ax.add_patch(body3)
+    ax.plot([bot_x + bot_w / 2, bot_x + bot_w / 2], [bot_y + 0.08, bot_y + bot_h - 0.08],
+            color="#BBBBBB", lw=0.8)
+    ax.text(bot_x + bot_w * 0.25, bot_y + bot_h / 2, q3["contrib"], ha="center", va="center",
+            fontsize=8.0, bbox=dict(boxstyle="round,pad=0.3", fc="#E8F0FA", ec="none"))
+    ax.text(bot_x + bot_w * 0.75, bot_y + bot_h / 2, q3["future"], ha="center", va="center",
+            fontsize=8.0, bbox=dict(boxstyle="round,pad=0.3", fc="#FDEFE3", ec="none"))
+    ax.plot([bot_x + bot_w / 2, center_x + center_w / 2], [bot_y + bot_h + bot_header_h, center_y],
+            color="black", lw=1.0)
+
+    center_box = FancyBboxPatch((center_x, center_y), center_w, center_h,
+                                 boxstyle="square,pad=0.0", linewidth=0, facecolor="black")
+    ax.add_patch(center_box)
+    ax.text(center_x + center_w / 2, center_y + center_h / 2, center_label,
+            ha="center", va="center", fontsize=12.5, color="white", fontweight="bold")
+
+    ax.text(0.35, 7.35, "■ contribution   □ future direction", fontsize=8, color="#555555")
+    ax.set_title(title, fontsize=13.5, fontweight="bold", pad=6)
+    fig.tight_layout()
+    fig.savefig(out_name)
+    plt.close(fig)
+    print(f"Wrote {out_name}")
+
+
+# --- Derivative modeling (mirrors book Fig. 14.1: three pillars, not four) ---
+draw_theme_triad(
     "DERIVATIVE\nMODELING",
     [
         {
@@ -340,11 +426,6 @@ draw_theme_quadrant(
             "name": "Normalizing flows for option pricing",
             "contrib": "Learn risk-neutral\ndensity from option\nprices",
             "future": "Extend to entire\nvolatility surface",
-        },
-        {
-            "name": "(theme concludes with three pillars above)",
-            "contrib": "MCMC + GPs + flows\ntogether span pricing,\ncalibration & surfaces",
-            "future": "Jump-diffusion\ncomparisons; scalable\nGP variants",
         },
     ],
     "fig_ch14_derivative_modeling.pdf",
