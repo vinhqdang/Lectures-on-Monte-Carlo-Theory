@@ -115,7 +115,7 @@ def fig_equality_duality():
     ax = axes[1]
     nus = np.linspace(-2, 4, 300)
     ax.plot(nus, h(nus), color="tab:purple", lw=2.5,
-            label=r"$h(\nu)=\tfrac12\|a\|^2\nu^2+\nu(b-\langle z\,|\,a\rangle)$")
+            label=r"$h(\nu)=\frac{1}{2}\|a\|^2\nu^2+\nu(b-\langle z\,|\,a\rangle)$")
     ax.plot([nu_bar], [mu], "o", color="tab:red", ms=0)  # placeholder, invisible
     ax.plot([nu_bar], [h(nu_bar)], "o", color="tab:red", ms=9, zorder=5)
     ax.annotate(r"$\bar\nu=%.1f,\ \mu^*=%.1f$" % (nu_bar, h(nu_bar)),
@@ -184,7 +184,7 @@ def fig_inequality_duality():
     ax.plot(x1, line_x2, color="tab:blue", lw=2.5,
             label=r"boundary $\langle a\,|\,x\rangle = b$")
     ax.fill_between(x1, line_x2, 5, color="tab:blue", alpha=0.08,
-                     label=r"feasible set $\langle a\,|\,x\rangle \ge b$")
+                     label=r"feasible set $\langle a\,|\,x\rangle \geq b$")
     ax.plot(0, 0, "x", color="black", ms=9, mew=2, zorder=5)
     ax.annotate("origin (unconstrained min)", xy=(0, 0), xytext=(-0.9, -0.9))
     ax.plot(*x_bar, "s", color="tab:red", ms=9, zorder=5)
@@ -203,7 +203,7 @@ def fig_inequality_duality():
     ax = axes[1]
     nus = np.linspace(0, 1.0, 300)
     ax.plot(nus, d(nus), color="tab:purple", lw=2.5,
-            label=r"$d(\nu)=\tfrac12\|a\|^2\nu^2-b\nu,\ \ \nu\ge 0$")
+            label=r"$d(\nu)=\frac{1}{2}\|a\|^2\nu^2-b\nu,\ \ \nu\geq 0$")
     ax.plot([nu_bar], [d(nu_bar)], "o", color="tab:red", ms=9, zorder=5)
     ax.annotate(r"$\bar\nu=%.2f,\ \mu^*=%.1f$" % (nu_bar, d(nu_bar)),
                 xy=(nu_bar, d(nu_bar)), xytext=(nu_bar + 0.15, d(nu_bar) + 1.2),

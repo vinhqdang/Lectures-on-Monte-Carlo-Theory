@@ -176,11 +176,11 @@ def fig_proximal_average():
     ax = axs[0]
     ax.plot(xs, f_vals, color='#2c6aad', lw=1.4, ls='--', label=r'$f(x)=x^2/2$')
     ax.plot(xs, g_vals, color='#c4900a', lw=1.4, ls='--', label=r'$g(x)=|x|$')
-    ax.plot(xs, upper, color='gray', lw=1.6, ls=':', label=r'$\frac12 f+\frac12 g$ (upper)')
+    ax.plot(xs, upper, color='gray', lw=1.6, ls=':', label=r'$\frac{1}{2} f+\frac{1}{2} g$ (upper)')
     ax.fill_between(xs, lower, upper, color='#dce9f5', alpha=0.5)
     ax.plot(xs, pav_vals, color='#c0392b', lw=2.4, label=r'$\mathrm{pav}(f,g)(x)$')
     ax.plot(xs, lower, color='#3a7d3a', lw=1.6, ls='-.',
-            label=r'$(\frac12 f^*+\frac12 g^*)^*$ (lower)')
+            label=r'$(\frac{1}{2} f^*+\frac{1}{2} g^*)^*$ (lower)')
     ax.set_ylim(-0.5, 5)
     ax.set_xlabel('$x$'); ax.set_ylabel('value')
     ax.set_title('(a) Primal picture: Prop. 14.9 sandwich')
@@ -212,8 +212,118 @@ def fig_proximal_average():
     print(f"  max |pav(f*,g*) - (pav(f,g))*| over sampled grid = {max_gap:.6f}")
 
 
+def fig_coercivity_example():
+    """Figure showing coercive vs. non-coercive functions."""
+    fig, axs = plt.subplots(1, 2, figsize=(10, 4.5))
+
+    x = np.linspace(-3, 3, 300)
+
+    # Non-coercive: f(x) = x^2 on [-3, 3], unbounded level sets outside
+    ax = axs[0]
+    f_noncoercive = 0.1 * x**2
+    ax.plot(x, f_noncoercive, color='#c0392b', lw=2.2)
+    ax.axhline(y=0.2, color='gray', lw=1, ls='--', alpha=0.5)
+    ax.fill_between(x, 0, f_noncoercive, alpha=0.2, color='#c0392b')
+    ax.set_xlabel('$x$'); ax.set_ylabel('$f(x)$')
+    ax.set_title('(a) Non-coercive: $f(x) = 0.1 x^2$')
+    ax.set_ylim(-0.2, 1.5)
+    ax.grid(alpha=0.3)
+    ax.text(0, -0.1, 'Level set unbounded', ha='center', fontsize=9)
+
+    # Coercive: f(x) = x^2
+    ax = axs[1]
+    f_coercive = x**2
+    ax.plot(x, f_coercive, color='#2c6aad', lw=2.2)
+    ax.axhline(y=2, color='gray', lw=1, ls='--', alpha=0.5)
+    ax.fill_between(x[x**2 <= 2], 0, f_coercive[x**2 <= 2], alpha=0.2, color='#2c6aad')
+    ax.set_xlabel('$x$'); ax.set_ylabel('$f(x)$')
+    ax.set_title('(b) Coercive: $f(x) = x^2$')
+    ax.set_ylim(-0.2, 9)
+    ax.grid(alpha=0.3)
+    ax.text(0, -0.5, 'Level set is bounded', ha='center', fontsize=9)
+
+    fig.suptitle('Coercivity (Prop. 14.16): boundedness of level sets', fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    savefig('fig_coercivity.pdf')
+
+
+def fig_positively_homogeneous():
+    """Figure showing positively homogeneous functions."""
+    fig, axs = plt.subplots(1, 2, figsize=(10, 4.5))
+
+    x = np.linspace(-3, 3, 300)
+
+    # Homogeneous: f(x) = |x| (norm)
+    ax = axs[0]
+    f_hom = np.abs(x)
+    ax.plot(x, f_hom, color='#2c6aad', lw=2.2, label=r'$f(x)=|x|$')
+    for lam, style in [(0.5, ':'), (1.0, '-'), (2.0, '--')]:
+        y = lam * np.abs(x)
+        ax.plot(x, y, color='#2c6aad', lw=1.2, ls=style, alpha=0.6,
+                label=f'$\\lambda={lam}$')
+    ax.set_xlabel('$x$'); ax.set_ylabel('$f(x)$')
+    ax.set_title(r'(a) Positively homogeneous')
+    ax.set_ylim(-0.5, 6)
+    ax.legend(fontsize=8, loc='upper left')
+    ax.grid(alpha=0.3)
+
+    # Not homogeneous: f(x) = x^2 + 1
+    ax = axs[1]
+    f_nonhom = x**2 + 1
+    ax.plot(x, f_nonhom, color='#c0392b', lw=2.2, label=r'$f(x)=x^2+1$')
+    for lam, style in [(0.5, ':'), (1.0, '-'), (2.0, '--')]:
+        y = (lam * x)**2 + 1
+        ax.plot(x, y, color='#c0392b', lw=1.2, ls=style, alpha=0.6,
+                label=f'$\\lambda={lam}$')
+    ax.set_xlabel('$x$'); ax.set_ylabel('$f(x)$')
+    ax.set_title(r'(b) NOT homogeneous')
+    ax.set_ylim(0, 10)
+    ax.legend(fontsize=8, loc='upper left')
+    ax.grid(alpha=0.3)
+
+    fig.suptitle('Positively homogeneous functions (Prop. 14.11, 14.12)', fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    savefig('fig_positively_homogeneous.pdf')
+
+
+def fig_strongly_convex():
+    """Figure showing strongly convex quadratic and its dynamics."""
+    fig, axs = plt.subplots(1, 2, figsize=(10, 4.5))
+
+    x = np.linspace(-2.5, 2.5, 300)
+
+    # Strongly convex function f(x) = (1/2) x^2
+    ax = axs[0]
+    gamma = 1.0
+    f = (gamma / 2) * x**2
+    ax.plot(x, f, color='#2c6aad', lw=2.2, label=r'$f(x) = \frac{\gamma}{2}x^2$')
+    ax.fill_between(x, 0, f, alpha=0.15, color='#2c6aad')
+    ax.set_xlabel('$x$'); ax.set_ylabel('$f(x)$')
+    ax.set_title(r'(a) Strongly convex: $\gamma = 1.0$')
+    ax.legend(fontsize=9)
+    ax.grid(alpha=0.3)
+    ax.set_ylim(-0.2, 4)
+
+    # Proximal operator Prox_f
+    ax = axs[1]
+    prox_f = 1.0 / (1.0 + gamma) * x  # Prox_{f}(x) = x / (1 + gamma)
+    ax.plot(x, x, color='gray', lw=1.2, ls='--', label='Identity')
+    ax.plot(x, prox_f, color='#3a7d3a', lw=2.2, label=r'$\mathrm{Prox}_f(x)$')
+    ax.set_xlabel('$x$'); ax.set_ylabel(r'$\mathrm{Prox}_f(x)$')
+    ax.set_title(r'(b) Proximal operator')
+    ax.legend(fontsize=9)
+    ax.grid(alpha=0.3)
+
+    fig.suptitle('Strongly convex functions and their proximal operators', fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    savefig('fig_strongly_convex.pdf')
+
+
 if __name__ == '__main__':
     print("Generating Chapter 14 figures...")
     fig_moreau_decomposition()
     fig_proximal_average()
+    fig_coercivity_example()
+    fig_positively_homogeneous()
+    fig_strongly_convex()
     print("Done.")

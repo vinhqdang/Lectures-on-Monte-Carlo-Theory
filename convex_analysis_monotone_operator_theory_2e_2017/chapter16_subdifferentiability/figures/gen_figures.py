@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
 gen_figures.py -- Figures for Chapter 16: Subdifferentiability of Convex Functions
-Bauschke & Combettes, "Convex Analysis and Monotone Operator Theory in Hilbert
-Spaces", 2nd ed.
+Bauschke & Combettes, "Convex Analysis and Monotone Operator Theory in Hilbert Spaces", 2nd ed.
 
 Generates (as vector PDFs, saved into this directory):
-  fig_abs_subdifferential.pdf   -- f(x)=|x|, its supporting lines, and the
-                                    graph of the multifunction x -> d|.|(x)
-  fig_fermat_rule.pdf           -- Fermat's rule 0 in df(x*) illustrated on
-                                    f(x) = |x-2| + x^2
+  fig_abs_subdifferential.pdf   -- f(x)=|x|, its supporting lines, and the subdifferential
+  fig_fermat_rule.pdf           -- Fermat's rule illustrated on f(x) = |x-2| + x^2
+  fig_subdiff_examples.pdf      -- Examples of subdifferentials for common functions
+  fig_convexity.pdf             -- Convexity and supporting hyperplanes
 """
 import matplotlib
 matplotlib.use('Agg')
@@ -16,8 +15,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 plt.rcParams.update({
-    'font.size': 12,
-    'axes.labelsize': 13,
+    'font.size': 11,
+    'axes.labelsize': 12,
     'axes.titlesize': 13,
     'legend.fontsize': 10,
     'figure.dpi': 150,
@@ -170,7 +169,140 @@ def make_fermat_rule_figure():
     plt.close(fig)
 
 
+def make_subdiff_examples_figure():
+    """Multiple examples of subdifferentials for various functions."""
+    fig, axes = plt.subplots(2, 2, figsize=(11, 9))
+
+    # Example 1: Squared norm
+    ax = axes[0, 0]
+    x = np.linspace(-2, 2, 200)
+    y = 0.5 * x**2
+    ax.plot(x, y, 'b-', linewidth=2.5, label=r'$f(x) = \frac{1}{2}x^2$')
+    ax.plot(0, 0, 'ro', markersize=8)
+    ax.annotate(r'$\partial f(0)=\{0\}$', xy=(0.2, 0.2), fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.3))
+    ax.set_xlabel(r'$x$', fontsize=11)
+    ax.set_ylabel(r'$f(x)$', fontsize=11)
+    ax.set_title('Squared Norm', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-0.5, 2.5)
+
+    # Example 2: Absolute value
+    ax = axes[0, 1]
+    x = np.linspace(-2, 2, 200)
+    y = np.abs(x)
+    ax.plot(x, y, 'b-', linewidth=2.5, label=r'$f(x) = |x|$')
+    ax.plot(0, 0, 'ro', markersize=8)
+    ax.annotate(r'$\partial f(0)=[-1, 1]$', xy=(0.3, 0.3), fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.3))
+    ax.set_xlabel(r'$x$', fontsize=11)
+    ax.set_ylabel(r'$f(x)$', fontsize=11)
+    ax.set_title('Absolute Value', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-0.3, 2)
+
+    # Example 3: ReLU function
+    ax = axes[1, 0]
+    x = np.linspace(-2, 2, 200)
+    y = np.maximum(x, 0)
+    ax.plot(x, y, 'b-', linewidth=2.5, label=r'$f(x) = \max(x, 0)$')
+    ax.plot(0, 0, 'ro', markersize=8)
+    ax.annotate(r'$\partial f(0)=[0, 1]$', xy=(0.3, 0.3), fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.3))
+    ax.set_xlabel(r'$x$', fontsize=11)
+    ax.set_ylabel(r'$f(x)$', fontsize=11)
+    ax.set_title('ReLU Function', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-0.3, 2)
+
+    # Example 4: Indicator function
+    ax = axes[1, 1]
+    x = np.linspace(-2, 2, 200)
+    ax.plot([-1, 1], [0, 0], 'b-', linewidth=3, label=r'$\iota_C(x)=0$ on $C=[-1,1]$')
+    ax.axvline(x=-1, color='r', linestyle='--', linewidth=1.5, alpha=0.5)
+    ax.axvline(x=1, color='r', linestyle='--', linewidth=1.5, alpha=0.5)
+    ax.plot([-1, 1], [0, 0], 'ro', markersize=8)
+    ax.annotate(r'$\partial \iota_C(x)=N_C(x)$', xy=(0, 0.3), fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.3))
+    ax.set_xlabel(r'$x$', fontsize=11)
+    ax.set_ylabel(r'$f(x)$', fontsize=11)
+    ax.set_title('Indicator Function', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-0.5, 1)
+
+    fig.tight_layout()
+    fig.savefig('fig_subdiff_examples.pdf')
+    plt.close(fig)
+
+
+def make_convexity_figure():
+    """Illustration of convexity and supporting hyperplanes."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5))
+
+    # Convex function with subgradients
+    x = np.linspace(-2, 2, 200)
+    y = np.abs(x) + 0.3 * x**2
+    ax1.plot(x, y, 'b-', linewidth=2.5, label='Convex function')
+
+    # Mark some points and their subgradients
+    x_pts = [-1, 0, 1]
+    for xp in x_pts:
+        yp = np.abs(xp) + 0.3 * xp**2
+        ax1.plot(xp, yp, 'ro', markersize=7)
+        # Compute slope (subgradient)
+        if xp > 0:
+            slope = 1 + 0.6 * xp
+        elif xp < 0:
+            slope = -1 + 0.6 * xp
+        else:
+            slope = 0
+
+        x_hyp = np.linspace(-2, 2, 100)
+        y_hyp = yp + slope * (x_hyp - xp)
+        ax1.plot(x_hyp, y_hyp, 'r--', alpha=0.4, linewidth=1)
+
+    ax1.set_xlabel(r'$x$', fontsize=12)
+    ax1.set_ylabel(r'$f(x)$', fontsize=12)
+    ax1.set_title('Convex Function: Supporting Hyperplanes', fontsize=13, fontweight='bold')
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(fontsize=10)
+    ax1.set_xlim(-2.5, 2.5)
+
+    # Non-convex comparison
+    x = np.linspace(-2, 2, 200)
+    y = x**3
+    ax2.plot(x, y, 'r-', linewidth=2.5, label='Non-convex function')
+
+    x_pts = [-1, 0, 1]
+    for xp in x_pts:
+        yp = xp**3
+        ax2.plot(xp, yp, 'bo', markersize=7)
+        # Tangent line (not necessarily supporting)
+        slope = 3 * xp**2
+        x_hyp = np.linspace(-2, 2, 100)
+        y_hyp = yp + slope * (x_hyp - xp)
+        ax2.plot(x_hyp, y_hyp, 'b--', alpha=0.4, linewidth=1)
+
+    ax2.set_xlabel(r'$x$', fontsize=12)
+    ax2.set_ylabel(r'$f(x)$', fontsize=12)
+    ax2.set_title('Non-convex: Tangents Not Supporting', fontsize=13, fontweight='bold')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(fontsize=10)
+    ax2.set_xlim(-2.5, 2.5)
+
+    fig.tight_layout()
+    fig.savefig('fig_convexity.pdf')
+    plt.close(fig)
+
+
 if __name__ == '__main__':
     make_abs_subdifferential_figure()
     make_fermat_rule_figure()
-    print("Figures written: fig_abs_subdifferential.pdf, fig_fermat_rule.pdf")
+    make_subdiff_examples_figure()
+    make_convexity_figure()
+    print("Figures written: fig_abs_subdifferential.pdf, fig_fermat_rule.pdf, "
+          "fig_subdiff_examples.pdf, fig_convexity.pdf")
